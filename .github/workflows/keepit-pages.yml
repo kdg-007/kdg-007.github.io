@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest']
+    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**']
 
 permissions:
   contents: read
@@ -22,12 +22,39 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Stage verified compiled website files
+      - name: Restore validated compiled site from private build transfer
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p _site
-          rsync -a --exclude='.git/' --exclude='.github/' --exclude='README.md' --exclude='_site/' ./ _site/
+          if [[ -f delivery/manifest.json ]]; then
+            python3 - <<'PY'
+          import json,base64,hashlib,zipfile,pathlib,io,stat
+          root=pathlib.Path('delivery')
+          m=json.loads((root/'manifest.json').read_text())
+          if m.get('schema')!='keepit.github-qa-text-transfer.v1' or m.get('target')!='github-pages-qa' or m.get('oneDriveFolder')!='KeepIt-TK02-QA-2026-10-30':
+              raise SystemExit('Rejected incompatible transfer manifest')
+          count=m['parts']
+          if not isinstance(count,int) or not (1<=count<=100):raise SystemExit('Invalid part count')
+          encoded=''.join((root/f'part{i:03d}.txt').read_text() for i in range(count))
+          if len(encoded)!=m['base64Chars'] or len(encoded)>45_000_000:raise SystemExit('Unexpected transfer length')
+          data=base64.b64decode(encoded,validate=True)
+          if len(data)!=m['bytes'] or hashlib.sha256(data).hexdigest()!=m['sha256']:raise SystemExit('Compiled transfer digest mismatch')
+          with zipfile.ZipFile(io.BytesIO(data)) as z:
+              items=z.infolist()
+              if not (10<len(items)<2500):raise SystemExit('Invalid site file count')
+              if sum(x.file_size for x in items)>100_000_000:raise SystemExit('Unexpected inflated site size')
+              for item in items:
+                  n=item.filename
+                  parts=pathlib.PurePosixPath(n).parts
+                  if not n or n.startswith('/') or '..' in parts or '\\' in n or stat.S_ISLNK(item.external_attr>>16):
+                      raise SystemExit('Unsafe archive entry: '+n)
+              z.extractall('_site')
+          print('Verified compiled-only transfer restored:',m['sha256'])
+          PY
+          else
+            rsync -a --exclude='.git/' --exclude='.github/' --exclude='README.md' --exclude='ops/' --exclude='delivery/' --exclude='_site/' ./ _site/
+          fi
       - name: Reject source, secrets, and non-QA builds
         shell: bash
         run: |
