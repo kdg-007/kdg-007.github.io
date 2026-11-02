@@ -4,8 +4,6 @@ on:
   push:
     branches: [main]
     paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest']
-  issue_comment:
-    types: [created]
 
 permissions:
   contents: read
@@ -18,52 +16,13 @@ concurrency:
 
 jobs:
   deploy:
-    if: >-
-      github.event_name != 'issue_comment' ||
-      (github.event.issue.number == 1 &&
-       github.event.comment.user.login == 'kdg-007' &&
-       github.repository == 'kdg-007/kdg-007.github.io')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Stage compiled bundle from owner-only QA issue
-        if: github.event_name == 'issue_comment'
-        shell: bash
-        env:
-          COMMENT_BODY: ${{ github.event.comment.body }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os, re, subprocess, zipfile, pathlib, stat, sys
-          body=os.environ.get('COMMENT_BODY','')
-          if 'KeepIt_GitHub_Pages_COMPILED_QA_SITE.zip' not in body:
-              sys.exit('Upload the compiled QA site archive, not a source or unrelated ZIP.')
-          urls=re.findall(r'https://github\.com/user-attachments/(?:files/\d+/[^\s)<>]+|assets/[0-9a-fA-F-]+)',body)
-          urls=list(dict.fromkeys(urls))
-          if len(urls)!=1: sys.exit('Expected exactly one GitHub user-upload attachment link.')
-          url=urls[0]
-          print('Downloading the single owner-approved compiled-site attachment')
-          subprocess.run(['curl','--fail','--location','--silent','--show-error','--retry','2','--max-time','180','--max-filesize','80000000',url,'--output','site.zip'],check=True)
-          with zipfile.ZipFile('site.zip') as z:
-              members=z.infolist()
-              if len(members)>4000: sys.exit('Unexpectedly large archive file count')
-              if sum(x.file_size for x in members)>260_000_000: sys.exit('Unexpectedly large decompressed archive')
-              for info in members:
-                  name=info.filename.removeprefix('./')
-                  parts=pathlib.PurePosixPath(name).parts
-                  if (not name or name.startswith('/') or '\\' in name or '..' in parts or
-                      name.startswith('.github/') or name.startswith('.git/') or
-                      stat.S_ISLNK(info.external_attr >> 16)):
-                      sys.exit('Unsafe archive entry: '+info.filename)
-              pathlib.Path('_site').mkdir(exist_ok=True)
-              z.extractall('_site')
-          pathlib.Path('site.zip').unlink()
-          PY
-      - name: Stage compiled files from a direct push
-        if: github.event_name != 'issue_comment'
+      - name: Stage verified compiled website files
         shell: bash
         run: |
           set -euo pipefail
