@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**', '.github/workflows/keepit-pages.yml']
+    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**', 'ops/ui/**', '.github/workflows/keepit-pages.yml']
 
 permissions:
   contents: write
@@ -50,6 +50,25 @@ jobs:
           else
             rsync -a --exclude='.git/' --exclude='.github/' --exclude='README.md' --exclude='ops/' --exclude='delivery/' --exclude='_site/' ./ _site/
           fi
+      - name: Apply responsive QA navigation to compiled site
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ops/ui/keepit-responsive-qa.css
+          test -f ops/ui/keepit-responsive-qa.js
+          cp ops/ui/keepit-responsive-qa.css _site/keepit-responsive-qa.css
+          cp ops/ui/keepit-responsive-qa.js _site/keepit-responsive-qa.js
+          python3 - <<'PY'
+          from pathlib import Path
+          html=Path('_site/index.html')
+          s=html.read_text()
+          css='<link rel="stylesheet" href="/keepit-responsive-qa.css?v=20261103b">'
+          js='<script src="/keepit-responsive-qa.js?v=20261103b" defer></script>'
+          if s.count('</head>')!=1 or s.count('</body>')!=1:raise SystemExit('Unexpected KeepIt HTML: QA overlay refused')
+          if 'keepit-responsive-qa.css' in s or 'keepit-responsive-qa.js' in s:raise SystemExit('Refusing duplicate QA overlay')
+          html.write_text(s.replace('</head>',css+'</head>').replace('</body>',js+'</body>'))
+          print('Mobile QA interface overlay applied to exactly one compiled homepage')
+          PY
       - name: Reject source, secrets, and non-QA builds
         shell: bash
         run: |
