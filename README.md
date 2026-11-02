@@ -13,12 +13,12 @@ This public repository is reserved for the **compiled** KeepIt device-QA website
 - A passing GitHub Pages deployment does **not** mean Microsoft sign-in, iPhone functionality, or OneDrive data integrity has been tested.
 
 ## Deployment sequence
-1. Build the guarded KeepIt GitHub Pages candidate from the development ZIP on the Mac. The launcher outputs `KeepIt_GitHub_Pages_COMPILED_QA_SITE.zip`. It does not publish anything.
-2. Attach **`KeepIt_GitHub_Pages_COMPILED_QA_SITE.zip`** in a comment on [the controlled device-QA upload issue](https://github.com/kdg-007/kdg-007.github.io/issues/1). Do **not** attach the source ZIP. The owner-only workflow verifies the archive and publishes it without Git commands or a GitHub token on the Mac.
-3. Enable GitHub Pages in repository **Settings → Pages**. Choose **GitHub Actions** as the deployment source before uploading the ZIP.
+1. Upload the reviewed source ZIP once to the PRIVATE KeepIt build repository. The GitHub Actions runner compiles the guarded QA site automatically. Do not run npm or upload source files to the public repository.
+2. The PRIVATE `kdg-007/keepit-build-private` GitHub Actions workflow compiles the reviewed source ZIP, and publishes only compiled `dist/` files after explicit owner authorization. There is no source build or ZIP transfer on this public repository.
+3. Enable GitHub Pages in repository **Settings → Pages**. Choose **GitHub Actions** as the deployment source.
 4. In Microsoft app registration add `https://kdg-007.github.io/auth/callback/` as a **Single-page application** redirect URI for the QA client ID, *not* a Web redirect URI.
 5. Verify login and saving in the disposable OneDrive folder on both Mac and iPhone. No production-library data.
 
-The workflow under `.github/workflows/keepit-pages.yml` checks compiled QA markers and can deploy from a single verified ZIP attached to issue #1 by account owner `kdg-007`. It can also run for directly pushed compiled files.
+The workflow under `.github/workflows/keepit-pages.yml` deploys only compiled website files pushed from the private build pipeline; the earlier manual issue-upload route has been retired.
 
 This repository is public only because GitHub Pages on GitHub Free requires that arrangement. Do not treat the public website as private access control.
