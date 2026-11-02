@@ -29,7 +29,7 @@ jobs:
               o=json.load(r)
               print('PAGES_CONFIG',json.dumps({k:o.get(k) for k in ('url','html_url','status','build_type','source','public','https_enforced')},sort_keys=True))
           except Exception as e: print('PAGES_CONFIG_ERROR',str(e)[:300])
-          paths=['/','/index.html','/README.md','/build-info.json','/auth/callback/','/?keepit_qa_probe=20261103']
+          paths=['/','/index.html','/build-info.json','/auth/callback/','/?utm_source=chatgpt.com','/assets/library-app-CD77QIE2.js','/sw.js']
           for path in paths:
             u='https://kdg-007.github.io'+path
             req=urllib.request.Request(u,headers={'User-Agent':'KeepIt-Device-QA-Diagnostics','Cache-Control':'no-cache'})
