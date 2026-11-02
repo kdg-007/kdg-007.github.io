@@ -1,0 +1,98 @@
+name: KeepIt private source build
+# Install this workflow ONLY in the dedicated PRIVATE KeepIt source repository.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'source/*.zip'
+      - '.github/workflows/build-keepit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'work/package-lock.json'
+      - name: Extract the single reviewed source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile,pathlib,stat,sys
+          source=list(pathlib.Path('source').glob('*.zip'))
+          if len(source)!=1: sys.exit('Expected one source ZIP in the private source/ directory.')
+          archive=source[0]
+          with zipfile.ZipFile(archive) as z:
+            items=z.infolist()
+            if len(items)>2500 or sum(x.file_size for x in items)>65_000_000: sys.exit('Unexpected source archive size')
+            for entry in items:
+              name=entry.filename
+              if not name or name.startswith('/') or '..' in pathlib.PurePosixPath(name).parts or '\\' in name or stat.S_ISLNK(entry.external_attr>>16):
+                sys.exit('Unsafe archive entry: '+name)
+            pathlib.Path('work').mkdir(exist_ok=True)
+            z.extractall('work')
+          for required in ['package-lock.json','P0_VERIFY_SOURCE.mjs','scripts/prepare-github-pages.mjs','docs/TK02_QA_CONFIG.json']:
+            if not pathlib.Path('work',required).is_file(): sys.exit('Missing KeepIt source file: '+required)
+          print('Reviewed source archive extracted without publishing')
+          PY
+      - name: Install locked dependencies
+        working-directory: work
+        run: npm ci --no-audit --no-fund
+      - name: Verify historical source and GitHub QA policy
+        working-directory: work
+        run: |
+          set -euo pipefail
+          node P0_VERIFY_SOURCE.mjs
+          node --test qa/github-pages-gate.test.mjs
+      - name: Produce verified standalone website
+        working-directory: work
+        run: node scripts/prepare-github-pages.mjs
+      - name: Verify publishable files
+        working-directory: work
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-release.mjs
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const root='dist';
+          const required=['index.html','build-info.json','auth/callback/index.html','manifest.webmanifest','sw.js','.nojekyll'];
+          for(const name of required) if(!fs.existsSync(path.join(root,name)))throw Error('Missing published file: '+name);
+          const info=JSON.parse(fs.readFileSync(path.join(root,'build-info.json'),'utf8'));
+          if(info.deliveryTarget!=='github-pages-qa' || info.protectedOneDriveFolder!=='KeepIt-TK02-QA-2026-10-30')throw Error('Rejected non-QA build.');
+          NODE
+      - name: Upload compiled site (never upload source)
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeepIt-compiled-device-qa
+          path: work/dist/
+          include-hidden-files: true
+          retention-days: 7
+      - name: Publish only if the owner configured a limited public-repo token
+        env:
+          PAGES_TOKEN: ${{ secrets.KEEPIT_PAGES_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${PAGES_TOKEN}" ]]; then
+            echo 'No authorized publishing token. Compiled QA artifact is available; public site remains unchanged.'
+            exit 0
+          fi
+          git clone --quiet --depth=1 "https://x-access-token:${PAGES_TOKEN}@github.com/kdg-007/kdg-007.github.io.git" public-site
+          rsync -a --delete --exclude='.git/' --exclude='.github/' --exclude='README.md' --exclude='ops/' work/dist/ public-site/
+          cd public-site
+          git config user.name "KeepIt QA builder"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo 'Compiled website unchanged'; exit 0; fi
+          git commit -m "Publish verified KeepIt device-QA website"
+          git push origin HEAD:main
