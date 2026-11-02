@@ -1,0 +1,74 @@
+name: KeepIt guarded device-QA website
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'build-info.json'
+      - 'auth/**'
+      - 'assets/**'
+      - 'sw.js'
+      - 'manifest.webmanifest'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: keepit-qa-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject source, secrets and unverified builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const required = ['index.html', 'auth/callback/index.html', 'sw.js', 'manifest.webmanifest', '.nojekyll', 'build-info.json'];
+          for (const f of required) if (!fs.existsSync(f)) throw Error('Missing compiled site file: '+f);
+          const info=JSON.parse(fs.readFileSync('build-info.json','utf8'));
+          if(info.deliveryTarget!=='github-pages-qa') throw Error('Refusing non-QA build');
+          if(info.protectedOneDriveFolder!=='KeepIt-TK02-QA-2026-10-30') throw Error('Refusing build without disposable OneDrive folder policy');
+          if(info.liveGates==='PASS' || info.productionRelease==='AUTHORIZED') throw Error('Unexpected production claim in QA build');
+          for(const name of ['src','qa','test','hosting','scripts','node_modules','docs','.env','package.json','package-lock.json']) if(fs.existsSync(name)) throw Error('Public repository includes non-distributable source or config: '+name);
+          const allowed=new Set(['assets','auth','vendor','fixtures','thinkit','partners','engineering']);
+          const blockedExtensions=/\.(?:pem|pfx|p12|key|cer|sqlite|db|zip|tar|gz|log|map)$/i;
+          const walk=(dir='.')=>{
+            for(const item of fs.readdirSync(dir,{withFileTypes:true})){
+              if(dir==='.' && ['.git','.github'].includes(item.name))continue;
+              const rel=path.join(dir,item.name).replace(/^\.\//,'');
+              if(blockedExtensions.test(item.name))throw Error('Forbidden published artifact: '+rel);
+              if(item.isDirectory()){
+                if(dir==='.'&&!allowed.has(item.name))throw Error('Unexpected top-level folder: '+item.name);
+                walk(rel);
+              } else if(rel!== 'README.md' && item.name.startsWith('.') && item.name!=='.nojekyll') throw Error('Unexpected hidden published file: '+rel);
+            }
+          };
+          walk();
+          const page=fs.readFileSync('index.html','utf8');
+          if(!page.includes('Content-Security-Policy'))throw Error('CSP missing from index');
+          if(!fs.readdirSync('assets').some(f=>/library-app-.*\.js$/.test(f)))throw Error('Application bundle missing');
+          console.log('Guarded compiled KeepIt QA bundle confirmed: '+info.buildId);
+          NODE
+      - name: Stage compiled public files
+        shell: bash
+        run: |
+          mkdir -p _site
+          rsync -a --exclude='.git/' --exclude='.github/' --exclude='README.md' --exclude='_site/' ./ _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
