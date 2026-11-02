@@ -1,0 +1,11 @@
+{
+  "schema": "keepit.github-qa-text-transfer.v1",
+  "sourceBuild": "a63966cabb17",
+  "file": "compiled-qa-site.zip",
+  "sha256": "73c68951179febe2db72eac8fdc5b4b94a4385c0f238bef13e2e88c5f0c3818c",
+  "bytes": 4707525,
+  "parts": 24,
+  "base64Chars": 6276700,
+  "target": "github-pages-qa",
+  "oneDriveFolder": "KeepIt-TK02-QA-2026-10-30"
+}
