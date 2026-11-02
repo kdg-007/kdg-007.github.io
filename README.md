@@ -14,11 +14,11 @@ This public repository is reserved for the **compiled** KeepIt device-QA website
 
 ## Deployment sequence
 1. Build the guarded KeepIt GitHub Pages candidate from the development ZIP on the Mac. The launcher outputs `KeepIt_GitHub_Pages_COMPILED_QA_SITE.zip`. It does not publish anything.
-2. Publish the verified **contents** of that compiled archive to the repository root, preserving folder structure and `.nojekyll`.
-3. Enable GitHub Pages in repository **Settings → Pages**. Choose **GitHub Actions** as the deployment source.
+2. Attach **`KeepIt_GitHub_Pages_COMPILED_QA_SITE.zip`** in a comment on [the controlled device-QA upload issue](https://github.com/kdg-007/kdg-007.github.io/issues/1). Do **not** attach the source ZIP. The owner-only workflow verifies the archive and publishes it without Git commands or a GitHub token on the Mac.
+3. Enable GitHub Pages in repository **Settings → Pages**. Choose **GitHub Actions** as the deployment source before uploading the ZIP.
 4. In Microsoft app registration add `https://kdg-007.github.io/auth/callback/` as a **Single-page application** redirect URI for the QA client ID, *not* a Web redirect URI.
 5. Verify login and saving in the disposable OneDrive folder on both Mac and iPhone. No production-library data.
 
-The workflow under `.github/workflows/keepit-pages.yml` checks the compiled QA markers before publishing and is triggered only when compiled website files are pushed, or manually.
+The workflow under `.github/workflows/keepit-pages.yml` checks compiled QA markers and can deploy from a single verified ZIP attached to issue #1 by account owner `kdg-007`. It can also run for directly pushed compiled files.
 
 This repository is public only because GitHub Pages on GitHub Free requires that arrangement. Do not treat the public website as private access control.
