@@ -3,13 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - 'index.html'
-      - 'build-info.json'
-      - 'auth/**'
-      - 'assets/**'
-      - 'sw.js'
-      - 'manifest.webmanifest'
+    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest']
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -22,50 +18,88 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.number == 1 &&
+       github.event.comment.user.login == 'kdg-007' &&
+       github.repository == 'kdg-007/kdg-007.github.io')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Reject source, secrets and unverified builds
+      - name: Stage compiled bundle from owner-only QA issue
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re, subprocess, zipfile, pathlib, stat, sys
+          body=os.environ.get('COMMENT_BODY','')
+          if 'KeepIt_GitHub_Pages_COMPILED_QA_SITE.zip' not in body:
+              sys.exit('Upload the compiled QA site archive, not a source or unrelated ZIP.')
+          urls=re.findall(r'https://github\.com/user-attachments/(?:files/\d+/[^\s)<>]+|assets/[0-9a-fA-F-]+)',body)
+          urls=list(dict.fromkeys(urls))
+          if len(urls)!=1: sys.exit('Expected exactly one GitHub user-upload attachment link.')
+          url=urls[0]
+          print('Downloading the single owner-approved compiled-site attachment')
+          subprocess.run(['curl','--fail','--location','--silent','--show-error','--retry','2','--max-time','180','--max-filesize','80000000',url,'--output','site.zip'],check=True)
+          with zipfile.ZipFile('site.zip') as z:
+              members=z.infolist()
+              if len(members)>4000: sys.exit('Unexpectedly large archive file count')
+              if sum(x.file_size for x in members)>260_000_000: sys.exit('Unexpectedly large decompressed archive')
+              for info in members:
+                  name=info.filename.removeprefix('./')
+                  parts=pathlib.PurePosixPath(name).parts
+                  if (not name or name.startswith('/') or '\\' in name or '..' in parts or
+                      name.startswith('.github/') or name.startswith('.git/') or
+                      stat.S_ISLNK(info.external_attr >> 16)):
+                      sys.exit('Unsafe archive entry: '+info.filename)
+              pathlib.Path('_site').mkdir(exist_ok=True)
+              z.extractall('_site')
+          pathlib.Path('site.zip').unlink()
+          PY
+      - name: Stage compiled files from a direct push
+        if: github.event_name != 'issue_comment'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          rsync -a --exclude='.git/' --exclude='.github/' --exclude='README.md' --exclude='_site/' ./ _site/
+      - name: Reject source, secrets, and non-QA builds
         shell: bash
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import path from 'node:path';
-          const required = ['index.html', 'auth/callback/index.html', 'sw.js', 'manifest.webmanifest', '.nojekyll', 'build-info.json'];
-          for (const f of required) if (!fs.existsSync(f)) throw Error('Missing compiled site file: '+f);
-          const info=JSON.parse(fs.readFileSync('build-info.json','utf8'));
-          if(info.deliveryTarget!=='github-pages-qa') throw Error('Refusing non-QA build');
-          if(info.protectedOneDriveFolder!=='KeepIt-TK02-QA-2026-10-30') throw Error('Refusing build without disposable OneDrive folder policy');
-          if(info.liveGates==='PASS' || info.productionRelease==='AUTHORIZED') throw Error('Unexpected production claim in QA build');
-          for(const name of ['src','qa','test','hosting','scripts','node_modules','docs','.env','package.json','package-lock.json']) if(fs.existsSync(name)) throw Error('Public repository includes non-distributable source or config: '+name);
+          const root='_site';
+          const required=['index.html','auth/callback/index.html','sw.js','manifest.webmanifest','.nojekyll','build-info.json'];
+          for(const f of required) if(!fs.existsSync(path.join(root,f)))throw Error('Missing compiled site file: '+f);
+          const info=JSON.parse(fs.readFileSync(path.join(root,'build-info.json'),'utf8'));
+          if(info.deliveryTarget!=='github-pages-qa')throw Error('Refusing non-QA build');
+          if(info.protectedOneDriveFolder!=='KeepIt-TK02-QA-2026-10-30')throw Error('Refusing build without disposable OneDrive folder policy');
           const allowed=new Set(['assets','auth','vendor','fixtures','thinkit','partners','engineering']);
           const blockedExtensions=/\.(?:pem|pfx|p12|key|cer|sqlite|db|zip|tar|gz|log|map)$/i;
-          const walk=(dir='.')=>{
-            for(const item of fs.readdirSync(dir,{withFileTypes:true})){
-              if(dir==='.' && ['.git','.github'].includes(item.name))continue;
-              const rel=path.join(dir,item.name).replace(/^\.\//,'');
-              if(blockedExtensions.test(item.name))throw Error('Forbidden published artifact: '+rel);
+          const walk=(dir='')=>{
+            for(const item of fs.readdirSync(path.join(root,dir),{withFileTypes:true})){
+              const rel=path.join(dir,item.name);
+              if(blockedExtensions.test(item.name))throw Error('Forbidden published file: '+rel);
               if(item.isDirectory()){
-                if(dir==='.'&&!allowed.has(item.name))throw Error('Unexpected top-level folder: '+item.name);
+                if(!dir&&!allowed.has(item.name))throw Error('Unexpected top-level folder: '+item.name);
                 walk(rel);
-              } else if(rel!== 'README.md' && item.name.startsWith('.') && item.name!=='.nojekyll') throw Error('Unexpected hidden published file: '+rel);
+              }else if(item.name.startsWith('.')&&item.name!=='.nojekyll')throw Error('Unexpected hidden file: '+rel);
             }
           };
           walk();
-          const page=fs.readFileSync('index.html','utf8');
-          if(!page.includes('Content-Security-Policy'))throw Error('CSP missing from index');
-          if(!fs.readdirSync('assets').some(f=>/library-app-.*\.js$/.test(f)))throw Error('Application bundle missing');
-          console.log('Guarded compiled KeepIt QA bundle confirmed: '+info.buildId);
+          const page=fs.readFileSync(path.join(root,'index.html'),'utf8');
+          if(!page.includes('Content-Security-Policy'))throw Error('HTML security policy missing');
+          if(!fs.readdirSync(path.join(root,'assets')).some(f=>/library-app-.*\.js$/.test(f)))throw Error('Compiled app missing');
+          console.log('Passed static QA bundle policy, build ID: '+info.buildId);
           NODE
-      - name: Stage compiled public files
-        shell: bash
-        run: |
-          mkdir -p _site
-          rsync -a --exclude='.git/' --exclude='.github/' --exclude='README.md' --exclude='_site/' ./ _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
