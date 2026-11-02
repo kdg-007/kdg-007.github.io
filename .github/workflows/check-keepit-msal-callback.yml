@@ -1,0 +1,53 @@
+name: Check KeepIt Microsoft callback registration (read-only)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/check-keepit-msal-callback.yml']
+permissions:
+  contents: read
+jobs:
+  callback-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Microsoft authorize endpoint without account or file access
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.parse,urllib.request,urllib.error,hashlib,base64,re,html
+          client='c2afef6b-096d-4b89-80e0-09738f32132a'
+          redirect='https://kdg-007.github.io/auth/callback/'
+          verifier='read-only-keepit-callback-check-20261103-a-replace-no-user-credentials'
+          challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
+          query=urllib.parse.urlencode({
+            'client_id':client,'response_type':'code','redirect_uri':redirect,
+            'response_mode':'query','scope':'openid offline_access Files.ReadWrite',
+            'code_challenge':challenge,'code_challenge_method':'S256','prompt':'none',
+            'state':'keepit-callback-registration-probe'
+          })
+          url='https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?'+query
+          class StopRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self,req,fp,code,msg,headers,newurl):return None
+          req=urllib.request.Request(url,headers={'User-Agent':'KeepIt-QA-ReadOnly-Registration-Probe/1.0','Cache-Control':'no-cache'})
+          opener=urllib.request.build_opener(StopRedirect)
+          try:
+            res=opener.open(req,timeout=25);code=res.status; headers=res.headers;body=res.read(250000).decode('utf8','replace')
+          except urllib.error.HTTPError as e:
+            code=e.code;headers=e.headers;body=e.read(250000).decode('utf8','replace')
+          loc=headers.get('Location','')
+          params=urllib.parse.parse_qs(urllib.parse.urlparse(loc).query)
+          codes=list(dict.fromkeys(re.findall(r'AADSTS\d+',body+' '+(params.get('error_description',[''])[0]))))
+          print('HTTP_STATUS',code)
+          print('REDIRECT_TO_REGISTERED_QA_CALLBACK', loc.startswith(redirect))
+          print('OAUTH_ERROR',params.get('error',[''])[0][:100])
+          print('MICROSOFT_AADSTS_CODES',','.join(codes[:6]) if codes else 'none observed')
+          print('PUBLIC_CLIENT',client)
+          print('QA_CALLBACK',redirect)
+          if loc.startswith(redirect):
+            print('CHECK_RESULT: MICROSOFT_ACCEPTED_CALLBACK_FOR_AUTH_REQUEST (not evidence of sign-in)')
+          elif 'AADSTS50011' in codes or 'AADSTS500113' in codes:
+            print('CHECK_RESULT: CALLBACK_NOT_REGISTERED')
+          else:
+            print('CHECK_RESULT: INCONCLUSIVE_REQUIRES_ACCOUNT_OWNER_PORTAL_CHECK')
+          # No tokens, cookies, user identity or OneDrive files are used.
+          PY
