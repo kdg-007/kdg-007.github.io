@@ -29,7 +29,7 @@ jobs:
               o=json.load(r)
               print('PAGES_CONFIG',json.dumps({k:o.get(k) for k in ('url','html_url','status','build_type','source','public','https_enforced')},sort_keys=True))
           except Exception as e: print('PAGES_CONFIG_ERROR',str(e)[:300])
-          paths=['/','/index.html','/build-info.json','/auth/callback/','/?utm_source=chatgpt.com','/assets/library-app-CD77QIE2.js','/sw.js']
+          paths=['/','/index.html','/build-info.json','/auth/callback/','/?utm_source=chatgpt.com','/assets/library-app-CD77QIE2.js','/sw.js','/keepit-responsive-qa.css?v=20261103b','/keepit-responsive-qa.js?v=20261103b']
           for path in paths:
             u='https://kdg-007.github.io'+path
             req=urllib.request.Request(u,headers={'User-Agent':'KeepIt-Device-QA-Diagnostics','Cache-Control':'no-cache'})
@@ -37,7 +37,7 @@ jobs:
               with urllib.request.urlopen(req,timeout=25) as r:
                 body=r.read(120000)
                 txt=body.decode('utf8','replace')
-                print('LIVE_RESULT',json.dumps({'path':path,'status':r.status,'content_type':r.headers.get('Content-Type'),'length':len(body),'sha256_first120k':hashlib.sha256(body).hexdigest(),'hasKeepItApp':'library-app-' in txt,'hasOldReadme':'KeepIt — device QA hosting' in txt,'start':txt[:220]},sort_keys=True))
+                print('LIVE_RESULT',json.dumps({'path':path,'status':r.status,'content_type':r.headers.get('Content-Type'),'length':len(body),'sha256_first120k':hashlib.sha256(body).hexdigest(),'hasKeepItApp':'library-app-' in txt,'hasOldReadme':'KeepIt — device QA hosting' in txt,'mobileStylesheetLinked':'/keepit-responsive-qa.css' in txt,'mobileScriptLinked':'/keepit-responsive-qa.js' in txt,'mobileNavLogic':'keepit-app-launchers' in txt,'start':txt[:220]},sort_keys=True))
             except urllib.error.HTTPError as e:print('LIVE_HTTP_ERROR',path,e.code)
             except Exception as e:print('LIVE_ERROR',path,str(e)[:250])
           PY
