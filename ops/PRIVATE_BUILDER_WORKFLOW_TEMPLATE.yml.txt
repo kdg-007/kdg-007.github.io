@@ -16,11 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: 'work/package-lock.json'
       - name: Extract the single reviewed source archive
         shell: bash
         run: |
@@ -43,6 +38,11 @@ jobs:
             if not pathlib.Path('work',required).is_file(): sys.exit('Missing KeepIt source file: '+required)
           print('Reviewed source archive extracted without publishing')
           PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'work/package-lock.json'
       - name: Install locked dependencies
         working-directory: work
         run: npm ci --no-audit --no-fund
