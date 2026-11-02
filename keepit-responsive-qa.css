@@ -1,0 +1,43 @@
+/* KeepIt QA iPhone responsive toolbar, verified against original dark theme, 2026-11-03 */
+.keepit-app-launchers{display:flex;align-items:center;gap:7px;min-width:0}
+.keepit-app-launchers>button{display:inline-flex;justify-content:center;align-items:center;flex:0 0 auto;min-height:34px;padding:6px 11px;border-radius:8px;border:1px solid var(--line,#444);background:var(--surface,#29292d);color:var(--text,#eee);font:600 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer;text-decoration:none}
+.keepit-app-launchers>button:hover{background:var(--surface-hover,#36363c)}
+.keepit-app-launchers>button:focus-visible,.keepit-qa-toggle:focus-visible{outline:2px solid var(--accent,#6bd4cf);outline-offset:2px}
+.keepit-app-launchers>#thinkit-launch{background:var(--accent-soft,#214344);border-color:color-mix(in srgb,var(--accent,#6bd4cf) 35%,var(--line,#38383e));color:var(--text,#eee)}
+.keepit-qa-toggle{display:none}
+@media(max-width:700px){
+html,body{max-width:100%;overflow-x:hidden}
+.library-main{min-width:0!important;max-width:100%}
+.library-top{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;grid-template-rows:auto auto!important;align-items:center!important;justify-content:initial!important;gap:7px 5px!important;height:auto!important;min-height:0!important;padding:9px 12px 8px!important;box-sizing:border-box}
+.library-top .toolbar-heading{grid-column:1;grid-row:1;display:flex;align-items:center;gap:8px!important;min-width:0!important;max-width:100%}
+.library-top .toolbar-heading h1{display:block!important;max-width:90px;min-width:0;font-size:19px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.library-top .top-actions{grid-column:2;grid-row:1;min-width:0!important;display:flex;align-items:center;gap:3px!important}
+.library-top #theme-toggle{width:31px;min-width:31px;height:36px;padding:6px}
+.library-top #more-trigger{width:34px;min-width:34px;height:36px;padding:5px}
+.library-top .add-actions{gap:3px!important}
+.library-top #add-files{min-width:37px;min-height:38px;padding:7px;justify-content:center}
+.library-top #take-photo{min-height:38px;padding:7px 9px;font-size:12px}
+.library-top .keepit-app-launchers{grid-column:1/-1;grid-row:2;width:100%;display:flex;align-items:center;justify-content:flex-start;gap:8px;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;padding:1px 0 3px}
+.keepit-app-launchers::-webkit-scrollbar{display:none}
+.library-top .keepit-app-launchers>button{height:37px;min-height:37px;padding:7px 14px;font-size:13px;border-radius:9px}
+.library-page{padding:12px 12px 28px!important;max-width:100%;overflow-x:clip}
+.library-tools{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important;min-width:0}
+.library-tools .search-wrap{grid-column:1/-1;width:100%;max-width:100%;height:40px;min-width:0}
+.library-tools .search-wrap input{min-width:0;font-size:16px}
+.library-tools select{width:100%;max-width:none!important;min-width:0!important;min-height:40px;font-size:12px!important;padding:5px 9px}
+.library-tools #sort{margin-left:0}
+.results-line{gap:6px}.results-tools{gap:5px!important}.results-tools .tile-size{display:none!important}
+.empty-library{min-height:42dvh!important;padding:24px 12px!important}
+.empty-library h2{font-size:clamp(19px,5.5vw,27px)!important;line-height:1.2}
+.empty-library p{font-size:13px!important;line-height:1.5}
+.storage-strip{display:flex!important;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:8px!important;padding:10px 12px!important;border-radius:10px}
+.storage-strip #storage-description{width:100%;flex:1 0 100%;font-size:12px;line-height:1.4}
+.storage-strip button{min-height:35px;white-space:nowrap;max-width:100%}
+.storage-strip #connect-onedrive{flex:0 1 auto}
+.storage-strip #backup-shortcut{margin-left:auto}
+.keepit-qa-toggle{position:fixed;z-index:1301;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:12px;display:flex;align-items:center;min-height:32px;padding:6px 11px;border:1px solid var(--line,#444);border-radius:99px;background:var(--surface,#29292d);color:var(--muted,#aaa);font-size:11px;font-weight:650;box-shadow:0 2px 12px #0004}
+aside[aria-label="Private QA recovery controls"]{display:none!important}
+aside[aria-label="Private QA recovery controls"][data-qa-open="true"]{display:flex!important;box-sizing:border-box!important;position:fixed!important;left:10px!important;right:10px!important;bottom:calc(54px + env(safe-area-inset-bottom,0px))!important;top:auto!important;width:auto!important;max-height:44dvh;overflow-y:auto;padding:12px!important;border-radius:12px;gap:8px!important;box-shadow:0 8px 25px #0007}
+aside[aria-label="Private QA recovery controls"] button,aside[aria-label="Private QA recovery controls"] a{min-height:34px;white-space:normal;text-align:left}
+}
+@media(max-width:360px){.library-top{padding-left:8px!important;padding-right:8px!important}.library-top .toolbar-heading h1{font-size:17px!important}.library-top #take-photo{padding:7px;font-size:11px}.library-top .keepit-app-launchers>button{padding:7px 10px}}
