@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**']
+    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**', '.github/workflows/keepit-pages.yml']
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -92,3 +92,20 @@ jobs:
           path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Publish the same verified files to the branch-backed Pages root
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This repository currently serves Pages from its main branch, which
+          # otherwise displays README.md instead of the compiled application.
+          # Only _site, which passed the security gate above, is copied.
+          rsync -a _site/ ./
+          git config user.name "KeepIt QA publisher"
+          git config user.email "actions@users.noreply.github.com"
+          git add --all
+          if git diff --cached --quiet; then
+            echo "Compiled KeepIt already matches the Pages branch."
+            exit 0
+          fi
+          git commit -m "Publish compiled KeepIt QA website to branch-backed Pages"
+          git push origin HEAD:main
