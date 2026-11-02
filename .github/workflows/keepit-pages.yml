@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: keepit-qa-pages
@@ -17,9 +15,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Restore validated compiled site from private build transfer
@@ -86,13 +81,7 @@ jobs:
           if(!fs.readdirSync(path.join(root,'assets')).some(f=>/library-app-.*\.js$/.test(f)))throw Error('Compiled app missing');
           console.log('Passed static QA bundle policy, build ID: '+info.buildId);
           NODE
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: _site
-      - id: deployment
-        uses: actions/deploy-pages@v4
-      - name: Publish the same verified files to the branch-backed Pages root
+      - name: Publish verified app to the one configured Pages source (main branch)
         shell: bash
         run: |
           set -euo pipefail
@@ -100,9 +89,13 @@ jobs:
           # otherwise displays README.md instead of the compiled application.
           # Only _site, which passed the security gate above, is copied.
           rsync -a _site/ ./
+          # Remove the accidental doubled output tree from the previous publisher.
+          git rm -r --cached --ignore-unmatch _site >/dev/null || true
+          rm -rf _site
           git config user.name "KeepIt QA publisher"
           git config user.email "actions@users.noreply.github.com"
           git add --all
+          if git ls-files | grep -q '^_site/'; then echo 'ERROR: build staging folder would be published'; exit 1; fi
           if git diff --cached --quiet; then
             echo "Compiled KeepIt already matches the Pages branch."
             exit 0
