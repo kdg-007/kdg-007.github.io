@@ -1,0 +1,43 @@
+name: Diagnose KeepIt Pages live content
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-keepit-pages.yml']
+permissions:
+  contents: read
+  pages: read
+jobs:
+  verify-live-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect GitHub Pages configuration and live origin
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,hashlib
+          repo=os.environ['GITHUB_REPOSITORY']
+          api='https://api.github.com/repos/'+repo+'/pages'
+          token=os.environ['GH_TOKEN']
+          req=urllib.request.Request(api,headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','User-Agent':'KeepIt-Device-QA-Diagnostics'})
+          try:
+            with urllib.request.urlopen(req,timeout=20) as r:
+              o=json.load(r)
+              print('PAGES_CONFIG',json.dumps({k:o.get(k) for k in ('url','html_url','status','build_type','source','public','https_enforced')},sort_keys=True))
+          except Exception as e: print('PAGES_CONFIG_ERROR',str(e)[:300])
+          paths=['/','/index.html','/README.md','/build-info.json','/auth/callback/','/?keepit_qa_probe=20261103']
+          for path in paths:
+            u='https://kdg-007.github.io'+path
+            req=urllib.request.Request(u,headers={'User-Agent':'KeepIt-Device-QA-Diagnostics','Cache-Control':'no-cache'})
+            try:
+              with urllib.request.urlopen(req,timeout=25) as r:
+                body=r.read(120000)
+                txt=body.decode('utf8','replace')
+                print('LIVE_RESULT',json.dumps({'path':path,'status':r.status,'content_type':r.headers.get('Content-Type'),'length':len(body),'sha256_first120k':hashlib.sha256(body).hexdigest(),'hasKeepItApp':'library-app-' in txt,'hasOldReadme':'KeepIt — device QA hosting' in txt,'start':txt[:220]},sort_keys=True))
+            except urllib.error.HTTPError as e:print('LIVE_HTTP_ERROR',path,e.code)
+            except Exception as e:print('LIVE_ERROR',path,str(e)[:250])
+          PY
