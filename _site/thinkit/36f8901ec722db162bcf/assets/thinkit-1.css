@@ -1,3 +1,0 @@
-
-#bubbleFrame{display:none;flex:1;width:100%;min-width:0;min-height:0;border:0;background:#f7f7f3}body.bubble-active #bubbleFrame{display:block!important}body.bubble-active .canvas-wrap,body.bubble-active .statusbar,body.bubble-active .editor-toolbar,body.bubble-active .left-sidebar,body.bubble-active .inspector{display:none!important}body.bubble-active #bubbleModeTop,body.bubble-active #bubbleOpenTop{display:inline-flex!important}body.bubble-active .editor-shell{width:100%;flex:1}body.bubble-active .workspace{display:flex}body.bubble-active .page-tabs{flex-shrink:0}
-@media(max-width:730px){body.bubble-active #bubbleModeTop{font-size:10px;padding:6px}}
