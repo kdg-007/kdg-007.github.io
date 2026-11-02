@@ -1,0 +1,1 @@
+if(window.top!==window)document.documentElement.classList.add("di-embedded")

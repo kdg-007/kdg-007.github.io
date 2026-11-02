@@ -1,0 +1,6 @@
+import{Qc as h,Sc as u,Yc as T,dd as n,gc as I,hc as o,jc as r,lc as y,md as g,nd as R}from"./chunk-LK6PSMP4.js";import"./chunk-OOJM4CTU.js";async function b(f){document.title="Microsoft Authentication";let a;try{a=h()}catch(t){throw u(window),t}let{payload:s,urlHash:c,urlQuery:l,hasResponseInHash:S,hasResponseInQuery:U,libraryState:$}=a,{id:A,meta:E}=$;if(E.interactionType===y.Redirect){let t=f||new g,w="",e="",d="",N=`${n}.${o.INTERACTION_STATUS_KEY}`;try{let C=window.sessionStorage.getItem(N),m=JSON.parse(C||"");if(e=m.clientId||"",d=m.type,e){let O=`${n}.${e}.${o.ORIGIN_URI}`;w=window.sessionStorage.getItem(O)||""}}catch{}let _={apiId:d===I.SIGNOUT?r.logout:r.handleRedirectPromise,noHistory:!0,timeout:R};if(e)try{window.sessionStorage.setItem(`${n}.${e}.${o.URL_HASH}`,s)}catch{}let i=w||T(),v=i.endsWith("?")?i.slice(0,-1):i;await t.navigateInternal(v,_);return}if(typeof window.history.replaceState=="function"){let t=`${window.location.origin}${window.location.pathname}`;!S&&c&&(t+=c),!U&&l&&(t+=l),window.history.replaceState(null,"",t)}let p=new BroadcastChannel(A);p.postMessage({v:1,payload:s}),p.close();try{window.close()}catch{}}export{b as broadcastResponseToMainFrame};
+/*! Bundled license information:
+
+@azure/msal-browser/dist/redirect_bridge/index.mjs:
+  (*! @azure/msal-browser v5.25.1 2026-10-13 *)
+*/

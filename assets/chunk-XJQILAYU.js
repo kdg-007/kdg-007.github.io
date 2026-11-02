@@ -1,0 +1,1 @@
+import{k as a,l as b,m as c,n as d,o as e,p as f,q as g,r as h,s as i}from"./chunk-SVKY44DJ.js";import"./chunk-ALKS2JOX.js";import"./chunk-OOJM4CTU.js";export{a as NOTE_MIME,c as emptyDocument,b as isNote,f as makeAsset,i as noteText,g as packNote,d as safeLink,h as unpackNote,e as validateDocument};

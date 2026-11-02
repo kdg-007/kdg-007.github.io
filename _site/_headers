@@ -1,0 +1,9 @@
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-NohimjGbtALBe4sD8FOUL1mpG3HmswPH8AHjrlGZoMI=' 'sha256-E6+tONioZOLAxEDVdQqCSfofA3u/JPMIaRBWDyVMu5o='; style-src 'self' 'unsafe-inline'; connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://1drv.com https://*.1drv.com https://storage.live.com https://*.storage.live.com https://files.onedrive.live.com https://*.files.onedrive.live.com https://usercontent.microsoft https://*.usercontent.microsoft https://my.microsoftpersonalcontent.com https://api.onedrive.com; worker-src 'self' blob:; media-src 'self' blob: data:; img-src 'self' blob: data:; font-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self' https://login.microsoftonline.com; frame-src 'self' blob: https://login.microsoftonline.com; upgrade-insecure-requests; frame-ancestors 'self'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Permissions-Policy: camera=(self), microphone=(), geolocation=()
+/auth/callback*
+  Cache-Control: no-store
+/sw.js
+  Cache-Control: no-cache
