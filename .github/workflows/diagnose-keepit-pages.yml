@@ -46,17 +46,17 @@ jobs:
               if r.status!=200:raise SystemExit('Live QA release asset failed: '+path)
               return r.read()
           build=json.loads(fetch('/build-info.json'))
-          if build.get('buildId')!='0ba8c8cdbf11' or build.get('protectedOneDriveFolder')!='KeepIt-TK02-QA-2026-10-30':
+          if build.get('buildId')!='9c6b58c4a0e6' or build.get('protectedOneDriveFolder')!='KeepIt-TK02-QA-2026-10-30':
             raise SystemExit('LIVE_RELEASE_MISMATCH: old build-info or unsafe QA folder')
           sw=fetch('/sw.js').decode('utf8','replace')
-          if '0ba8c8cdbf11' not in sw: raise SystemExit('LIVE_RELEASE_MISMATCH: old service worker')
+          if '9c6b58c4a0e6' not in sw: raise SystemExit('LIVE_RELEASE_MISMATCH: old service worker')
           index=fetch('/index.html').decode('utf8','replace')
           if 'keepit-qa-picker-guard' in index:
             raise SystemExit('LIVE_RELEASE_MISMATCH: redundant picker overlay still active')
-          if 'keepit-responsive-qa' not in index or 'library-app-JCDBALIT.js' not in index:
+          if 'keepit-responsive-qa' not in index or 'library-app-P7YUIEUT.js' not in index:
             raise SystemExit('LIVE_RELEASE_MISMATCH: old homepage')
-          chunk=fetch('/assets/chunk-JFWFVGPS.js').decode('utf8','replace')
-          if 'Only this verified QA folder' not in chunk or 'qaPickerVerified' not in chunk:
-            raise SystemExit('LIVE_RELEASE_MISMATCH: QA folder picker correction not served')
+          chunk=fetch('/assets/chunk-YHNFXXKP.js').decode('utf8','replace')
+          if 'Only this verified QA folder' not in chunk or 'qaPickerVerified' not in chunk or 'Queued copy retained' not in chunk or 'ORIGINAL_UNVERIFIED' not in chunk:
+            raise SystemExit('LIVE_RELEASE_MISMATCH: QA picker and exact-readback large-original correction not served')
           print('LIVE_QA_RELEASE_PASS',build['buildId'],'QA picker, homepage, service worker and folder restriction all current')
           PY
