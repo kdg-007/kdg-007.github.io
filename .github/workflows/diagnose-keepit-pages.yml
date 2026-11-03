@@ -40,4 +40,21 @@ jobs:
                 print('LIVE_RESULT',json.dumps({'path':path,'status':r.status,'content_type':r.headers.get('Content-Type'),'length':len(body),'sha256_first120k':hashlib.sha256(body).hexdigest(),'hasKeepItApp':'library-app-' in txt,'hasOldReadme':'KeepIt — device QA hosting' in txt,'mobileStylesheetLinked':'/keepit-responsive-qa.css' in txt,'mobileScriptLinked':'/keepit-responsive-qa.js' in txt,'mobileNavLogic':'keepit-app-launchers' in txt,'start':txt[:220]},sort_keys=True))
             except urllib.error.HTTPError as e:print('LIVE_HTTP_ERROR',path,e.code)
             except Exception as e:print('LIVE_ERROR',path,str(e)[:250])
+          def fetch(path):
+            req=urllib.request.Request('https://kdg-007.github.io'+path,headers={'User-Agent':'KeepIt-Device-QA-LiveRelease-Check','Cache-Control':'no-cache'})
+            with urllib.request.urlopen(req,timeout=25) as r:
+              if r.status!=200:raise SystemExit('Live QA release asset failed: '+path)
+              return r.read()
+          build=json.loads(fetch('/build-info.json'))
+          if build.get('buildId')!='0ba8c8cdbf11' or build.get('protectedOneDriveFolder')!='KeepIt-TK02-QA-2026-10-30':
+            raise SystemExit('LIVE_RELEASE_MISMATCH: old build-info or unsafe QA folder')
+          sw=fetch('/sw.js').decode('utf8','replace')
+          if '0ba8c8cdbf11' not in sw: raise SystemExit('LIVE_RELEASE_MISMATCH: old service worker')
+          index=fetch('/index.html').decode('utf8','replace')
+          if 'keepit-responsive-qa' not in index or 'library-app-JCDBALIT.js' not in index:
+            raise SystemExit('LIVE_RELEASE_MISMATCH: old homepage')
+          chunk=fetch('/assets/chunk-JFWFVGPS.js').decode('utf8','replace')
+          if 'Only this verified QA folder' not in chunk or 'qaPickerVerified' not in chunk:
+            raise SystemExit('LIVE_RELEASE_MISMATCH: QA folder picker correction not served')
+          print('LIVE_QA_RELEASE_PASS',build['buildId'],'QA picker, homepage, service worker and folder restriction all current')
           PY
