@@ -1,0 +1,1 @@
+window.parent!==window||window.opener?import("./chunk-5T3HADQC.js").then(({broadcastResponseToMainFrame:t})=>t()).catch(()=>{document.body.textContent="Microsoft could not return to the initiating page. Return to KeepIt and reconnect; the local journal is retained."}):import("./library-app-OEUQI6PR.js");
