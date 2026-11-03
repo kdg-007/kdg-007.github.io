@@ -107,7 +107,8 @@ jobs:
           # This repository currently serves Pages from its main branch, which
           # otherwise displays README.md instead of the compiled application.
           # Only _site, which passed the security gate above, is copied.
-          rsync -a _site/ ./
+          # Verify content, not just timestamp and byte length (service workers may match in size).
+          rsync -a --checksum _site/ ./
           # Remove the accidental doubled output tree from the previous publisher.
           git rm -r --cached --ignore-unmatch _site >/dev/null || true
           rm -rf _site
