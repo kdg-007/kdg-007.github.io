@@ -1,6 +1,6 @@
 {
   "harness": "0.10.0-rc.11",
-  "buildId": "0ba8c8cdbf11",
+  "buildId": "9c6b58c4a0e6",
   "connectionMode": "browser",
   "baseline": "3.4",
   "appDependencies": {
