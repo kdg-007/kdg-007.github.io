@@ -69,6 +69,28 @@ jobs:
           html.write_text(s.replace('</head>',css+'</head>').replace('</body>',js+'</body>'))
           print('Mobile QA interface overlay applied to exactly one compiled homepage')
           PY
+      - name: Guard QA folder picker against production-library choices
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s ops/ui/keepit-qa-picker-guard.js
+          test -s ops/ui/keepit-qa-picker-guard.css
+          node --check ops/ui/keepit-qa-picker-guard.js
+          cp ops/ui/keepit-qa-picker-guard.js _site/keepit-qa-picker-guard.js
+          cp ops/ui/keepit-qa-picker-guard.css _site/keepit-qa-picker-guard.css
+          python3 - <<'PY'
+          from pathlib import Path
+          html=Path('_site/index.html')
+          s=html.read_text()
+          css='<link rel="stylesheet" href="/keepit-qa-picker-guard.css?v=20261103c">'
+          js='<script src="/keepit-qa-picker-guard.js?v=20261103c" defer></script>'
+          if s.count('</head>')!=1 or s.count('</body>')!=1:
+              raise SystemExit('Unexpected compiled HTML; folder picker overlay refused')
+          if 'keepit-qa-picker-guard.css' in s or 'keepit-qa-picker-guard.js' in s:
+              raise SystemExit('Refusing duplicate QA picker guard')
+          html.write_text(s.replace('</head>',css+'</head>').replace('</body>',js+'</body>'))
+          print('QA picker defense-in-depth applied without changing library bytes')
+          PY
       - name: Reject source, secrets, and non-QA builds
         shell: bash
         run: |
