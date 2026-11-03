@@ -51,7 +51,7 @@ jobs:
           sw=fetch('/sw.js').decode('utf8','replace')
           if '0ba8c8cdbf11' not in sw: raise SystemExit('LIVE_RELEASE_MISMATCH: old service worker')
           index=fetch('/index.html').decode('utf8','replace')
-          if 'keepit-responsive-qa' not in index or 'library-app-JCDBALIT.js' not in index:
+          if 'keepit-qa-picker-guard' in index:\n            raise SystemExit('LIVE_RELEASE_MISMATCH: redundant picker overlay still active')\n          if 'keepit-responsive-qa' not in index or 'library-app-JCDBALIT.js' not in index:
             raise SystemExit('LIVE_RELEASE_MISMATCH: old homepage')
           chunk=fetch('/assets/chunk-JFWFVGPS.js').decode('utf8','replace')
           if 'Only this verified QA folder' not in chunk or 'qaPickerVerified' not in chunk:
