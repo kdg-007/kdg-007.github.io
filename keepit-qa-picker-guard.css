@@ -1,0 +1,6 @@
+/* Prevent old folder-picker display rules from showing unsafe QA choices */
+#onedrive-dialog .onedrive-folder[hidden],
+#onedrive-dialog #onedrive-use[hidden],
+#onedrive-dialog p.fineprint[hidden],
+#onedrive-dialog #onedrive-create-qa[hidden] {display:none!important}
+#onedrive-dialog #keepit-qa-picker-notice {padding:6px 4px;line-height:1.4}
