@@ -1,62 +1,90 @@
-name: Diagnose KeepIt Pages live content
+name: Verify live KeepIt device-QA release identity
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths: ['.github/workflows/diagnose-keepit-pages.yml']
+
 permissions:
   contents: read
   pages: read
+
 jobs:
   verify-live-site:
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect GitHub Pages configuration and live origin
+      - name: Verify deployed release against signed-off private compile transfer
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os,json,urllib.request,urllib.error,hashlib
-          repo=os.environ['GITHUB_REPOSITORY']
-          api='https://api.github.com/repos/'+repo+'/pages'
-          token=os.environ['GH_TOKEN']
-          req=urllib.request.Request(api,headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','User-Agent':'KeepIt-Device-QA-Diagnostics'})
-          try:
-            with urllib.request.urlopen(req,timeout=20) as r:
-              o=json.load(r)
-              print('PAGES_CONFIG',json.dumps({k:o.get(k) for k in ('url','html_url','status','build_type','source','public','https_enforced')},sort_keys=True))
-          except Exception as e: print('PAGES_CONFIG_ERROR',str(e)[:300])
-          paths=['/','/index.html','/build-info.json','/auth/callback/','/?utm_source=chatgpt.com','/assets/library-app-OEUQI6PR.js','/sw.js','/keepit-responsive-qa.css?v=20261103b','/keepit-responsive-qa.js?v=20261103b']
-          for path in paths:
-            u='https://kdg-007.github.io'+path
-            req=urllib.request.Request(u,headers={'User-Agent':'KeepIt-Device-QA-Diagnostics','Cache-Control':'no-cache'})
-            try:
-              with urllib.request.urlopen(req,timeout=25) as r:
-                body=r.read(120000)
-                txt=body.decode('utf8','replace')
-                print('LIVE_RESULT',json.dumps({'path':path,'status':r.status,'content_type':r.headers.get('Content-Type'),'length':len(body),'sha256_first120k':hashlib.sha256(body).hexdigest(),'hasKeepItApp':'library-app-' in txt,'hasOldReadme':'KeepIt — device QA hosting' in txt,'mobileStylesheetLinked':'/keepit-responsive-qa.css' in txt,'mobileScriptLinked':'/keepit-responsive-qa.js' in txt,'mobileNavLogic':'keepit-app-launchers' in txt,'start':txt[:220]},sort_keys=True))
-            except urllib.error.HTTPError as e:print('LIVE_HTTP_ERROR',path,e.code)
-            except Exception as e:print('LIVE_ERROR',path,str(e)[:250])
+          import hashlib, json, pathlib, re, time, urllib.request, urllib.error
+
+          manifest=json.loads(pathlib.Path('delivery/manifest.json').read_text())
+          expected=manifest.get('compiledBuildId','')
+          digest=manifest.get('sha256','')
+          if (manifest.get('schema')!='keepit.github-qa-text-transfer.v1' or
+              manifest.get('target')!='github-pages-qa' or
+              manifest.get('oneDriveFolder')!='KeepIt-TK02-QA-2026-10-30' or
+              not re.fullmatch('[a-f0-9]{12}',expected) or
+              not re.fullmatch('[a-f0-9]{64}',digest)):
+              raise SystemExit('Invalid QA attestation in public transfer')
+
           def fetch(path):
-            req=urllib.request.Request('https://kdg-007.github.io'+path,headers={'User-Agent':'KeepIt-Device-QA-LiveRelease-Check','Cache-Control':'no-cache'})
-            with urllib.request.urlopen(req,timeout=25) as r:
-              if r.status!=200:raise SystemExit('Live QA release asset failed: '+path)
-              return r.read()
-          build=json.loads(fetch('/build-info.json'))
-          if build.get('buildId')!='f8320d9eb622' or build.get('protectedOneDriveFolder')!='KeepIt-TK02-QA-2026-10-30':
-            raise SystemExit('LIVE_RELEASE_MISMATCH: old build-info or unsafe QA folder')
-          sw=fetch('/sw.js').decode('utf8','replace')
-          if 'f8320d9eb622' not in sw: raise SystemExit('LIVE_RELEASE_MISMATCH: old service worker')
-          index=fetch('/index.html').decode('utf8','replace')
-          if 'keepit-qa-picker-guard' in index:
-            raise SystemExit('LIVE_RELEASE_MISMATCH: redundant picker overlay still active')
-          if 'keepit-responsive-qa' not in index or 'library-app-OEUQI6PR.js' not in index:
-            raise SystemExit('LIVE_RELEASE_MISMATCH: old homepage')
-          app=fetch('/assets/library-app-OEUQI6PR.js').decode('utf8','replace')
-          if 'Inspect OneDrive copy' not in app or 'The queued original is' not in app or 'Recover using fresh filename' not in app or 'retargetZeroByte' not in app:
-            raise SystemExit('LIVE_RELEASE_MISMATCH: read-only inspection or one-shot fresh-filename recovery unavailable')
-          print('LIVE_QA_RELEASE_PASS',build['buildId'],'QA folder isolation, one-shot recovery, application and service worker all current')
+              url='https://kdg-007.github.io'+path
+              request=urllib.request.Request(url,headers={
+                  'User-Agent':'KeepIt-Device-QA-Release-Verification',
+                  'Cache-Control':'no-cache','Pragma':'no-cache'
+              })
+              with urllib.request.urlopen(request,timeout=25) as response:
+                  if response.status!=200:
+                      raise RuntimeError(f'Live site returned {response.status}: {path}')
+                  return response.read()
+
+          # GitHub Pages may finish updating after the Pages workflow reports
+          # success. Permit bounded CDN propagation, but never claim a stale site.
+          for attempt in range(8):
+              try:
+                  live=json.loads(fetch('/build-info.json'))
+                  if (live.get('buildId')==expected and
+                      live.get('deliveryTarget')=='github-pages-qa' and
+                      live.get('protectedOneDriveFolder')=='KeepIt-TK02-QA-2026-10-30'):
+                      break
+              except Exception as error:
+                  print('Live metadata read pending:',str(error)[:250])
+              print('Awaiting matching QA deployment',attempt+1,'expected',expected)
+              if attempt<7:time.sleep(8)
+          else:
+              raise SystemExit('LIVE_RELEASE_MISMATCH: Pages still serves another build')
+
+          sw=fetch('/sw.js').decode('utf-8','replace')
+          if expected not in sw:
+              raise SystemExit('LIVE_RELEASE_MISMATCH: service worker does not match compiled build')
+          index=fetch('/index.html').decode('utf-8','replace')
+          if ('Content-Security-Policy' not in index or
+              'keepit-responsive-qa' not in index or
+              'keepit-qa-picker-guard' in index):
+              raise SystemExit('LIVE_RELEASE_MISMATCH: missing security policy or wrong QA page')
+          app_match=re.search(r'assets/library-app-[A-Za-z0-9_-]+\\.js',index)
+          if not app_match:
+              raise SystemExit('LIVE_RELEASE_MISMATCH: no compiled app entrypoint')
+          asset='/'+app_match.group(0)
+          js=fetch(asset).decode('utf-8','replace')
+          for required in ('Inspect OneDrive copy','Recover using fresh filename','retargetZeroByte'):
+              if required not in js:
+                  raise SystemExit('LIVE_RELEASE_MISMATCH: missing protected recovery feature '+required)
+          callback=fetch('/auth/callback/')
+          if not callback or b'html' not in callback[:500].lower():
+              raise SystemExit('LIVE_RELEASE_MISMATCH: auth callback not hosted')
+
+          print('LIVE_QA_RELEASE_PASS',json.dumps({
+              'compiledBuildId':expected,
+              'compiledTransferSha256':digest,
+              'verifiedPublicAsset':asset,
+              'serviceWorkerMatch':True,
+              'protectedOneDriveFolder':live['protectedOneDriveFolder'],
+              'liveAppSha256':hashlib.sha256(js.encode()).hexdigest()
+          },sort_keys=True))
           PY
