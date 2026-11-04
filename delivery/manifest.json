@@ -1,11 +1,17 @@
 {
   "schema": "keepit.github-qa-text-transfer.v1",
   "sourceBuild": "a63966cabb17",
+  "compiledBuildId": "8c2bf6a81a3b",
+  "verifiedSourceSha256": "d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a",
+  "testedWorkflowCommit": "c0277e720363ad5a372db1072dd812572bb3b87c",
+  "githubActionsRunId": "41769322882",
+  "largeOriginalRecoveryRegression": "PASS_SYNTHETIC_74878828_BYTES",
+  "browserSmoke": "PASS_CHROMIUM_DESKTOP_OFFLINE_AND_MOBILE_VIEWPORT_WEBKIT_MOBILE_OFFLINE",
   "file": "compiled-qa-site.zip",
-  "sha256": "6c3954a1f0a03fccbe1a023e2456598cdb919cc402c5ba2d8534646d6bb60b85",
-  "bytes": 4710117,
+  "sha256": "7b5a054e56a340b6217e78b81e9c7e528cb96ae13577ddb70ef5c43cd115ca90",
+  "bytes": 4711196,
   "parts": 24,
-  "base64Chars": 6280156,
+  "base64Chars": 6281596,
   "target": "github-pages-qa",
   "oneDriveFolder": "KeepIt-TK02-QA-2026-10-30"
 }
