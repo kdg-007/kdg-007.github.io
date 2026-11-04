@@ -1,6 +1,6 @@
 # KeepIt — compiled device-QA hosting
 
-**QA status: DEPLOYED (November 4, 2026); current live-site identity check pending.**
+**QA status: DEPLOYED AND LIVE-VERIFIED (November 4, 2026).**
 This repository serves the **compiled, isolated QA-only KeepIt app** at
 https://kdg-007.github.io/.
 
@@ -11,10 +11,10 @@ https://kdg-007.github.io/.
 | Original private-build CI | [41773987899](https://github.com/kdg-007/keepit-build-private/actions/runs/41773987899) — passed |
 | Public guarded publisher | [41775023374](https://github.com/kdg-007/kdg-007.github.io/actions/runs/41775023374) — passed |
 | GitHub Pages build/deployment | [41775040558](https://github.com/kdg-007/kdg-007.github.io/actions/runs/41775040558) — passed |
-| Independent live-site verification | Previous release passed; new release pending independent check |
+| Independent live-site verification | [41775298142](https://github.com/kdg-007/kdg-007.github.io/actions/runs/41775298142) — passed for build `8566963692f1` |
 | Protected disposable OneDrive folder | `KeepIt-TK02-QA-2026-10-30` |
 
-The previous release's live check validated the public `build-info.json`, matching `sw.js`,
+The current release's live check validated the public `build-info.json`, matching `sw.js`,
 the current compiled application entrypoint, Microsoft authentication callback,
 QA site security policy and the guarded upload/recovery actions.
 
@@ -28,6 +28,8 @@ readback, note draft recovery, actual native note creation/save/edit/History and
 three-cycle WebKit offline reloads. WebKit-specific IndexedDB binary
 serialization problems were corrected in the queue, device library and
 native-note workspace.
+
+The additional full regression [41784075047](https://github.com/kdg-007/keepit-build-private/actions/runs/41784075047) passed the actual ZIP v5 Backup & Restore UI end-to-end in both Chromium and Playwright WebKit, including reading historical note revisions after a fresh-library import. This is browser-based acceptance, not proof of physical iPhone Safari behavior.
 
 **New in build 8566963692f1:** ZIP format `keepit-device-backup-5` now preserves earlier native-note revisions alongside the current note, with verified original bytes and metadata. Older backups remain readable. Repeated restores do not duplicate history; damaged archives are rejected; conflicting identities are preserved. Five new end-to-end regressions and the existing browser and large-file recovery tests passed.
 
