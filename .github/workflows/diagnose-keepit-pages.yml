@@ -67,7 +67,7 @@ jobs:
               'keepit-responsive-qa' not in index or
               'keepit-qa-picker-guard' in index):
               raise SystemExit('LIVE_RELEASE_MISMATCH: missing security policy or wrong QA page')
-          app_match=re.search(r'assets/library-app-[A-Za-z0-9_-]+\\.js',index)
+          app_match=re.search(r'assets/library-app-[A-Za-z0-9_-]+\.js',index)
           if not app_match:
               raise SystemExit('LIVE_RELEASE_MISMATCH: no compiled app entrypoint')
           asset='/'+app_match.group(0)
