@@ -1,20 +1,20 @@
 # KeepIt — compiled device-QA hosting
 
-**QA status: DEPLOYED AND LIVE-VERIFIED (November 4, 2026).**
+**QA status: DEPLOYED (November 4, 2026); current live-site identity check pending.**
 This repository serves the **compiled, isolated QA-only KeepIt app** at
 https://kdg-007.github.io/.
 
 | Release control | Verified value |
 | --- | --- |
-| Live compiled build ID | `8c2bf6a81a3b` |
-| Compiled transfer SHA-256 | `7b5a054e56a340b6217e78b81e9c7e528cb96ae13577ddb70ef5c43cd115ca90` |
-| Original private-build CI | [41769322882](https://github.com/kdg-007/keepit-build-private/actions/runs/41769322882) — passed |
-| Public guarded publisher | [41770331610](https://github.com/kdg-007/kdg-007.github.io/actions/runs/41770331610) — passed |
-| GitHub Pages build/deployment | [41770346146](https://github.com/kdg-007/kdg-007.github.io/actions/runs/41770346146) — passed |
-| Independent live-site verification | [41770613725](https://github.com/kdg-007/kdg-007.github.io/actions/runs/41770613725) — passed |
+| Live compiled build ID | `8566963692f1` |
+| Compiled transfer SHA-256 | `ba8022f9c5f1844f7700dd40683a93160c2663964f7ee6f9070421b7f293bfa8` |
+| Original private-build CI | [41773987899](https://github.com/kdg-007/keepit-build-private/actions/runs/41773987899) — passed |
+| Public guarded publisher | [41775023374](https://github.com/kdg-007/kdg-007.github.io/actions/runs/41775023374) — passed |
+| GitHub Pages build/deployment | [41775040558](https://github.com/kdg-007/kdg-007.github.io/actions/runs/41775040558) — passed |
+| Independent live-site verification | Previous release passed; new release pending independent check |
 | Protected disposable OneDrive folder | `KeepIt-TK02-QA-2026-10-30` |
 
-The live check validated the public `build-info.json`, matching `sw.js`,
+The previous release's live check validated the public `build-info.json`, matching `sw.js`,
 the current compiled application entrypoint, Microsoft authentication callback,
 QA site security policy and the guarded upload/recovery actions.
 
@@ -28,6 +28,8 @@ readback, note draft recovery, actual native note creation/save/edit/History and
 three-cycle WebKit offline reloads. WebKit-specific IndexedDB binary
 serialization problems were corrected in the queue, device library and
 native-note workspace.
+
+**New in build 8566963692f1:** ZIP format `keepit-device-backup-5` now preserves earlier native-note revisions alongside the current note, with verified original bytes and metadata. Older backups remain readable. Repeated restores do not duplicate history; damaged archives are rejected; conflicting identities are preserved. Five new end-to-end regressions and the existing browser and large-file recovery tests passed.
 
 **QA deployed does not mean production accepted.** Actual iPhone Safari and Mac
 use, Microsoft account sign-in, remote OneDrive readback under live network
