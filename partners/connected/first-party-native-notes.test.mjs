@@ -199,12 +199,14 @@ try{
    // ThinkIt starts with an explicit "Create Blank Project" welcome state.
    // Never bypass that user-mediated workflow or inject a synthetic diagram.
    const start=thinkFrame.locator('#diStartScreen');
-   if(await start.isVisible()){
-     await thinkFrame.locator('#diStartCreate').click();
-     await thinkFrame.locator('[data-project-mode="mind"]').click();
-     await thinkFrame.locator('#projectStartName').fill('KeepIt-connected QA Mind Map');
-     await thinkFrame.getByRole('button',{name:'Create blank project'}).click();
-   }
+   // The iframe shell mounts before ThinkIt's async project-selection UI.
+   // A one-shot isVisible() races startup and leaves its editing toolbar hidden.
+   await start.waitFor({state:'visible',timeout:25000});
+   await thinkFrame.locator('#diStartCreate').click();
+   await thinkFrame.locator('[data-project-mode="mind"]').click();
+   await thinkFrame.locator('#projectStartName').fill('KeepIt-connected QA Mind Map');
+   await thinkFrame.getByRole('button',{name:'Create blank project'}).click();
+   await start.waitFor({state:'hidden',timeout:20000});
    // The shape palette can be intentionally collapsed on WebKit/mobile.
    // Use ThinkIt's first-party Add node toolbar command, whose mode-aware
    // handler creates the Mind Map root without reaching into app internals.
