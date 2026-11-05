@@ -1,0 +1,24 @@
+{
+  "schema": "liveit.published-preview.v1",
+  "sourceRepository": "kdg-007/liveit-dev",
+  "sourceCommit": "c15396ee7cd1cba9b5e550fd1b2b18873351473d",
+  "release": "W18E",
+  "releaseDate": "2026-11-05",
+  "publishedPath": "/partners/liveit/thinkit/c15396ee7cd1cba9b5e5/index.html",
+  "dataMigration": "none",
+  "previousVersion": "/partners/liveit/thinkit/5987f74429ebbbb1e80b/index.html",
+  "unchangedKeepItRoot": true,
+  "keepItNativeNotesConnected": false,
+  "oneDriveVerified": false,
+  "standaloneOriginIsolated": false,
+  "offlineStandaloneVerified": false,
+  "notesSave": "LiveIt local database only",
+  "publicStatus": "early-access-not-full-browser-certified",
+  "changes": [
+    "Work Projects and Operations task streams",
+    "Unassigned retains old tasks",
+    "Focus Tasks wraps within sidebar",
+    "Personal cool-indigo dark and light palette",
+    "Apps menu remains in top bar"
+  ]
+}
