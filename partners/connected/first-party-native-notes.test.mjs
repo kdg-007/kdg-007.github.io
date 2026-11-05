@@ -142,7 +142,7 @@ try{
    await frame.locator('#liveit-apps-button').click();
    const menuLinks=await frame.locator('#liveit-app-switcher a').evaluateAll(els=>
      els.map(el=>el.getAttribute('href')));
-   assert.ok(menuLinks.includes('/partners/connected/'));
+   assert.ok(menuLinks.includes('/partners/connected/?connected-app=keepit'));
    assert.ok(menuLinks.includes('/partners/connected/?connected-app=thinkit'));
    assert.ok(menuLinks.includes('/partners/connected/?connected-app=travelit'));
    await frame.locator('#liveit-apps-button').click();
