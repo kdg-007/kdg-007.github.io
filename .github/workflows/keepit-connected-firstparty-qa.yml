@@ -62,7 +62,7 @@ jobs:
                                 'owned-liveit-hooks.js','keepit-note-client.mjs','style-0.css','style-1.css','style-2.css']){
               assert.equal(get(connectedDir+'/'+file),get(originalDir+'/'+file),'Unexpected connected variant change: '+file);
             }
-          });
+          }
           for(const id of ['liveit','travelit','thinkit'])assert.ok(patched.includes(id));
           const status=JSON.parse(get('partners/connected/status.json'));
           assert.equal(status.oneDriveReadbackVerified,false);
