@@ -88,7 +88,7 @@ jobs:
           const connectedLiveIt=get('partners/liveit/thinkit/connected-w18e-c15396/app-8.js');
           let expected=oldLiveIt;
           for(const [a,b] of [
-            ["url:'https://kdg-007.github.io/'","url:'/partners/connected/'"],
+            ["url:'https://kdg-007.github.io/'","url:'/partners/connected/?connected-app=keepit'"],
             ["url:'https://kdg-it.github.io/thinkit/'","url:'/partners/connected/?connected-app=thinkit'"],
             ["url:'https://kdg-it.github.io/'","url:'/partners/connected/?connected-app=travelit'"]
           ]) {
