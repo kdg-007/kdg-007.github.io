@@ -119,7 +119,7 @@ try{
     throw Error('Actual KeepIt owner host not mounted: '+JSON.stringify(await inspect()));
    });
    const noteDrawer=host.locator('#connected-note-tools');
-   await noteDrawer.waitFor({state:'visible',timeout:15000});
+   await noteDrawer.waitFor({state:'attached',timeout:15000});
    assert.equal(await noteDrawer.getAttribute('open'),null,'KeepIt note tools must begin collapsed');
    assert.equal(await host.getByRole('button',{name:'Return to KeepIt'}).count(),0,
     'LiveIt must not have a Return to KeepIt parent control');
@@ -152,7 +152,10 @@ try{
    await frame.locator('#captureBody').fill(body);
    await frame.locator('[data-action="capture-save"]').first().click();
    await frame.locator('#captureDialog').waitFor({state:'hidden',timeout:30000});
-   await noteDrawer.locator('summary').click();
+   // Notes are intentionally accessed from Apps, not from an overlay on LiveIt.
+   await page.locator('#connected-apps-toggle').click();
+   await page.locator('#connected-note-tools-toggle').click();
+   assert.notEqual(await noteDrawer.getAttribute('open'),null,'Note tools did not open');
    await host.getByRole('button',{name:'Refresh LiveIt records'}).click();
    const target=host.locator('select[aria-label="LiveIt note target"]');
    await page.waitForFunction(()=>document.querySelector(
