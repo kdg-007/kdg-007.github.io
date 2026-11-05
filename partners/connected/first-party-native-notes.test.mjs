@@ -207,12 +207,11 @@ try{
    await thinkFrame.locator('#projectStartName').fill('KeepIt-connected QA Mind Map');
    await thinkFrame.getByRole('button',{name:'Create blank project'}).click();
    await start.waitFor({state:'hidden',timeout:20000});
-   // The shape palette can be intentionally collapsed on WebKit/mobile.
-   // Use ThinkIt's first-party Add node toolbar command, whose mode-aware
-   // handler creates the Mind Map root without reaching into app internals.
-   const addNode=thinkFrame.locator('#btnQuickAdd');
-   await addNode.waitFor({state:'visible',timeout:12000});
-   await addNode.click();
+   // Mind Map Insert menu is accessible even when the Shape Library and
+   // ribbon are collapsed. Exercise the visible first-party action instead
+   // of clicking hidden controls or injecting internal diagram nodes.
+   await thinkFrame.locator('#diMenuTabs .di-menu-tab[data-tab="Insert"]').click();
+   await thinkFrame.locator('#diMenuPopup [data-dcmd="insert.shape"]').click();
    await thinkFrame.locator('body').press('Escape');
    const mindTab=thinkFrame.locator('#pageTabs .page-tab[title*="Mind Map"]');
    await mindTab.waitFor({state:'visible',timeout:9000}).catch(async()=>{
