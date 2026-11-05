@@ -55,6 +55,27 @@ try{
    });
    const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');
    await frame.locator('#app .app-shell').waitFor({state:'visible',timeout:40000});
+   // The owner can launch each first-party app through the connected menu
+   // without leaving the current LiveIt draft or opening an external origin.
+   await page.locator('#connected-apps-toggle').waitFor({state:'visible',timeout:10000});
+   await page.locator('#connected-apps-toggle').click();
+   for(const id of ['liveit','thinkit','travelit','keepit']){
+    const a=page.locator('#connected-apps-list a').filter({hasText:id==='keepit'?'KeepIt':id==='thinkit'?'ThinkIt':id==='travelit'?'TravelIt':'LiveIt'});
+    assert.equal(await a.count(),1);
+    assert.equal(await a.getAttribute('target'),'_blank');
+    const uri=new URL(await a.getAttribute('href'),origin);
+    assert.equal(uri.origin,origin);
+    assert.equal(uri.pathname,'/partners/connected/');
+    assert.equal(uri.searchParams.get('connected-app'),id==='keepit'?null:id);
+   }
+   await page.locator('#connected-apps-toggle').click();
+   await frame.locator('#liveit-apps-button').click();
+   const menuLinks=await frame.locator('#liveit-app-switcher a').evaluateAll(els=>
+     els.map(el=>el.getAttribute('href')));
+   assert.ok(menuLinks.includes('/partners/connected/'));
+   assert.ok(menuLinks.includes('/partners/connected/?connected-app=thinkit'));
+   assert.ok(menuLinks.includes('/partners/connected/?connected-app=travelit'));
+   await frame.locator('#liveit-apps-button').click();
    await frame.locator('.quick-actions-panel .quick-action-tile[data-shortcut="note"]').click();
    await frame.locator('#captureDialog').waitFor({state:'visible'});
    const body='W18E connected note original '+tag;
