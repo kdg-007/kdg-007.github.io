@@ -264,6 +264,36 @@ try{
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden'});
    console.log('KEEPIT_CONNECTED_THINKIT_NATIVE_CREATE_SAVE_REOPEN_'+tag+'_PASS');
+   // All three distinct consumer notes must exist as committed originals in
+   // KeepIt's ONE canonical local library, not just in separate app links.
+   const inventory=await page.evaluate(()=>new Promise((resolve,reject)=>{
+     const open=indexedDB.open('mylibrary-device-v1');
+     open.onupgradeneeded=()=>{open.transaction?.abort();reject(Error('Expected existing KeepIt library; refused to create one'))};
+     open.onerror=()=>reject(open.error||Error('Cannot read KeepIt local library'));
+     open.onsuccess=()=>{
+       const db=open.result;
+       let tx;
+       try{tx=db.transaction(['items','originals'],'readonly');}
+       catch(e){db.close();reject(e);return;}
+       const items=tx.objectStore('items').getAll();
+       const originals=tx.objectStore('originals').getAllKeys();
+       tx.oncomplete=()=>{
+         const rows=(items.result||[]).filter(x=>x?.mime==='application/vnd.keepit.note'&&!x.trashedAt);
+         const keys=originals.result||[];
+         db.close();
+         resolve({notes:rows.map(x=>({id:x.id,version:x.version,digest:x.digest})),originals:keys});
+       };
+       tx.onerror=()=>{db.close();reject(tx.error||Error('KeepIt local readback failed'))};
+       tx.onabort=()=>{db.close();reject(tx.error||Error('KeepIt local readback aborted'))};
+     };
+   }));
+   assert.ok(inventory.notes.length>=3,'Expected three committed native notes in the SAME KeepIt library');
+   assert.equal(new Set(inventory.notes.map(x=>x.id)).size,inventory.notes.length,
+     'Canonical native note IDs must be distinct');
+   const orig=new Set(inventory.originals);
+   assert.ok(inventory.notes.every(x=>x.version>=1&&/^[a-f0-9]{64}$/.test(x.digest)&&orig.has(x.id)),
+     'Every committed KeepIt note must retain its own original bytes');
+   console.log('KEEPIT_CONNECTED_THREE_CONSUMERS_ONE_CANONICAL_LIBRARY_'+tag+'_PASS');
   }finally{await ctx.close();await browser.close();browser=null;}
  }
  console.log('KEEPIT_CONNECTED_FIRST_PARTY_DISPOSABLE_QA_PASS');
