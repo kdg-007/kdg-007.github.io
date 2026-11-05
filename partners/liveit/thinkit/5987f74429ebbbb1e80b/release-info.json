@@ -1,0 +1,16 @@
+{
+  "schema": "liveit.published-preview.v1",
+  "sourceRepository": "kdg-007/liveit-dev",
+  "sourceCommit": "5987f74429ebbbb1e80bb29525bea4ad3d98bf21",
+  "release": "W18D",
+  "releaseDate": "2026-11-05",
+  "publishedPath": "/partners/liveit/thinkit/5987f74429ebbbb1e80b/index.html",
+  "dataMigration": "none",
+  "reusesExistingLiveItOrigin": true,
+  "keepItNativeNotesConnected": false,
+  "oneDriveVerified": false,
+  "standaloneOriginIsolated": false,
+  "offlineStandaloneVerified": false,
+  "notesSave": "LiveIt local database only",
+  "publicStatus": "review-preview-not-certified"
+}

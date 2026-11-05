@@ -1,0 +1,230 @@
+/* W17I-C: Right rail is unavailable below 1080px. Surface the same scoped
+   content on Today so mobile, tablet and narrow desktop do not lose it. */
+.mobile-daily-insights{display:none}
+@media(max-width:1080px){
+ .mobile-daily-insights{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:24px}
+ .mobile-daily-insights .panel{min-width:0}
+ .mobile-daily-insights .panel-title{margin:0}
+ .mobile-daily-insights .small-record button{overflow-wrap:anywhere}
+ .mobile-daily-insights .range-selector button{min-width:30px}
+}
+@media(max-width:640px){
+ .mobile-daily-insights{grid-template-columns:minmax(0,1fr)}
+ .mobile-daily-insights .panel{padding:15px}
+}
+
+/* W17I-L: low-clutter journal time navigation; does not change storage */
+.journal-toolbar{align-items:center;flex-wrap:wrap;gap:12px}
+.journal-toolbar-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+.journal-toolbar-actions label{font-size:12px;color:var(--muted);font-weight:650}
+.journal-toolbar-actions select{min-width:112px;width:auto;max-width:180px}
+.journal-month-heading{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:750;color:var(--navy);margin:22px 0 11px}
+.journal-month:first-of-type .journal-month-heading{margin-top:12px}
+@media(max-width:640px){.journal-toolbar-actions{width:100%;justify-content:flex-start}.journal-toolbar-actions .button{margin-left:auto}.journal-month-heading{margin-top:19px}}
+
+/* W17I-N: lightweight journal retrieval; read-only filter state. */
+.journal-search-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:12px 0 18px}
+.journal-search-row label{font-size:12px;color:var(--muted);font-weight:650}
+.journal-search-row input{min-width:170px;max-width:440px;flex:1 1 240px;padding:10px 12px;background:var(--surface,#fff);color:var(--text,#17242c);border:1px solid var(--border,#cbd5db);border-radius:8px}
+.journal-result .journal-day-link{display:inline-block;margin:2px 0 8px 50px;font-size:12px}
+@media(max-width:640px){.journal-search-row input{flex-basis:100%;max-width:none}.journal-toolbar-actions .button{margin-left:0}}
+
+/* W17I-O: selected-day context is explicit; no data or sync semantics change. */
+.selected-day-context{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;padding:10px 13px;margin:0 0 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-raised,var(--surface,#fff));color:var(--muted);font-size:12px;line-height:1.45}
+.selected-day-context strong{color:var(--ink)}
+.selected-day-context .text-link{font-weight:700;white-space:nowrap}
+@media(max-width:640px){.selected-day-context{align-items:flex-start}.selected-day-context .text-link{white-space:normal}}
+
+/* W17I-P: current-state task triage; no completion history is inferred. */
+.task-page-head{flex-wrap:wrap;gap:10px}
+.task-kind-controls{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.task-kind-controls button{border:1px solid var(--line);border-radius:999px;padding:8px 13px;background:transparent;color:var(--ink);cursor:pointer;font-size:12px;font-weight:650}
+.task-kind-controls button.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.task-kind-controls button:focus-visible{outline:2px solid var(--accent,#297c98);outline-offset:2px}
+.task-status-hint{max-width:660px;line-height:1.5}
+.task-group{margin:22px 0 26px}
+.task-group-header{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+.task-group-header .section-heading{margin:0}
+.task-group-header p{margin:0 0 7px}
+@media(max-width:640px){.task-kind-controls button{flex:1 1 auto}.task-group{margin:20px 0}}
+
+/* W17I-Q: compact in-editor due-date presets; labels state local-only scheduling. */
+.due-quick-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.due-quick-choice{background:transparent;border:1px solid var(--line);border-radius:7px;color:var(--ink);padding:6px 9px;font-size:12px;cursor:pointer}
+.due-quick-choice[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.due-quick-choice:focus-visible{outline:2px solid var(--accent,#297c98);outline-offset:2px}
+
+/* W17J: task checkbox state remains committed-only while an IndexedDB write is pending. */
+.task-save-status{display:block;margin-top:3px;color:var(--muted);font-size:11px;font-weight:650;line-height:1.4;white-space:nowrap}
+.feed-actions .task-save-status{min-width:48px;text-align:center}
+
+/* W17Q: foreground-only reminder attention, never a notification/alarm service. */
+#foregroundReminderSlot:empty{display:none}
+.foreground-reminders{margin:0 0 18px;padding:17px 18px;border:1px solid var(--line);border-left:3px solid var(--accent,#297c98)}
+.foreground-reminders .row-between{flex-wrap:wrap;gap:8px}
+.foreground-reminders .section-heading{margin:0}
+.foreground-reminders .muted.small{line-height:1.55;margin:8px 0 11px}
+.foreground-reminders .feed-card{margin-top:8px}
+@media(max-width:640px){.foreground-reminders{padding:14px}.foreground-reminders .feed-card{min-width:0}}
+
+/* W17R: in-app review replaces native RESTORE text prompt. Its content is
+   counts only; no secret, draft text or native-note body enters the DOM. */
+.restore-review-dialog{width:min(680px,calc(100vw - 24px));max-height:min(90vh,780px);overflow:auto;padding:0;border:1px solid var(--line);border-radius:13px;color:var(--ink);background:var(--surface,#fff)}
+.restore-review-dialog::backdrop{background:rgba(13,25,35,.70)}
+.restore-review-body{padding:22px}
+.restore-review-body h2{font-size:19px;margin:0 0 12px}
+.restore-review-body .muted.small{line-height:1.5}
+.restore-review-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:12px;table-layout:fixed}
+.restore-review-table caption{text-align:left;font-weight:700;padding:0 0 8px}
+.restore-review-table th,.restore-review-table td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;overflow-wrap:anywhere;vertical-align:top}
+.restore-review-table th:first-child{width:37%}
+.restore-review-outcome{margin:14px 0;line-height:1.55}
+.restore-review-hold{padding:12px;margin:14px 0}
+.restore-review-hold ul{margin:7px 0 3px;padding-left:20px}
+#restoreReviewPhrase{width:100%;max-width:280px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface,#fff);color:var(--ink)}
+#restoreReviewPhrase:focus-visible{outline:2px solid var(--accent,#297c98);outline-offset:2px}
+#restoreReviewConfirm:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:640px){.restore-review-body{padding:16px}.restore-review-table th,.restore-review-table td{padding:7px 4px;font-size:11px}.restore-review-dialog{max-height:calc(100dvh - 22px)}}
+
+/* W17T: small offline daily brief, not another editable note surface. */
+.day-brief{margin:14px 0 18px;padding:16px 18px}
+.day-brief .section-heading{margin:0}
+.day-brief .day-brief-line{margin:12px 0 8px;font-weight:650;line-height:1.5}
+.day-brief .day-brief-caution{margin:11px 0 0;line-height:1.4}
+.day-brief-highlights{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:10px}
+.day-brief-highlights .muted.small{width:100%;margin:0}
+.day-brief-highlight{max-width:100%;min-width:0;text-align:left;background:transparent;border:1px solid var(--line);border-radius:8px;color:inherit;padding:8px 10px;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.day-brief-highlight:focus-visible{outline:2px solid var(--accent,#297c98);outline-offset:2px}
+@media(max-width:640px){.day-brief{padding:13px}.day-brief .day-brief-line{font-size:13px}.day-brief-highlight{width:100%}}
+
+/* W18A: workspace-specific direct capture actions; visual preferences only. */
+.quick-actions-panel{margin:12px 0 18px;padding:15px 18px}
+.quick-actions-heading{align-items:center;gap:10px;flex-wrap:wrap}
+.quick-actions-heading .section-heading{margin:0}
+.quick-actions-heading .muted.small{margin:4px 0 0;line-height:1.4}
+.quick-actions-customize{min-height:38px;padding:7px 9px}
+.quick-actions-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.quick-action-tile{display:flex;align-items:center;gap:9px;min-width:0;min-height:62px;text-align:left;border:1px solid var(--line);border-radius:9px;background:var(--surface-raised,var(--surface,#fff));color:var(--ink);padding:10px;cursor:pointer}
+.quick-action-tile:hover{border-color:var(--accent,#297c98)}
+.quick-action-tile:focus-visible,.quick-action-pick:focus-visible{outline:2px solid var(--accent,#297c98);outline-offset:2px}
+.quick-action-glyph{font-size:21px;flex:0 0 auto;line-height:1}
+.quick-action-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.quick-action-copy strong{font-size:12px;line-height:1.2}
+.quick-action-copy small{font-size:11px;color:var(--muted);line-height:1.3}
+.quick-actions-settings{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.quick-actions-settings .muted.small{margin:0 0 8px;line-height:1.5}
+.quick-actions-picks{display:flex;gap:6px;flex-wrap:wrap}
+.quick-action-pick{border:1px solid var(--line);border-radius:999px;padding:8px 12px;background:transparent;color:var(--ink);font-size:12px;cursor:pointer;min-height:38px}
+.quick-action-pick[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.quick-action-pick:disabled{opacity:.5;cursor:not-allowed}
+.quick-actions-date-note{margin:10px 0 0;line-height:1.5}
+@media(max-width:860px){.quick-actions-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.quick-actions-panel{padding:13px}.quick-action-tile{min-height:66px}.quick-action-copy small{font-size:10px}}
+
+
+/* W18D — LiveIt-first, dark-first functional workspace. UI-only; no DB changes. */
+.apps-menu-wrap{position:relative;flex:none;z-index:35}
+.apps-trigger{min-height:40px;white-space:nowrap;color:var(--ink);background:var(--surface-raised);border:1px solid var(--line)}
+.apps-popover{position:absolute;right:0;top:calc(100% + 9px);z-index:45;min-width:232px;display:grid;gap:4px;padding:8px;
+  border-radius:12px;border:1px solid var(--line);background:var(--surface-raised);box-shadow:0 17px 38px rgba(0,0,0,.24)}
+.apps-popover[hidden]{display:none!important}
+.apps-link{display:grid;gap:1px;padding:12px 13px;color:var(--ink);text-decoration:none;border-radius:9px}
+.apps-link:hover,.apps-link:focus-visible{background:var(--accent-soft)}
+.apps-link strong{font-size:13px}.apps-link small{font-size:11px;color:var(--muted)}
+.panel-toggle{color:var(--ink);background:transparent;font-size:19px}
+.panel-toggle:hover,.panel-toggle:focus-visible{background:var(--accent-soft)}
+.liveit-icon-rail,.mobile-panel-controls,.liveit-panel-scrim{display:none}
+.columns[data-left="rail"]{--w18d-left:68px}
+.columns[data-left="hidden"]{--w18d-left:0px}
+.columns[data-right="visible"]{--w18d-right:300px}
+.columns[data-right="hidden"]{--w18d-right:0px}
+.columns[data-left="hidden"] .sidebar,.columns[data-right="hidden"] .rightbar{display:none!important}
+.columns[data-left="rail"] .sidebar{padding:12px 7px}
+.columns[data-left="rail"] .sidebar>:not(.liveit-icon-rail){display:none}
+.columns[data-left="rail"] .liveit-icon-rail{display:flex;flex-direction:column;align-items:stretch;gap:6px}
+.liveit-icon-rail button{min-height:46px;border:0;border-radius:10px;color:var(--ink);background:transparent;font-size:19px}
+.liveit-icon-rail button:hover,.liveit-icon-rail button[aria-current="page"]{background:var(--accent-soft);color:var(--teal)}
+html[data-liveit-focus="true"] .header-nav,html[data-liveit-focus="true"] .header-search{display:none}
+html[data-liveit-focus="true"] .workspace-context-detail{display:none}
+html[data-liveit-focus="true"] .main-content{padding-top:20px}
+/* Focus mode shows real work, not duplicate dashboard count cards and day digest. */
+html[data-liveit-focus="true"] .summary-strip,
+html[data-liveit-focus="true"] .day-brief{display:none!important}
+.liveit-panel-scrim{background:rgba(3,13,20,.57);border:0;padding:0}
+@media(min-width:1141px){
+  .columns{grid-template-columns:var(--w18d-left,260px) minmax(0,1fr) var(--w18d-right,0px);max-width:none}
+  .columns[data-right="visible"] .rightbar{display:block}
+}
+@media(min-width:861px) and (max-width:1140px){
+  .columns{display:grid;grid-template-columns:var(--w18d-left,220px) minmax(0,1fr);max-width:none}
+  .columns[data-right="visible"] .rightbar{display:block;position:fixed;right:12px;top:80px;bottom:12px;
+    width:min(310px,calc(100vw - 40px));z-index:28;overflow-y:auto;box-shadow:0 15px 45px rgba(0,0,0,.28);
+    border-radius:12px;background:var(--surface);border:1px solid var(--line)}
+}
+@media(max-width:860px){
+  .panel-toggle{display:none}
+  .apps-trigger{min-height:40px;padding:6px 9px;font-size:12px}
+  .apps-popover{right:-52px;min-width:210px}
+  .mobile-panel-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 0 18px}
+  .mobile-panel-controls .button{min-height:44px}
+  .columns[data-left="hidden"] .sidebar.mobile-open{display:block!important}
+  .columns .sidebar.mobile-open{display:block!important;position:fixed;z-index:52;inset:64px auto 0 0;
+    width:min(324px,88vw);height:calc(100dvh - 64px);overflow-y:auto;box-shadow:14px 4px 35px rgba(0,0,0,.35);
+    background:var(--surface);border-right:1px solid var(--line)}
+  .columns .sidebar.mobile-open + .main-content{display:block!important}
+  .columns[data-left="rail"] .sidebar.mobile-open>:not(.liveit-icon-rail){display:block}
+  .columns .liveit-icon-rail{display:none!important}
+  .columns[data-mobile-right="open"] .rightbar{display:block!important;position:fixed;z-index:52;
+    top:64px;bottom:0;right:0;width:min(330px,90vw);overflow-y:auto;background:var(--surface);
+    box-shadow:-14px 4px 35px rgba(0,0,0,.35);border-left:1px solid var(--line)}
+  .liveit-panel-scrim[data-open="true"]{display:block;position:fixed;z-index:51;inset:64px 0 0 0}
+  .topbar{gap:7px}
+  .brand{min-width:0}
+  .brand-sub{display:none}
+  .topbar .top-spacer{display:none}
+}
+@media(max-width:440px){
+  .apps-trigger{padding:6px 8px;font-size:11px}
+  .header-utility{gap:0}
+  .brand{gap:5px}
+  .workspace-button{padding:6px 7px}
+  .apps-popover{right:-37px}
+}
+
+/* W18D: CSS grid items must retain their assigned tracks when siblings are display:none.
+   Without explicit placement the main workspace auto-flows into hidden zero-width left track. */
+@media(min-width:861px){
+ .columns .sidebar{grid-column:1}
+ .columns .main-content{grid-column:2}
+ .columns .rightbar{grid-column:3}
+}
+/* W18D measured layout correction: auto margins must not shrink an empty-panel grid. */
+@media(min-width:861px){
+ .columns{width:100%;margin-inline:0;min-width:0}
+ .columns .main-content{min-width:0}
+}
+@media(max-width:860px){
+ .mobile-fab{z-index:35}
+ .topbar{min-width:0}
+ .workspace-switch{flex-shrink:1;min-width:0}
+ .apps-menu-wrap{flex:none}
+}
+@media(max-width:360px){
+ .topbar{gap:3px;padding-inline:6px}
+ .brand-name{font-size:15px}
+ .brand-mark{width:27px;height:27px}
+ .workspace-button{font-size:10px;min-height:38px;padding-inline:6px}
+ .apps-trigger{min-width:44px}
+ .apps-trigger span{display:none}
+ .mobile-search-toggle,.theme-toggle{min-width:34px;width:34px;min-height:38px;height:38px}
+}
+
+/* W18E: explicit, opt-in manual note handoff while KeepIt native linking is disconnected.
+   No note content is transported over the network by these controls. */
+.keepit-manual-handoff{margin-top:16px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius-md,12px);background:var(--panel-tint,var(--surface))}
+.keepit-manual-heading{font-weight:750;font-size:13px;color:var(--navy);margin-bottom:5px}
+.keepit-manual-handoff p{margin:0 0 9px;color:var(--muted);font-size:12px;line-height:1.5}
+.keepit-manual-handoff .keepit-manual-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.keepit-manual-actions .button{min-height:44px;text-decoration:none}
+.keepit-manual-handoff .caption{margin-bottom:0}
+@media(max-width:440px){.keepit-manual-actions .button{flex:1 1 auto}}
