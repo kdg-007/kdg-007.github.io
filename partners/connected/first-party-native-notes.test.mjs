@@ -160,7 +160,7 @@ try{
    assert.match(await note.locator('.note-editor').innerText(),/Saved in canonical KeepIt library/);
    assert.match(await note.locator('.note-status').innerText(),/Verified in KeepIt/);
    const liveitDisk=await nativeDiskEvidence(noteText);
-   assert.ok(liveitDisk.matchingOriginals>=1,'LiveIt note text must exist in a canonical KeepIt original, not only the visible editor');
+   assert.ok(liveitDisk.matchingOriginals>=1,'LiveIt original body readback mismatch: '+JSON.stringify(liveitDisk));
    console.log('KEEPIT_QA_LIVEIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:20000});
@@ -224,7 +224,7 @@ try{
     }));
    });
    const travelDisk=await nativeDiskEvidence(travelNote);
-   assert.ok(travelDisk.matchingOriginals>=1,'TravelIt note text must exist in KeepIt original bytes');
+   assert.ok(travelDisk.matchingOriginals>=1,'TravelIt original body readback mismatch: '+JSON.stringify(travelDisk));
    console.log('KEEPIT_QA_TRAVELIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden'});
@@ -313,7 +313,7 @@ try{
      }));
    });
    const thinkDisk=await nativeDiskEvidence(thinkNote);
-   assert.ok(thinkDisk.matchingOriginals>=1,'ThinkIt Mind Map note text must exist in KeepIt original bytes');
+   assert.ok(thinkDisk.matchingOriginals>=1,'ThinkIt original body readback mismatch: '+JSON.stringify(thinkDisk));
    console.log('KEEPIT_QA_THINKIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:15000});
