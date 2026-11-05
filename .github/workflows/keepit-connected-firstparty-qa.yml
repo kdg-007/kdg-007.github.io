@@ -4,6 +4,11 @@ on:
     branches: [main]
     paths:
       - "partners/connected/**"
+      - "partners/design/**"
+      - "partners/liveit/thinkit/c15396ee7cd1cba9b5e5/index.html"
+      - "partners/liveit/thinkit/connected-w18e-c15396/index.html"
+      - "partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html"
+      - "thinkit/index.html"
       - "assets/library-app-connected-w18e.js"
       - ".github/workflows/keepit-connected-firstparty-qa.yml"
   workflow_dispatch:
@@ -84,3 +89,7 @@ jobs:
         env:
           CI: "true"
         run: node partners/connected/first-party-native-notes.test.mjs
+      - name: Verify shared SIMA UI tokens in Chromium and WebKit
+        shell: bash
+        timeout-minutes: 6
+        run: node partners/design/sima-ui-v1.test.mjs
