@@ -41,12 +41,48 @@ jobs:
           assert.equal(native.split(from).length,2);
           const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css">';
           const navigationJS='<script src="/partners/connected/connected-nav.js" defer></script>';
-          assert.equal(connected,root.replace(a,b)
-            .replace('</head>',navigationCSS+'</head>')
-            .replace('</body>',navigationJS+'</body>'));
+          const installChanges=[
+            ['<meta name="theme-color" content="#FFFFFF">','<meta name="theme-color" content="#142331">'],
+            ['<meta name="description" content="Keep anything. Find everything.">',
+             '<meta name="description" content="LiveIt daily dashboard, tasks and journal. Connected notes use KeepIt.">'],
+            ['<link rel="manifest" href="/manifest.webmanifest">',
+             '<link rel="manifest" href="/partners/connected/liveit.webmanifest">'],
+            ['<link rel="icon" href="/icon.svg" type="image/svg+xml">',
+             '<link rel="icon" href="/partners/liveit/thinkit/connected-w18e-c15396/assets/icon-192.png" type="image/png">'],
+            ['<link rel="apple-touch-icon" href="/apple-touch-icon.png">',
+             '<link rel="apple-touch-icon" href="/partners/liveit/thinkit/connected-w18e-c15396/assets/apple-touch-icon.png">'],
+            ['<meta name="apple-mobile-web-app-title" content="KeepIt">',
+             '<meta name="apple-mobile-web-app-title" content="LiveIt"><meta name="apple-mobile-web-app-capable" content="yes">'],
+            ['<title>KeepIt</title>','<title>LiveIt — Today</title>']
+          ];
+          let expected=root.replace(a,b).replace('</head>',navigationCSS+'</head>')
+            .replace('</body>',navigationJS+'</body>');
+          for(const [oldValue,newValue] of installChanges){
+            assert.equal(expected.split(oldValue).length,2,'Exact connected metadata: '+oldValue);
+            expected=expected.replace(oldValue,newValue);
+          }
+          assert.equal(connected,expected,'KeepIt base must remain byte-identical except approved LiveIt shell metadata');
+          const manifest=JSON.parse(get('partners/connected/liveit.webmanifest'));
+          assert.equal(manifest.id,'/partners/connected/?connected-app=liveit');
+          assert.equal(manifest.start_url,'/partners/connected/?connected-app=liveit');
+          assert.equal(manifest.scope,'/partners/connected/');
+          assert.equal(manifest.name,'LiveIt');
+          assert.equal(manifest.short_name,'LiveIt');
+          assert.equal(manifest.display,'standalone');
+          assert.ok(manifest.icons.some(icon=>icon.src.includes('connected-w18e-c15396/assets/icon-192.png')));
+          const keepItManifest=JSON.parse(get('manifest.webmanifest'));
+          assert.equal(keepItManifest.name,'KeepIt');
+          assert.equal(keepItManifest.id,'/');
+          const connectedNav=get('partners/connected/connected-nav.js');
           for(const url of ['liveit','keepit','thinkit','travelit'])
-            assert.ok(get('partners/connected/connected-nav.js').includes("id:'"+url+"'"));
-          assert.ok(get('partners/connected/connected-nav.css').includes('#connected-apps-nav'));
+            assert.ok(connectedNav.includes("id:'"+url+"'"));
+          assert.ok(connectedNav.includes("location.replace('/partners/connected/?connected-app=liveit')"));
+          assert.ok(connectedNav.includes("target.searchParams.set('connected-app',mode.id)"));
+          assert.ok(connectedNav.includes("summary.textContent='KeepIt notes'"));
+          assert.ok(connectedNav.includes("oldReturn?.remove()"));
+          const navigationStyle=get('partners/connected/connected-nav.css');
+          assert.ok(navigationStyle.includes('#connected-apps-nav'));
+          assert.ok(navigationStyle.includes('section[aria-label="LiveIt connected workspace"] > .connected-note-tools'));
           assert.equal(patched,native.replace(from,to));
           const oldLiveIt=get('partners/liveit/thinkit/c15396ee7cd1cba9b5e5/app-8.js');
           const connectedLiveIt=get('partners/liveit/thinkit/connected-w18e-c15396/app-8.js');
