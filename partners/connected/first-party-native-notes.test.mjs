@@ -55,7 +55,7 @@ try{
    });
    const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');
    await frame.locator('#app .app-shell').waitFor({state:'visible',timeout:40000});
-   await frame.locator('[data-action="capture"]').first().click();
+   await frame.locator('.quick-actions-panel .quick-action-tile[data-shortcut="note"]').click();
    await frame.locator('#captureDialog').waitFor({state:'visible'});
    const body='W18E connected note original '+tag;
    await frame.locator('#captureBody').fill(body);
