@@ -1,3 +1,4 @@
+@import url("/partners/design/sima-family-v1.css");
 /* One neutral shell control for KeepIt-owned first-party integration.
    No changes to the native editor, existing LiveIt data or app rendering. */
 #connected-apps-nav{position:fixed;top:9px;right:10px;z-index:1300;
