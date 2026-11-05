@@ -189,6 +189,40 @@ try{
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:20000});
    console.log('KEEPIT_CONNECTED_LIVEIT_NATIVE_CREATE_SAVE_REOPEN_'+tag+'_PASS');
+   // User-facing W18E acceptance: distinct Work task streams survive a cold
+   // document reload and must never appear under the Personal workspace.
+   // Use only visible app controls; never seed records directly into IndexedDB.
+   await page.setViewportSize({width:1200,height:860});
+   await frame.locator('.workspace-button[data-action="scope"][data-scope="work"]').click();
+   const workTasks=[
+    ['projects','QA W18E project task '+tag],
+    ['operations','QA W18E operations task '+tag]
+   ];
+   for(const [stream,label] of workTasks){
+    await frame.locator('.quick-action-tile[data-shortcut="task"]').click();
+    await frame.locator('#captureDialog').waitFor({state:'visible',timeout:15000});
+    await frame.locator('#captureTaskStream').selectOption(stream);
+    await frame.locator('#captureBody').fill(label);
+    await frame.locator('[data-action="capture-save"]').first().click();
+    await frame.locator('#captureDialog').waitFor({state:'hidden',timeout:30000});
+   }
+   await page.reload({waitUntil:'domcontentloaded'});
+   await frame.locator('#app .app-shell').waitFor({state:'visible',timeout:40000});
+   await frame.locator('#sidebar [data-action="nav"][data-view="tasks"]').click();
+   const workPage=frame.locator('.main-content');
+   for(const [stream,label] of workTasks){
+    const other=workTasks.find(([id])=>id!==stream)[1];
+    await frame.locator('.task-stream-controls [data-action="task-stream"][data-stream="'+stream+'"]').click();
+    const visible=await workPage.innerText();
+    assert.ok(visible.includes(label),stream+' task absent after reload');
+    assert.ok(!visible.includes(other),stream+' filter exposed the other Work stream');
+   }
+   await frame.locator('.workspace-button[data-action="scope"][data-scope="personal"]').click();
+   const personal=await workPage.innerText();
+   for(const [,label] of workTasks)
+    assert.ok(!personal.includes(label),'Personal workspace exposed a Work task');
+   console.log('KEEPIT_CONNECTED_LIVEIT_WORK_STREAM_REOPEN_'+tag+'_PASS');
+   await page.setViewportSize({width:390,height:844});
    // Other two first-party hosts must mount under the same KeepIt-owned origin.
    // Full topic/trip note roundtrip is a separate acceptance gate, NOT inferred.
    await page.goto(origin+'/partners/connected/?connected-app=travelit',{waitUntil:'domcontentloaded'});
