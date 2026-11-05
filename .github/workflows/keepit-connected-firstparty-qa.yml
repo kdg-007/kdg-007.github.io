@@ -55,13 +55,13 @@ jobs:
              '<meta name="apple-mobile-web-app-title" content="LiveIt"><meta name="apple-mobile-web-app-capable" content="yes">'],
             ['<title>KeepIt</title>','<title>LiveIt — Today</title>']
           ];
-          let expected=root.replace(a,b).replace('</head>',navigationCSS+'</head>')
+          let expectedConnected=root.replace(a,b).replace('</head>',navigationCSS+'</head>')
             .replace('</body>',navigationJS+'</body>');
           for(const [oldValue,newValue] of installChanges){
-            assert.equal(expected.split(oldValue).length,2,'Exact connected metadata: '+oldValue);
-            expected=expected.replace(oldValue,newValue);
+            assert.equal(expectedConnected.split(oldValue).length,2,'Exact connected metadata: '+oldValue);
+            expectedConnected=expectedConnected.replace(oldValue,newValue);
           }
-          assert.equal(connected,expected,'KeepIt base must remain byte-identical except approved LiveIt shell metadata');
+          assert.equal(connected,expectedConnected,'KeepIt base must remain byte-identical except approved LiveIt shell metadata');
           const manifest=JSON.parse(get('partners/connected/liveit.webmanifest'));
           assert.equal(manifest.id,'/partners/connected/?connected-app=liveit');
           assert.equal(manifest.start_url,'/partners/connected/?connected-app=liveit');
