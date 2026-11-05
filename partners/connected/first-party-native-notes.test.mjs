@@ -159,6 +159,9 @@ try{
    }
    assert.match(await note.locator('.note-editor').innerText(),/Saved in canonical KeepIt library/);
    assert.match(await note.locator('.note-status').innerText(),/Verified in KeepIt/);
+   const liveitDisk=await nativeDiskEvidence(noteText);
+   assert.ok(liveitDisk.matchingOriginals>=1,'LiveIt note text must exist in a canonical KeepIt original, not only the visible editor');
+   console.log('KEEPIT_QA_LIVEIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:20000});
    await host.getByRole('button',{name:'Open native note'}).click();
@@ -220,6 +223,9 @@ try{
      editor:await travelEditor.innerText().catch(()=>''),errors
     }));
    });
+   const travelDisk=await nativeDiskEvidence(travelNote);
+   assert.ok(travelDisk.matchingOriginals>=1,'TravelIt note text must exist in KeepIt original bytes');
+   console.log('KEEPIT_QA_TRAVELIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden'});
    await travelHost.getByRole('button',{name:'Open native note'}).click();
@@ -306,6 +312,9 @@ try{
        status:await note.locator('.note-status').textContent(),errors
      }));
    });
+   const thinkDisk=await nativeDiskEvidence(thinkNote);
+   assert.ok(thinkDisk.matchingOriginals>=1,'ThinkIt Mind Map note text must exist in KeepIt original bytes');
+   console.log('KEEPIT_QA_THINKIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:15000});
    await thinkFrame.locator('#btnMindNotes').click();
