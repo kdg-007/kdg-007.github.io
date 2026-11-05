@@ -25,3 +25,31 @@
  #connected-apps-list{top:auto;bottom:calc(100% + 7px)}
  #connected-apps-toggle{padding:8px 12px}
 }
+
+/* LiveIt is the visible shell. KeepIt native note controls remain available,
+   but they are not a permanent parent-app header over Today's workspace. */
+section[aria-label="LiveIt connected workspace"] > .connected-note-tools{
+ position:absolute;top:8px;left:8px;z-index:5;
+ width:min(620px,calc(100vw - 16px));
+ font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ color:#eef5f7;pointer-events:none
+}
+.connected-note-tools > summary{
+ display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;
+ padding:9px 12px;border:1px solid #668a95;border-radius:11px;
+ color:#eef7f8;background:#17384b;box-shadow:0 5px 18px #07172080;
+ cursor:pointer;font-weight:750;pointer-events:auto
+}
+.connected-note-tools > summary:focus-visible{outline:3px solid #69d6ca;outline-offset:3px}
+.connected-note-tools[open] > header{
+ display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+ margin-top:6px;padding:11px;border:1px solid #456679;border-radius:12px;
+ background:#102c40;color:#eef7f8;box-shadow:0 12px 30px #081a29b0;
+ max-height:55vh;overflow:auto;pointer-events:auto
+}
+.connected-note-tools[open] > header select,
+.connected-note-tools[open] > header button{max-width:100%;min-height:40px}
+@media(max-width:480px){
+ section[aria-label="LiveIt connected workspace"] > .connected-note-tools{top:9px;left:10px}
+ .connected-note-tools[open] > header{margin-top:8px}
+}
