@@ -47,6 +47,38 @@ try{
    messages:errors.slice(-6),
    body:(await page.locator('body').innerText().catch(()=>'' )).slice(0,350)
   });
+  // Diagnostic-only readback from disposable browser IndexedDB: never reports original note bytes.
+  // The original Blob is a KEEPIT-NOTE-1 envelope containing a JSON document header.
+  const nativeDiskEvidence=async text=>page.evaluate(async expected=>{
+   return await new Promise((resolve,reject)=>{
+    const request=indexedDB.open('mylibrary-device-v1');
+    request.onupgradeneeded=()=>{request.transaction?.abort();reject(Error('No existing note database'));};
+    request.onerror=()=>reject(request.error||Error('Database not readable'));
+    request.onsuccess=()=>{
+     const db=request.result;
+     let tx;try{tx=db.transaction(['items','originals'],'readonly');}
+     catch(e){db.close();reject(e);return;}
+     const items=tx.objectStore('items').getAll();
+     const originals=tx.objectStore('originals').getAll();
+     tx.onerror=()=>{db.close();reject(tx.error||Error('Original read failed'));};
+     tx.oncomplete=async()=>{
+      db.close();
+      const rows=(items.result||[]).filter(i=>i?.mime==='application/vnd.keepit.note'&&!i.trashedAt);
+      const blobs=new Map((originals.result||[]).map(i=>[i.id,i.blob]));
+      try{
+       const notes=await Promise.all(rows.map(async i=>{
+        const blob=blobs.get(i.id);
+        const raw=blob instanceof Blob?await blob.slice(0,Math.min(blob.size,128*1024)).text():'';
+        return {version:i.version,digestValid:/^[a-f0-9]{64}$/.test(i.digest||''),
+                originalPresent:blob instanceof Blob,containsExpected:raw.includes(expected)};
+       }));
+       resolve({noteCount:notes.length,matchingOriginals:notes.filter(x=>x.containsExpected).length,
+                notes:notes.slice(-5)});
+      }catch(e){reject(e)}
+     };
+    };
+   });
+  },text);
   try{
    await page.goto(origin+'/partners/connected/?connected-app=liveit',{waitUntil:'domcontentloaded'});
    const host=page.locator('section[aria-label="LiveIt connected workspace"]');
@@ -95,6 +127,11 @@ try{
    await editor.waitFor({state:'visible',timeout:30000});
    const noteText='Saved in canonical KeepIt library via W18E LiveIt '+tag;
    await editor.fill(noteText);
+   // Confirm the editor accepted the synthetic text before Save; this differentiates
+   // an input event failure from a later save/refresh regression.
+   const liveitBeforeSave=await editor.innerText();
+   assert.ok(liveitBeforeSave.includes(noteText),'LiveIt native editor did not accept input before Save');
+   console.log('KEEPIT_QA_LIVEIT_EDITOR_INPUT_BEFORE_SAVE_'+tag+'_PASS');
    await note.locator('.note-actions').getByRole('button',{name:'Save',exact:true}).click();
    try {
     await page.waitForFunction(text=>{
@@ -115,7 +152,10 @@ try{
       buttons:[...d?.querySelectorAll('button')||[]].map(x=>({text:x.textContent,disabled:x.disabled})).slice(-12),
       error:[...document.querySelectorAll('[role=alert],.message.error')].map(x=>x.textContent?.slice(0,180)).slice(0,8)};
     });
-    throw Error('Native KeepIt save evidence unresolved: '+JSON.stringify({diagnostics,errors,hostStatus:await host.getByRole('status').textContent()}));
+    const disk=await nativeDiskEvidence(noteText).catch(e=>({error:String(e)}));
+    throw Error('Native KeepIt save evidence unresolved: '+JSON.stringify({diagnostics,disk,
+      inputHadTextBeforeSave:liveitBeforeSave.includes(noteText),
+      errors,hostStatus:await host.getByRole('status').textContent()}));
    }
    assert.match(await note.locator('.note-editor').innerText(),/Saved in canonical KeepIt library/);
    assert.match(await note.locator('.note-status').innerText(),/Verified in KeepIt/);
@@ -226,7 +266,19 @@ try{
      throw Error('ThinkIt Mind Map page not available in current startup: '+JSON.stringify({snapshot,errors}));
    });
    await mindTab.click();
-   await thinkFrame.locator('#btnMindNotes').waitFor({state:'visible',timeout:15000});
+   await thinkFrame.locator('#btnMindNotes').waitFor({state:'visible',timeout:15000}).catch(async()=>{
+    const state=await thinkFrame.locator('body').evaluate(el=>{
+     const b=el.querySelector('#btnMindNotes'),tabs=[...el.querySelectorAll('#pageTabs .page-tab')];
+     return {notesHidden:b?.hidden,notesDisplay:b?getComputedStyle(b).display:null,
+       activeMode:el.querySelector('#modePill')?.textContent,
+       statusMode:el.querySelector('#statusMode')?.textContent,
+       activeTabs:tabs.filter(x=>x.classList.contains('active')).map(x=>({title:x.title,content:x.textContent})),
+       mindTabs:tabs.filter(x=>x.title.includes('Mind Map')).map(x=>({title:x.title,active:x.classList.contains('active')})),
+       startHidden:el.querySelector('#diStartScreen')?.hidden,
+       bodyClasses:el.className, errors:[...el.querySelectorAll('[role="alert"]')].map(x=>x.textContent).slice(0,4)};
+    });
+    throw Error('ThinkIt Mind Map notes control not visible after selecting page: '+JSON.stringify(state));
+   });
    await thinkFrame.locator('#btnMindNotes').click();
    await thinkFrame.locator('#mindOpenKeepItNative').waitFor({state:'visible',timeout:15000});
    await thinkFrame.locator('#mindOpenKeepItNative').click();
