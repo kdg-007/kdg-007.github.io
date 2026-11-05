@@ -79,10 +79,13 @@ jobs:
           assert.ok(connectedNav.includes("location.replace('/partners/connected/?connected-app=liveit')"));
           assert.ok(connectedNav.includes("target.searchParams.set('connected-app',mode.id)"));
           assert.ok(connectedNav.includes("summary.textContent='KeepIt notes'"));
+          assert.ok(connectedNav.includes("toolsButton.id='connected-note-tools-toggle'"));
           assert.ok(connectedNav.includes("oldReturn?.remove()"));
           const navigationStyle=get('partners/connected/connected-nav.css');
           assert.ok(navigationStyle.includes('#connected-apps-nav'));
           assert.ok(navigationStyle.includes('section[aria-label="LiveIt connected workspace"] > .connected-note-tools'));
+          assert.ok(navigationStyle.includes('visibility:hidden'));
+          assert.ok(navigationStyle.includes('#connected-apps-list button#connected-note-tools-toggle'));
           assert.equal(patched,native.replace(from,to));
           const oldLiveIt=get('partners/liveit/thinkit/c15396ee7cd1cba9b5e5/app-8.js');
           const connectedLiveIt=get('partners/liveit/thinkit/connected-w18e-c15396/app-8.js');
