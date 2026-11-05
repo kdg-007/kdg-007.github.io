@@ -115,6 +115,55 @@ try{
    await page.frameLocator('iframe[title="TravelIt trip planning workspace"]')
      .locator('body').waitFor({state:'visible'});
    console.log('KEEPIT_CONNECTED_TRAVELIT_NATIVE_HOST_MOUNT_'+tag+'_PASS');
+   const travelHost=page.locator('section[aria-label="TravelIt connected workspace"]');
+   const trip=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
+   await trip.locator('#mobile-nav [data-view="trips"]').click();
+   await trip.locator('[data-action="new-trip"]').first().click();
+   await trip.locator('#modal-form').waitFor({state:'visible',timeout:15000});
+   await trip.locator('#f-title').fill('W18E connected travel record '+tag);
+   await trip.locator('#f-timezone').fill('Asia/Manila');
+   await trip.locator('#f-startDate').fill('2026-11-12');
+   await trip.locator('#f-endDate').fill('2026-11-13');
+   await trip.locator('#modal-form button[type="submit"]').click();
+   await trip.locator('#modal-backdrop').waitFor({state:'hidden',timeout:25000});
+   await travelHost.getByRole('button',{name:'Refresh travel records'}).click();
+   const travelTarget=travelHost.locator('select[aria-label="TravelIt note target"]');
+   await page.waitForFunction(()=>document.querySelector(
+    'section[aria-label="TravelIt connected workspace"] select')?.options.length>0,
+    null,{timeout:25000});
+   assert.ok((await travelTarget.locator('option').count())>0);
+   await travelHost.getByRole('button',{name:'Open native note'}).click();
+   await note.waitFor({state:'visible',timeout:35000}).catch(async()=>{
+     throw Error('TravelIt native editor not opened: '+JSON.stringify({
+      status:await travelHost.getByRole('status').textContent(),errors
+     }));
+   });
+   const travelEditor=note.locator('.note-editor [contenteditable="true"]');
+   await travelEditor.waitFor({state:'visible',timeout:25000});
+   const travelNote='Saved via TravelIt in KeepIt canonical library '+tag;
+   await travelEditor.fill(travelNote);
+   await note.locator('.note-actions').getByRole('button',{name:'Save',exact:true}).click();
+   await page.waitForFunction(text=>{
+    const d=document.querySelector('dialog.note-dialog');
+    return d?.dataset.mode==='edit' &&
+      d.querySelector('.note-editor')?.textContent?.includes(text) &&
+      d.querySelector('.note-status')?.textContent?.includes('Verified in KeepIt');
+   },travelNote,{timeout:30000}).catch(async()=>{
+    throw Error('TravelIt native note save was not verified: '+JSON.stringify({
+     status:await note.locator('.note-status').textContent(),
+     hostStatus:await travelHost.getByRole('status').textContent(),
+     editor:await travelEditor.innerText().catch(()=>''),errors
+    }));
+   });
+   await note.locator('button.note-exit').click();
+   await note.waitFor({state:'hidden'});
+   await travelHost.getByRole('button',{name:'Open native note'}).click();
+   await note.waitFor({state:'visible',timeout:35000});
+   await page.waitForFunction(text=>document.querySelector('dialog.note-dialog')?.textContent?.includes(text),
+     travelNote,{timeout:25000});
+   await note.locator('button.note-exit').click();
+   await note.waitFor({state:'hidden'});
+   console.log('KEEPIT_CONNECTED_TRAVELIT_NATIVE_CREATE_SAVE_REOPEN_'+tag+'_PASS');
    await page.goto(origin+'/partners/connected/?connected-app=thinkit',{waitUntil:'domcontentloaded'});
    await page.locator('#thinkit-host-panel').waitFor({state:'visible',timeout:40000});
    console.log('KEEPIT_CONNECTED_THINKIT_NATIVE_HOST_MOUNT_'+tag+'_PASS');
