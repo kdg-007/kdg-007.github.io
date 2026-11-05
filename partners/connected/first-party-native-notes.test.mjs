@@ -292,6 +292,17 @@ try{
      throw Error('ThinkIt Mind Map page not available in current startup: '+JSON.stringify({snapshot,errors}));
    });
    await mindTab.click();
+   // Pages & Shapes is a user-collapsible panel. The Notes button may be
+   // enabled but not visible while its parent sidebar is collapsed.
+   // Open through the real toolbar control: never force element visibility.
+   const sidebarCollapsed=await thinkFrame.locator('body').evaluate(el=>
+      el.classList.contains('sidebar-collapsed'));
+   if(sidebarCollapsed){
+     await thinkFrame.locator('#btnLeftToggle').click();
+     await thinkFrame.locator('body').evaluate(el=>{
+       if(el.classList.contains('sidebar-collapsed'))throw Error('Pages & Shapes did not open');
+     });
+   }
    await thinkFrame.locator('#btnMindNotes').waitFor({state:'visible',timeout:15000}).catch(async()=>{
     const state=await thinkFrame.locator('body').evaluate(el=>{
      const b=el.querySelector('#btnMindNotes'),tabs=[...el.querySelectorAll('#pageTabs .page-tab')];
