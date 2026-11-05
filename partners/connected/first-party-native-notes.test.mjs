@@ -64,13 +64,18 @@ try{
      tx.oncomplete=async()=>{
       db.close();
       const rows=(items.result||[]).filter(i=>i?.mime==='application/vnd.keepit.note'&&!i.trashedAt);
-      const blobs=new Map((originals.result||[]).map(i=>[i.id,i.blob]));
+      const originalsById=new Map((originals.result||[]).map(i=>[i.id,i]));
       try{
        const notes=await Promise.all(rows.map(async i=>{
-        const blob=blobs.get(i.id);
+        const original=originalsById.get(i.id),blob=original?.blob;
         const raw=blob instanceof Blob?await blob.slice(0,Math.min(blob.size,128*1024)).text():'';
         return {version:i.version,digestValid:/^[a-f0-9]{64}$/.test(i.digest||''),
-                originalPresent:blob instanceof Blob,containsExpected:raw.includes(expected)};
+                originalRowPresent:!!original,originalRowKeys:original?Object.keys(original):[],
+                binaryType:blob?.constructor?.name||typeof blob,
+                binaryTag:Object.prototype.toString.call(blob),
+                binaryIsTypedArray:ArrayBuffer.isView(blob),
+                binaryByteLength:blob?.byteLength??blob?.size??null,
+                containsExpected:raw.includes(expected)};
        }));
        resolve({noteCount:notes.length,matchingOriginals:notes.filter(x=>x.containsExpected).length,
                 notes:notes.slice(-5)});
