@@ -96,11 +96,33 @@ try{
    });
   },text);
   try{
-   await page.goto(origin+'/partners/connected/?connected-app=liveit',{waitUntil:'domcontentloaded'});
+   // The installed connected app must launch LiveIt first, even with no app query.
+   await page.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
+   await page.waitForURL(url=>new URL(url).searchParams.get('connected-app')==='liveit',
+    {timeout:25000});
+   const identity=await page.evaluate(async()=>{
+    const href=document.querySelector('link[rel="manifest"]')?.getAttribute('href');
+    return {
+     title:document.title,
+     appleTitle:document.querySelector('meta[name="apple-mobile-web-app-title"]')?.content,
+     manifestHref:href,
+     manifest:href?await fetch(href).then(r=>r.json()):null
+    };
+   });
+   assert.equal(identity.appleTitle,'LiveIt');
+   assert.equal(identity.manifestHref,'/partners/connected/liveit.webmanifest');
+   assert.equal(identity.manifest?.name,'LiveIt');
+   assert.equal(identity.manifest?.start_url,'/partners/connected/?connected-app=liveit');
+   assert.equal(identity.manifest?.scope,'/partners/connected/');
    const host=page.locator('section[aria-label="LiveIt connected workspace"]');
    await host.waitFor({state:'visible',timeout:40000}).catch(async()=>{
     throw Error('Actual KeepIt owner host not mounted: '+JSON.stringify(await inspect()));
    });
+   const noteDrawer=host.locator('#connected-note-tools');
+   await noteDrawer.waitFor({state:'attached',timeout:15000});
+   assert.equal(await noteDrawer.getAttribute('open'),null,'KeepIt note tools must begin collapsed');
+   assert.equal(await host.getByRole('button',{name:'Return to KeepIt'}).count(),0,
+    'LiveIt must not have a Return to KeepIt parent control');
    const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');
    await frame.locator('#app .app-shell').waitFor({state:'visible',timeout:40000});
    // The owner can launch each first-party app through the connected menu
@@ -114,13 +136,13 @@ try{
     const uri=new URL(await a.getAttribute('href'),origin);
     assert.equal(uri.origin,origin);
     assert.equal(uri.pathname,'/partners/connected/');
-    assert.equal(uri.searchParams.get('connected-app'),id==='keepit'?null:id);
+    assert.equal(uri.searchParams.get('connected-app'),id);
    }
    await page.locator('#connected-apps-toggle').click();
    await frame.locator('#liveit-apps-button').click();
    const menuLinks=await frame.locator('#liveit-app-switcher a').evaluateAll(els=>
      els.map(el=>el.getAttribute('href')));
-   assert.ok(menuLinks.includes('/partners/connected/'));
+   assert.ok(menuLinks.includes('/partners/connected/?connected-app=keepit'));
    assert.ok(menuLinks.includes('/partners/connected/?connected-app=thinkit'));
    assert.ok(menuLinks.includes('/partners/connected/?connected-app=travelit'));
    await frame.locator('#liveit-apps-button').click();
@@ -130,6 +152,10 @@ try{
    await frame.locator('#captureBody').fill(body);
    await frame.locator('[data-action="capture-save"]').first().click();
    await frame.locator('#captureDialog').waitFor({state:'hidden',timeout:30000});
+   // Notes are intentionally accessed from Apps, not from an overlay on LiveIt.
+   await page.locator('#connected-apps-toggle').click();
+   await page.locator('#connected-note-tools-toggle').click();
+   assert.notEqual(await noteDrawer.getAttribute('open'),null,'Note tools did not open');
    await host.getByRole('button',{name:'Refresh LiveIt records'}).click();
    const target=host.locator('select[aria-label="LiveIt note target"]');
    await page.waitForFunction(()=>document.querySelector(
@@ -292,15 +318,15 @@ try{
      throw Error('ThinkIt Mind Map page not available in current startup: '+JSON.stringify({snapshot,errors}));
    });
    await mindTab.click();
-   // Pages & Shapes is a user-collapsible panel. The Notes button may be
-   // enabled but not visible while its parent sidebar is collapsed.
-   // Open through the real toolbar control: never force element visibility.
+   // v0.9.21 hides the legacy editor toolbar. Use the visible first-party
+   // View > Outline / Shapes Panel action instead of a hidden button.
    const sidebarCollapsed=await thinkFrame.locator('body').evaluate(el=>
       el.classList.contains('sidebar-collapsed'));
    if(sidebarCollapsed){
-     await thinkFrame.locator('#btnLeftToggle').click();
+     await thinkFrame.locator('#diMenuTabs .di-menu-tab[data-tab="View"]').click();
+     await thinkFrame.locator('#diMenuPopup [data-dcmd="view.outline"]').click();
      await thinkFrame.locator('body').evaluate(el=>{
-       if(el.classList.contains('sidebar-collapsed'))throw Error('Pages & Shapes did not open');
+       if(el.classList.contains('sidebar-collapsed'))throw Error('Pages & Shapes did not open from View menu');
      });
    }
    await thinkFrame.locator('#btnMindNotes').waitFor({state:'visible',timeout:15000}).catch(async()=>{
