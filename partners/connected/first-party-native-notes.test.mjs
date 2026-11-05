@@ -205,9 +205,12 @@ try{
      await thinkFrame.locator('#projectStartName').fill('KeepIt-connected QA Mind Map');
      await thinkFrame.getByRole('button',{name:'Create blank project'}).click();
    }
-   const topicShape=thinkFrame.locator('#shapeLibrary .shape-card[data-shape="topic"]');
-   await topicShape.waitFor({state:'visible',timeout:12000});
-   await topicShape.click();
+   // The shape palette can be intentionally collapsed on WebKit/mobile.
+   // Use ThinkIt's first-party Add node toolbar command, whose mode-aware
+   // handler creates the Mind Map root without reaching into app internals.
+   const addNode=thinkFrame.locator('#btnQuickAdd');
+   await addNode.waitFor({state:'visible',timeout:12000});
+   await addNode.click();
    await thinkFrame.locator('body').press('Escape');
    const mindTab=thinkFrame.locator('#pageTabs .page-tab[title*="Mind Map"]');
    await mindTab.waitFor({state:'visible',timeout:9000}).catch(async()=>{
