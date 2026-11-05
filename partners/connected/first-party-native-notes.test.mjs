@@ -75,7 +75,10 @@ try{
           (stored instanceof ArrayBuffer||ArrayBuffer.isView(stored))?
             new Blob([stored],{type:original?.mime||'application/octet-stream'}):null;
         const raw=source?await source.slice(0,Math.min(source.size,128*1024)).text():'';
+        const sha=source?await crypto.subtle.digest('SHA-256',await source.arrayBuffer()):null;
+        const digest=sha?[...new Uint8Array(sha)].map(n=>n.toString(16).padStart(2,'0')).join(''):null;
         return {version:i.version,digestValid:/^[a-f0-9]{64}$/.test(i.digest||''),
+                digestMatches:digest===i.digest,
                 originalRowPresent:!!original,originalRowKeys:original?Object.keys(original):[],
                 binaryType:legacy?.constructor?.name||typeof legacy,
                 binaryDataType:stored?.constructor?.name||typeof stored,
@@ -174,6 +177,8 @@ try{
    assert.match(await note.locator('.note-status').innerText(),/Verified in KeepIt/);
    const liveitDisk=await nativeDiskEvidence(noteText);
    assert.ok(liveitDisk.matchingOriginals>=1,'LiveIt original body readback mismatch: '+JSON.stringify(liveitDisk));
+   assert.ok(liveitDisk.notes.some(n=>n.containsExpected&&n.digestMatches),
+     'liveitDisk expected note original SHA-256 must match the stored item digest');
    console.log('KEEPIT_QA_LIVEIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:20000});
@@ -238,6 +243,8 @@ try{
    });
    const travelDisk=await nativeDiskEvidence(travelNote);
    assert.ok(travelDisk.matchingOriginals>=1,'TravelIt original body readback mismatch: '+JSON.stringify(travelDisk));
+   assert.ok(travelDisk.notes.some(n=>n.containsExpected&&n.digestMatches),
+     'travelDisk expected note original SHA-256 must match the stored item digest');
    console.log('KEEPIT_QA_TRAVELIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden'});
@@ -327,6 +334,8 @@ try{
    });
    const thinkDisk=await nativeDiskEvidence(thinkNote);
    assert.ok(thinkDisk.matchingOriginals>=1,'ThinkIt original body readback mismatch: '+JSON.stringify(thinkDisk));
+   assert.ok(thinkDisk.notes.some(n=>n.containsExpected&&n.digestMatches),
+     'thinkDisk expected note original SHA-256 must match the stored item digest');
    console.log('KEEPIT_QA_THINKIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:15000});
