@@ -34,7 +34,14 @@ jobs:
           const to='h.src="/partners/liveit/thinkit/c15396ee7cd1cba9b5e5/index.html"';
           assert.equal(root.split(a).length,2);
           assert.equal(native.split(from).length,2);
-          assert.equal(connected,root.replace(a,b));
+          const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css">';
+          const navigationJS='<script src="/partners/connected/connected-nav.js" defer></script>';
+          assert.equal(connected,root.replace(a,b)
+            .replace('</head>',navigationCSS+'</head>')
+            .replace('</body>',navigationJS+'</body>'));
+          for(const url of ['liveit','keepit','thinkit','travelit'])
+            assert.ok(get('partners/connected/connected-nav.js').includes("id:'"+url+"'"));
+          assert.ok(get('partners/connected/connected-nav.css').includes('#connected-apps-nav'));
           assert.equal(patched,native.replace(from,to));
           for(const id of ['liveit','travelit','thinkit'])assert.ok(patched.includes(id));
           const status=JSON.parse(get('partners/connected/status.json'));
