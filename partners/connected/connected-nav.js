@@ -35,6 +35,25 @@
   const small=document.createElement('small');small.textContent=mode.help;
   link.append(small);list.append(link);
  }
+ // Note tools live in the shared Apps menu, not on top of the LiveIt canvas.
+ if(current==='liveit'){
+  const toolsButton=document.createElement('button');
+  toolsButton.id='connected-note-tools-toggle';
+  toolsButton.type='button';
+  toolsButton.textContent='KeepIt note tools';
+  toolsButton.setAttribute('aria-controls','connected-note-tools');
+  toolsButton.setAttribute('aria-expanded','false');
+  toolsButton.title='Open KeepIt native note tools for the current LiveIt entry';
+  toolsButton.addEventListener('click',()=>{
+   const drawer=document.getElementById('connected-note-tools');
+   if(!drawer)return;
+   drawer.open=!drawer.open;
+   toolsButton.setAttribute('aria-expanded',String(drawer.open));
+   list.hidden=true;
+   opener.setAttribute('aria-expanded','false');
+  });
+  list.append(toolsButton);
+ }
  // KeepIt owns the native note operations, but LiveIt owns the visible workspace.
  // Present native note controls as an optional drawer instead of a fixed parent banner.
  // Keep the compiled KeepIt native host and all of its event handlers intact.
@@ -52,7 +71,7 @@
   drawer.className='connected-note-tools';
   const summary=document.createElement('summary');
   summary.textContent='KeepIt notes';
-  summary.setAttribute('aria-label','Open KeepIt note tools');
+  summary.setAttribute('aria-label','Close KeepIt note tools');
   header.replaceWith(drawer);
   drawer.append(summary,header);
   return true;
