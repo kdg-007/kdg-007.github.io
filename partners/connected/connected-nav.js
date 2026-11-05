@@ -11,11 +11,11 @@
  // No app selector means the LiveIt dashboard, never a KeepIt library landing page.
  // KeepIt itself remains available only through the explicit app launcher.
  const selected=new URLSearchParams(location.search).getAll('connected-app');
- if(selected.length===0){
+ if(selected.length!==1 || !modes.some(mode=>mode.id===selected[0])){
   location.replace('/partners/connected/?connected-app=liveit');
   return;
  }
- const current=selected.length===1?selected[0]:'liveit';
+ const current=selected[0];
  const nav=document.createElement('nav');
  nav.id='connected-apps-nav';nav.setAttribute('aria-label','Connected applications');
  const opener=document.createElement('button');
