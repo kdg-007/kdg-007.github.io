@@ -96,11 +96,33 @@ try{
    });
   },text);
   try{
-   await page.goto(origin+'/partners/connected/?connected-app=liveit',{waitUntil:'domcontentloaded'});
+   // The installed connected app must launch LiveIt first, even with no app query.
+   await page.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
+   await page.waitForURL(url=>new URL(url).searchParams.get('connected-app')==='liveit',
+    {timeout:25000});
+   const identity=await page.evaluate(async()=>{
+    const href=document.querySelector('link[rel="manifest"]')?.getAttribute('href');
+    return {
+     title:document.title,
+     appleTitle:document.querySelector('meta[name="apple-mobile-web-app-title"]')?.content,
+     manifestHref:href,
+     manifest:href?await fetch(href).then(r=>r.json()):null
+    };
+   });
+   assert.equal(identity.appleTitle,'LiveIt');
+   assert.equal(identity.manifestHref,'/partners/connected/liveit.webmanifest');
+   assert.equal(identity.manifest?.name,'LiveIt');
+   assert.equal(identity.manifest?.start_url,'/partners/connected/?connected-app=liveit');
+   assert.equal(identity.manifest?.scope,'/partners/connected/');
    const host=page.locator('section[aria-label="LiveIt connected workspace"]');
    await host.waitFor({state:'visible',timeout:40000}).catch(async()=>{
     throw Error('Actual KeepIt owner host not mounted: '+JSON.stringify(await inspect()));
    });
+   const noteDrawer=host.locator('#connected-note-tools');
+   await noteDrawer.waitFor({state:'visible',timeout:15000});
+   assert.equal(await noteDrawer.getAttribute('open'),null,'KeepIt note tools must begin collapsed');
+   assert.equal(await host.getByRole('button',{name:'Return to KeepIt'}).count(),0,
+    'LiveIt must not have a Return to KeepIt parent control');
    const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');
    await frame.locator('#app .app-shell').waitFor({state:'visible',timeout:40000});
    // The owner can launch each first-party app through the connected menu
@@ -114,7 +136,7 @@ try{
     const uri=new URL(await a.getAttribute('href'),origin);
     assert.equal(uri.origin,origin);
     assert.equal(uri.pathname,'/partners/connected/');
-    assert.equal(uri.searchParams.get('connected-app'),id==='keepit'?null:id);
+    assert.equal(uri.searchParams.get('connected-app'),id);
    }
    await page.locator('#connected-apps-toggle').click();
    await frame.locator('#liveit-apps-button').click();
@@ -130,6 +152,7 @@ try{
    await frame.locator('#captureBody').fill(body);
    await frame.locator('[data-action="capture-save"]').first().click();
    await frame.locator('#captureDialog').waitFor({state:'hidden',timeout:30000});
+   await noteDrawer.locator('summary').click();
    await host.getByRole('button',{name:'Refresh LiveIt records'}).click();
    const target=host.locator('select[aria-label="LiveIt note target"]');
    await page.waitForFunction(()=>document.querySelector(
