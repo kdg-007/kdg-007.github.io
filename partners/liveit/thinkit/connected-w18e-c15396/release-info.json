@@ -1,0 +1,14 @@
+{
+  "schema": "keepit.connected-liveit.runtime.v1",
+  "origin": "https://kdg-007.github.io",
+  "baseLiveItSource": "c15396ee7cd1cba9b5e550fd1b2b18873351473d",
+  "version": "W18E-connected",
+  "changes": [
+    "APP_LINKS URLs only"
+  ],
+  "keepItFirstPartyHostRequired": true,
+  "oneDriveVerified": false,
+  "standaloneDataMigrated": false,
+  "knownRestrictions": "LiveIt connected toolbar opens native KeepIt notes only when used within the first-party host",
+  "parentVersion": "partners/liveit/thinkit/c15396ee7cd1cba9b5e5"
+}

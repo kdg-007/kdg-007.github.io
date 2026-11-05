@@ -1,0 +1,27 @@
+{
+  "schema": "keepit.connected-hub.preview.v1",
+  "keepitRootUnchanged": true,
+  "keepitNativeNoteWriter": true,
+  "origin": "https://kdg-007.github.io",
+  "supportedApps": [
+    "liveit",
+    "thinkit",
+    "travelit"
+  ],
+  "liveitFrame": "/partners/liveit/thinkit/connected-w18e-c15396/index.html",
+  "travelitFrame": "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html",
+  "publicTestsPassed": true,
+  "oneDriveReadbackVerified": false,
+  "interAppOriginalDataMigration": "none",
+  "noteWriter": "KeepIt canonical compiled LocalLibrary/NoteUI",
+  "dataPreservation": "no automatic migration",
+  "connectedNavigation": true,
+  "standaloneLiveItPreserved": true,
+  "browserAcceptance": "Chromium and WebKit: LiveIt, TravelIt, ThinkIt create/save/reopen and 3 distinct canonical KeepIt originals",
+  "browserEvidenceUrl": "https://github.com/kdg-007/kdg-007.github.io/actions/runs/41962743518",
+  "physicalIPhoneAccepted": false,
+  "physicalMacAccepted": false,
+  "productionAccepted": false,
+  "existingCrossOriginDataMigrated": false,
+  "publicationStatus": "staged for first-party preview publication; no production or OneDrive acceptance"
+}

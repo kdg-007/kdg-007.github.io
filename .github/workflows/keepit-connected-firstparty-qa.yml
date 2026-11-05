@@ -1,0 +1,86 @@
+name: KeepIt connected first-party notes QA
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "partners/connected/**"
+      - "assets/library-app-connected-w18e.js"
+      - ".github/workflows/keepit-connected-firstparty-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify native owner, save/reopen and connected app hosts
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact KeepIt bundle provenance and only permitted routing change
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          const get=p=>readFileSync(p,'utf8');
+          const root=get('index.html'),connected=get('partners/connected/index.html');
+          const native=get('assets/library-app-TEDOLCCE.js');
+          const patched=get('assets/library-app-connected-w18e.js');
+          const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
+          const b='<script type="module" src="/assets/library-app-connected-w18e.js"></script>';
+          const from='h.src="/partners/liveit/thinkit/1a26c53e24e1b903260b/index.html"';
+          const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html"';
+          assert.equal(root.split(a).length,2);
+          assert.equal(native.split(from).length,2);
+          const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css">';
+          const navigationJS='<script src="/partners/connected/connected-nav.js" defer></script>';
+          assert.equal(connected,root.replace(a,b)
+            .replace('</head>',navigationCSS+'</head>')
+            .replace('</body>',navigationJS+'</body>'));
+          for(const url of ['liveit','keepit','thinkit','travelit'])
+            assert.ok(get('partners/connected/connected-nav.js').includes("id:'"+url+"'"));
+          assert.ok(get('partners/connected/connected-nav.css').includes('#connected-apps-nav'));
+          assert.equal(patched,native.replace(from,to));
+          const oldLiveIt=get('partners/liveit/thinkit/c15396ee7cd1cba9b5e5/app-8.js');
+          const connectedLiveIt=get('partners/liveit/thinkit/connected-w18e-c15396/app-8.js');
+          let expected=oldLiveIt;
+          for(const [a,b] of [
+            ["url:'https://kdg-007.github.io/'","url:'/partners/connected/'"],
+            ["url:'https://kdg-it.github.io/thinkit/'","url:'/partners/connected/?connected-app=thinkit'"],
+            ["url:'https://kdg-it.github.io/'","url:'/partners/connected/?connected-app=travelit'"]
+          ]) {
+            assert.equal(expected.split(a).length,2,'Expected a single pinned app link '+a);
+            expected=expected.replace(a,b);
+          }
+          assert.equal(connectedLiveIt,expected,'Connected LiveIt may ONLY change the three app routes');
+          const originalDir='partners/liveit/thinkit/c15396ee7cd1cba9b5e5';
+          const connectedDir='partners/liveit/thinkit/connected-w18e-c15396';
+          {
+            for(const file of ['index.html','app-0.js','app-1.js','app-2.js','app-3.js','app-4.js','app-5.js','app-6.js','app-7.js','app-9.js',
+                                'owned-liveit-hooks.js','keepit-note-client.mjs','style-0.css','style-1.css','style-2.css']){
+              assert.equal(get(connectedDir+'/'+file),get(originalDir+'/'+file),'Unexpected connected variant change: '+file);
+            }
+          }
+          for(const id of ['liveit','travelit','thinkit'])assert.ok(patched.includes(id));
+          const status=JSON.parse(get('partners/connected/status.json'));
+          assert.equal(status.oneDriveReadbackVerified,false);
+          assert.equal(status.interAppOriginalDataMigration,'none');
+          console.log('KEEPIT_CONNECTED_PINNED_WRITER_UNCHANGED_PASS');
+          JS
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install browser test runtime in disposable runner
+        shell: bash
+        run: |
+          printf '{"type":"module","private":true}\n' > package.json
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium webkit
+      - name: Exercise canonical KeepIt native-note create, save and reopen
+        shell: bash
+        timeout-minutes: 9
+        env:
+          CI: "true"
+        run: node partners/connected/first-party-native-notes.test.mjs
