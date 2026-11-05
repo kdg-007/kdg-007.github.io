@@ -294,6 +294,43 @@ try{
    assert.ok(inventory.notes.every(x=>x.version>=1&&/^[a-f0-9]{64}$/.test(x.digest)&&orig.has(x.id)),
      'Every committed KeepIt note must retain its own original bytes');
    console.log('KEEPIT_CONNECTED_THREE_CONSUMERS_ONE_CANONICAL_LIBRARY_'+tag+'_PASS');
+
+   // Close the original tab, reopen the actual KeepIt first-party hub in a
+   // fresh document, then read committed original IDs/digests in the SAME
+   // device browser profile. This tests navigation/restart durability without
+   // claiming a physical iPhone or remote OneDrive roundtrip.
+   await page.close();
+   const reopened=await ctx.newPage();
+   await reopened.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
+   await reopened.locator('#result-count').waitFor({state:'visible',timeout:35000});
+   const after=await reopened.evaluate(()=>new Promise((resolve,reject)=>{
+     const open=indexedDB.open('mylibrary-device-v1');
+     open.onupgradeneeded=()=>{open.transaction?.abort();reject(Error('Cold reopen cannot find the original KeepIt library'));};
+     open.onerror=()=>reject(open.error||Error('Cold reopen database read failed'));
+     open.onsuccess=()=>{
+       const db=open.result;
+       let tx;
+       try{tx=db.transaction(['items','originals'],'readonly');}
+       catch(e){db.close();reject(e);return;}
+       const items=tx.objectStore('items').getAll();
+       const originals=tx.objectStore('originals').getAllKeys();
+       tx.oncomplete=()=>{
+         const notes=(items.result||[]).filter(x=>x?.mime==='application/vnd.keepit.note'&&!x.trashedAt);
+         const keys=originals.result||[];
+         db.close();
+         resolve({notes:notes.map(x=>({id:x.id,version:x.version,digest:x.digest})),originals:keys});
+       };
+       tx.onerror=()=>{db.close();reject(tx.error||Error('Cold reopen transaction failed'));};
+       tx.onabort=()=>{db.close();reject(tx.error||Error('Cold reopen transaction aborted'));};
+     };
+   }));
+   const sortNotes=rows=>[...rows].sort((a,b)=>a.id.localeCompare(b.id));
+   assert.deepEqual(sortNotes(after.notes),sortNotes(inventory.notes),
+     'A fresh KeepIt tab must preserve all three consumers native note identities, versions and digests');
+   assert.ok(after.notes.every(n=>after.originals.includes(n.id)),
+     'A fresh KeepIt tab must retain every canonical native note original');
+   console.log('KEEPIT_CONNECTED_THREE_CONSUMERS_COLD_TAB_REOPEN_'+tag+'_PASS');
+   await reopened.close();
   }finally{await ctx.close();await browser.close();browser=null;}
  }
  console.log('KEEPIT_CONNECTED_FIRST_PARTY_DISPOSABLE_QA_PASS');
