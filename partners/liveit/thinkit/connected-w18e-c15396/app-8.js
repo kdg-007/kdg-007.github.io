@@ -76,7 +76,7 @@
     try{localStorage.setItem(LAYOUT_PREF_KEY,JSON.stringify({leftMode:ui.leftMode,rightMode:ui.rightMode,focus:ui.focus}));}catch{}
   }
   const APP_LINKS=Object.freeze([
-    Object.freeze({id:'keepit',name:'KeepIt',description:'Notes and documents',url:'/partners/connected/'}),
+    Object.freeze({id:'keepit',name:'KeepIt',description:'Notes and documents',url:'/partners/connected/?connected-app=keepit'}),
     Object.freeze({id:'thinkit',name:'ThinkIt',description:'Diagrams and ideas',url:'/partners/connected/?connected-app=thinkit'}),
     Object.freeze({id:'travelit',name:'TravelIt',description:'Trips and itineraries',url:'/partners/connected/?connected-app=travelit'})
   ]);
