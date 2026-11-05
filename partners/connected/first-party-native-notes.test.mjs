@@ -67,14 +67,22 @@ try{
       const originalsById=new Map((originals.result||[]).map(i=>[i.id,i]));
       try{
        const notes=await Promise.all(rows.map(async i=>{
-        const original=originalsById.get(i.id),blob=original?.blob;
-        const raw=blob instanceof Blob?await blob.slice(0,Math.min(blob.size,128*1024)).text():'';
+        const original=originalsById.get(i.id),stored=original?.blobData,legacy=original?.blob;
+        // KeepIt's browser-safe persistence may store binary originals as blobData
+        // (ArrayBuffer or a typed array), rather than as a direct Blob.
+        const source=legacy instanceof Blob?legacy:
+          stored instanceof Blob?stored:
+          (stored instanceof ArrayBuffer||ArrayBuffer.isView(stored))?
+            new Blob([stored],{type:original?.mime||'application/octet-stream'}):null;
+        const raw=source?await source.slice(0,Math.min(source.size,128*1024)).text():'';
         return {version:i.version,digestValid:/^[a-f0-9]{64}$/.test(i.digest||''),
                 originalRowPresent:!!original,originalRowKeys:original?Object.keys(original):[],
-                binaryType:blob?.constructor?.name||typeof blob,
-                binaryTag:Object.prototype.toString.call(blob),
-                binaryIsTypedArray:ArrayBuffer.isView(blob),
-                binaryByteLength:blob?.byteLength??blob?.size??null,
+                binaryType:legacy?.constructor?.name||typeof legacy,
+                binaryDataType:stored?.constructor?.name||typeof stored,
+                binaryDataTag:Object.prototype.toString.call(stored),
+                binaryIsTypedArray:ArrayBuffer.isView(stored),
+                binaryByteLength:stored?.byteLength??stored?.size??null,
+                decodedOriginalPresent:!!source,
                 containsExpected:raw.includes(expected)};
        }));
        resolve({noteCount:notes.length,matchingOriginals:notes.filter(x=>x.containsExpected).length,
