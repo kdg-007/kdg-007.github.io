@@ -175,6 +175,19 @@ try{
    // in ThinkIt's original record; KeepIt retains the only note body.
    await page.setViewportSize({width:1200,height:860});
    const thinkFrame=page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]');
+   // ThinkIt starts with an explicit "Create Blank Project" welcome state.
+   // Never bypass that user-mediated workflow or inject a synthetic diagram.
+   const start=thinkFrame.locator('#diStartScreen');
+   if(await start.isVisible()){
+     await thinkFrame.locator('#diStartCreate').click();
+     await thinkFrame.locator('[data-project-mode="mind"]').click();
+     await thinkFrame.locator('#projectStartName').fill('KeepIt-connected QA Mind Map');
+     await thinkFrame.getByRole('button',{name:'Create blank project'}).click();
+   }
+   const topicShape=thinkFrame.locator('#shapeLibrary .shape-card[data-shape="topic"]');
+   await topicShape.waitFor({state:'visible',timeout:12000});
+   await topicShape.click();
+   await thinkFrame.locator('body').press('Escape');
    const mindTab=thinkFrame.locator('#pageTabs .page-tab[title*="Mind Map"]');
    await mindTab.waitFor({state:'visible',timeout:9000}).catch(async()=>{
      const snapshot=await thinkFrame.locator('body').evaluate(el=>({
