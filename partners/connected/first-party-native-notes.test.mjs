@@ -171,6 +171,51 @@ try{
    await page.goto(origin+'/partners/connected/?connected-app=thinkit',{waitUntil:'domcontentloaded'});
    await page.locator('#thinkit-host-panel').waitFor({state:'visible',timeout:40000});
    console.log('KEEPIT_CONNECTED_THINKIT_NATIVE_HOST_MOUNT_'+tag+'_PASS');
+   // Actual Mind Map topic -> native KeepIt editor. Keep project/topic link
+   // in ThinkIt's original record; KeepIt retains the only note body.
+   await page.setViewportSize({width:1200,height:860});
+   const thinkFrame=page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]');
+   const mindTab=thinkFrame.locator('#pageTabs .page-tab[title*="Mind Map"]');
+   await mindTab.waitFor({state:'visible',timeout:25000});
+   await mindTab.click();
+   await thinkFrame.locator('#btnMindNotes').waitFor({state:'visible',timeout:15000});
+   await thinkFrame.locator('#btnMindNotes').click();
+   await thinkFrame.locator('#mindOpenKeepItNative').waitFor({state:'visible',timeout:15000});
+   await thinkFrame.locator('#mindOpenKeepItNative').click();
+   await note.waitFor({state:'visible',timeout:30000}).catch(async()=>{
+     throw Error('ThinkIt native note editor failed to open: '+JSON.stringify({
+       body:(await page.locator('#thinkit-host-panel').innerText()).slice(0,600),errors
+     }));
+   });
+   const thinkEditor=note.locator('.note-editor [contenteditable="true"]');
+   await thinkEditor.waitFor({state:'visible',timeout:25000});
+   const thinkNote='KeepIt canonical Mind Map note '+tag;
+   await thinkEditor.click();
+   await thinkEditor.pressSequentially(thinkNote,{delay:10});
+   await page.waitForFunction(text=>
+      document.querySelector('dialog.note-dialog .note-editor [contenteditable="true"]')?.textContent?.includes(text),
+      thinkNote,{timeout:15000});
+   await note.locator('.note-actions').getByRole('button',{name:'Save',exact:true}).click();
+   await page.waitForFunction(text=>{
+     const d=document.querySelector('dialog.note-dialog');
+     return d?.dataset.mode==='edit' &&
+       d.querySelector('.note-editor')?.textContent?.includes(text) &&
+       d.querySelector('.note-status')?.textContent?.includes('Verified in KeepIt');
+   },thinkNote,{timeout:30000}).catch(async()=>{
+     throw Error('ThinkIt native note save not verified: '+JSON.stringify({
+       status:await note.locator('.note-status').textContent(),errors
+     }));
+   });
+   await note.locator('button.note-exit').click();
+   await note.waitFor({state:'hidden',timeout:15000});
+   await thinkFrame.locator('#btnMindNotes').click();
+   await thinkFrame.locator('#mindOpenKeepItNative').click();
+   await note.waitFor({state:'visible',timeout:30000});
+   await page.waitForFunction(text=>document.querySelector('dialog.note-dialog')?.textContent?.includes(text),
+      thinkNote,{timeout:25000});
+   await note.locator('button.note-exit').click();
+   await note.waitFor({state:'hidden'});
+   console.log('KEEPIT_CONNECTED_THINKIT_NATIVE_CREATE_SAVE_REOPEN_'+tag+'_PASS');
   }finally{await ctx.close();await browser.close();browser=null;}
  }
  console.log('KEEPIT_CONNECTED_FIRST_PARTY_DISPOSABLE_QA_PASS');
