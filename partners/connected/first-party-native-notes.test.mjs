@@ -141,7 +141,11 @@ try{
    const travelEditor=note.locator('.note-editor [contenteditable="true"]');
    await travelEditor.waitFor({state:'visible',timeout:25000});
    const travelNote='Saved via TravelIt in KeepIt canonical library '+tag;
-   await travelEditor.fill(travelNote);
+   await travelEditor.click();
+   await travelEditor.pressSequentially(travelNote,{delay:12});
+   await page.waitForFunction(text=>
+     document.querySelector('dialog.note-dialog .note-editor [contenteditable="true"]')?.textContent?.includes(text),
+     travelNote,{timeout:15000});
    await note.locator('.note-actions').getByRole('button',{name:'Save',exact:true}).click();
    await page.waitForFunction(text=>{
     const d=document.querySelector('dialog.note-dialog');
