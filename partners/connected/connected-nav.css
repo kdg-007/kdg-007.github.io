@@ -1,0 +1,26 @@
+/* One neutral shell control for KeepIt-owned first-party integration.
+   No changes to the native editor, existing LiveIt data or app rendering. */
+#connected-apps-nav{position:fixed;top:9px;right:10px;z-index:1300;
+ font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ max-width:calc(100vw - 20px);color:#e9f1f4}
+#connected-apps-toggle{appearance:none;border:1px solid #7b9b9c;border-radius:11px;
+ background:#17384b;color:#f2f7f8;box-shadow:0 5px 20px #041b2880;
+ padding:9px 13px;min-height:44px;font:inherit;font-weight:750;cursor:pointer}
+#connected-apps-toggle:focus-visible,#connected-apps-list a:focus-visible{outline:3px solid #69d6ca;outline-offset:3px}
+#connected-apps-list[hidden]{display:none!important}
+#connected-apps-list{position:absolute;top:calc(100% + 6px);right:0;
+ width:min(275px,calc(100vw - 20px));padding:7px;
+ background:#152b3b;color:#e9f1f4;border:1px solid #3b5769;border-radius:13px;
+ box-shadow:0 14px 35px #071720b5}
+#connected-apps-list a{display:flex;flex-direction:column;gap:2px;border-radius:8px;
+ color:#e8f5f4;text-decoration:none;padding:10px 12px;min-height:44px;font-weight:750}
+#connected-apps-list a[aria-current="page"]{background:#2b4f58;color:#9ce7db}
+#connected-apps-list a:hover{background:#274254}
+#connected-apps-list small{font-size:11px;font-weight:450;color:#b5cbd2}
+#connected-apps-list .connected-apps-notice{padding:10px 11px 4px;
+ border-top:1px solid #3e596b;margin:7px 0 0;color:#bdcbd5;font-size:11px;line-height:1.5}
+@media(max-width:480px){
+ #connected-apps-nav{top:auto;right:11px;bottom:max(12px,env(safe-area-inset-bottom))}
+ #connected-apps-list{top:auto;bottom:calc(100% + 7px)}
+ #connected-apps-toggle{padding:8px 12px}
+}
