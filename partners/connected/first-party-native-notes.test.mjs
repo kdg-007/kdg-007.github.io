@@ -75,12 +75,24 @@ try{
    const noteText='Saved in canonical KeepIt library via W18E LiveIt '+tag;
    await editor.fill(noteText);
    await note.locator('.note-actions').getByRole('button',{name:'Save',exact:true}).click();
-   await page.waitForFunction(text=>{
-    const d=document.querySelector('dialog.note-dialog');
-    return d?.dataset.mode==='preview' &&
-     d.querySelector('.note-reader')?.textContent?.includes(text) &&
-     d.querySelector('.note-status')?.textContent?.includes('Saved on this device');
-   },noteText,{timeout:45000});
+   try {
+    await page.waitForFunction(text=>{
+     const d=document.querySelector('dialog.note-dialog');
+     return d?.dataset.mode==='preview' &&
+      d.querySelector('.note-reader')?.textContent?.includes(text) &&
+      d.querySelector('.note-status')?.textContent?.includes('Saved on this device');
+    },noteText,{timeout:18000});
+   } catch(e) {
+    const diagnostics=await page.evaluate(()=>{
+     const d=document.querySelector('dialog.note-dialog');
+     return {mode:d?.dataset.mode,open:d?.open,status:d?.querySelector('.note-status')?.textContent,
+      reader:d?.querySelector('.note-reader')?.textContent?.slice(0,250),
+      editor:d?.querySelector('.note-editor')?.textContent?.slice(0,250),
+      buttons:[...d?.querySelectorAll('button')||[]].map(x=>({text:x.textContent,disabled:x.disabled})).slice(-12),
+      error:[...document.querySelectorAll('[role=alert],.message.error')].map(x=>x.textContent?.slice(0,180)).slice(0,8)};
+    });
+    throw Error('Native KeepIt save evidence unresolved: '+JSON.stringify({diagnostics,errors,hostStatus:await host.getByRole('status').textContent()}));
+   }
    assert.match(await note.locator('.note-reader').innerText(),/Saved in canonical KeepIt library/);
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:20000});
