@@ -1,4 +1,4 @@
-# SIMA Unified Interface v1
+# Shared Application Interface v1
 
 **Owner model:** LiveIt is the primary home/dashboard. KeepIt is the authoritative notes/files repository. ThinkIt is diagramming, TravelIt is travel planning, and PlanIt will be integrated after its own release gate.
 
@@ -29,7 +29,7 @@ This is a **presentation-only harmonization** of existing first-party preview ap
 
 ## Scope and testing
 
-Shared CSS: `/partners/design/sima-family-v1.css`. The active connected previews consume this file as an additive final stylesheet. No original JavaScript/CSS runtime assets are modified.
+Shared CSS: `/partners/design/app-family-v1.css`. The active connected previews consume this file as an additive final stylesheet. No original JavaScript/CSS runtime assets are modified.
 
 LiveIt W18E and connected LiveIt retain original scripts and saved data. TravelIt and ThinkIt retain their app-specific information architecture and existing JS. Connected KeepIt loads styles from the existing nav CSS while its compiled native writer and QA OneDrive guards remain unchanged.
 

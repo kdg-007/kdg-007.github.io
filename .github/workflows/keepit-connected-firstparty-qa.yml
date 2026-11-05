@@ -89,7 +89,7 @@ jobs:
         env:
           CI: "true"
         run: node partners/connected/first-party-native-notes.test.mjs
-      - name: Verify shared SIMA UI tokens in Chromium and WebKit
+      - name: Verify common app UI tokens in Chromium and WebKit
         shell: bash
         timeout-minutes: 6
-        run: node partners/design/sima-ui-v1.test.mjs
+        run: node partners/design/app-ui-v1.test.mjs

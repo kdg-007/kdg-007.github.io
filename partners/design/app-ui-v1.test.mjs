@@ -8,7 +8,7 @@ import {resolve,join,extname,sep} from 'node:path';
 import {createRequire} from 'node:module';
 const require=createRequire(resolve(process.cwd(),'package.json'));
 const {chromium,webkit}=require('playwright');
-const root=resolve('.'),tmp=mkdtempSync(join(tmpdir(),'sima-ui-v1-'));
+const root=resolve('.'),tmp=mkdtempSync(join(tmpdir(),'app-ui-v1-'));
 const key=join(tmp,'key.pem'),cert=join(tmp,'cert.pem');
 execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes',
  '-keyout',key,'-out',cert,'-days','1','-subj','/CN=127.0.0.1',
@@ -52,28 +52,28 @@ try {
     const page=await ctx.newPage();
     await page.goto(origin+entry.path,{waitUntil:'domcontentloaded'});
     await page.locator(entry.selector).waitFor({state:'visible',timeout:30000});
-    assert.equal(await page.locator('html').getAttribute('data-sima-app'),entry.app);
+    assert.equal(await page.locator('html').getAttribute('data-suite-app'),entry.app);
     const palette=await page.evaluate(onBody=>getComputedStyle(onBody?document.body:
       document.documentElement).getPropertyValue(onBody?'--paper':
-      document.documentElement.dataset.simaApp==='liveit'?'--ground':'--paper').trim(),
+      document.documentElement.dataset.suiteApp==='liveit'?'--ground':'--paper').trim(),
       !!entry.onBody);
     assert.equal(palette,entry.expected,entry.app+' token mismatch');
     const loaded=await page.evaluate(()=>[...document.styleSheets].some(x=>
-      x.href?.includes('/partners/design/sima-family-v1.css')));
+      x.href?.includes('/partners/design/app-family-v1.css')));
     assert.ok(loaded,'Shared CSS must load in '+entry.app);
-    console.log('SIMA_UI_V1_'+entry.app.toUpperCase()+'_'+engine.name().toUpperCase()+'_PASS');
+    console.log('SHARED_APP_UI_V1_'+entry.app.toUpperCase()+'_'+engine.name().toUpperCase()+'_PASS');
     await page.close();
    }
    const page=await ctx.newPage();
    await page.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
    await page.locator('#connected-apps-toggle').waitFor({state:'visible',timeout:30000});
    const colors=await page.evaluate(()=>getComputedStyle(document.documentElement)
-      .getPropertyValue('--sima-navy-900').trim());
+      .getPropertyValue('--suite-navy-900').trim());
    assert.equal(colors,'#102d40','Connected KeepIt did not receive suite tokens');
-   console.log('SIMA_UI_V1_KEEPIT_CONNECTED_'+engine.name().toUpperCase()+'_PASS');
+   console.log('SHARED_APP_UI_V1_KEEPIT_CONNECTED_'+engine.name().toUpperCase()+'_PASS');
    await page.close();
   }finally{await ctx.close();await browser.close();browser=null;}
  }
- console.log('SIMA_UI_V1_PRESENTATION_SMOKE_PASS');
+ console.log('SHARED_APP_UI_V1_PRESENTATION_SMOKE_PASS');
 }catch(e){console.error(e?.stack||String(e));process.exitCode=1;}
 finally{await browser?.close();await new Promise(ok=>server.close(ok));rmSync(tmp,{recursive:true,force:true});}

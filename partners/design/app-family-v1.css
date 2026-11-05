@@ -1,5 +1,5 @@
 /*
- * SIMA Unified Interface v1 — PRESENTATION ONLY
+ * Shared Application Interface v1 — PRESENTATION ONLY
  * LiveIt home, KeepIt canonical files/notes, ThinkIt diagrams, TravelIt trips.
  * Loaded after existing app styles. No scripts, remote assets, data writes, storage,
  * navigation rewrites, or component position changes.
@@ -8,52 +8,52 @@
  * focus, controls, density, and the navigation language.
  */
 :root {
-  --sima-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
-  --sima-navy-950:#10212d;
-  --sima-navy-900:#102d40;
-  --sima-navy-800:#1c3444;
-  --sima-navy-700:#274659;
-  --sima-teal-600:#0d7475;
-  --sima-teal-300:#72d2c5;
-  --sima-paper:#f7f7f3;
-  --sima-white:#ffffff;
-  --sima-ink:#19384a;
-  --sima-muted:#5d7380;
-  --sima-line:#d7e2e5;
-  --sima-lilac:#a99add;
-  --sima-amber:#b8893e;
-  --sima-danger:#ba5660;
-  --sima-radius-sm:8px;
-  --sima-radius-md:12px;
-  --sima-radius-lg:16px;
-  --sima-touch:44px;
-  --sima-shadow:0 5px 24px rgba(6,31,45,.09);
+  --suite-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+  --suite-navy-950:#10212d;
+  --suite-navy-900:#102d40;
+  --suite-navy-800:#1c3444;
+  --suite-navy-700:#274659;
+  --suite-teal-600:#0d7475;
+  --suite-teal-300:#72d2c5;
+  --suite-paper:#f7f7f3;
+  --suite-white:#ffffff;
+  --suite-ink:#19384a;
+  --suite-muted:#5d7380;
+  --suite-line:#d7e2e5;
+  --suite-lilac:#a99add;
+  --suite-amber:#b8893e;
+  --suite-danger:#ba5660;
+  --suite-radius-sm:8px;
+  --suite-radius-md:12px;
+  --suite-radius-lg:16px;
+  --suite-touch:44px;
+  --suite-shadow:0 5px 24px rgba(6,31,45,.09);
 }
-html[data-sima-app] {
-  font-family:var(--sima-font);
+html[data-suite-app] {
+  font-family:var(--suite-font);
   font-synthesis:none;
 }
-html[data-sima-app] :where(button,input,select,textarea) {
-  font-family:var(--sima-font);
+html[data-suite-app] :where(button,input,select,textarea) {
+  font-family:var(--suite-font);
 }
-html[data-sima-app] :where(button,a,input,select,textarea,[role="button"]):focus-visible {
-  outline:3px solid var(--sima-focus,#72d2c5);
+html[data-suite-app] :where(button,a,input,select,textarea,[role="button"]):focus-visible {
+  outline:3px solid var(--suite-focus,#72d2c5);
   outline-offset:2px;
 }
-html[data-sima-app] :where(.panel,.summary-tile,.feed-card,.card,.trip-card,.modal,.dialog-body) {
-  border-radius:var(--sima-radius-lg);
+html[data-suite-app] :where(.panel,.summary-tile,.feed-card,.card,.trip-card,.modal,.dialog-body) {
+  border-radius:var(--suite-radius-lg);
 }
-html[data-sima-app] :where(.button,.top-btn,.nav-button,.navitem,.chip-button,.icon-btn,.icon-button) {
-  border-radius:var(--sima-radius-md);
+html[data-suite-app] :where(.button,.top-btn,.nav-button,.navitem,.chip-button,.icon-btn,.icon-button) {
+  border-radius:var(--suite-radius-md);
 }
-html[data-sima-app] :where(.main-content,.app-main,.feed-main,.schedule-main,.panel,.card) {
+html[data-suite-app] :where(.main-content,.app-main,.feed-main,.schedule-main,.panel,.card) {
   min-width:0;
 }
-html[data-sima-app] :where(.feed-title,.task-label,.schedule-title,.card-title,.page-sub) {
+html[data-suite-app] :where(.feed-title,.task-label,.schedule-title,.card-title,.page-sub) {
   overflow-wrap:anywhere;
 }
 @media(prefers-reduced-motion:reduce){
-  html[data-sima-app] *,html[data-sima-app] *::before,html[data-sima-app] *::after {
+  html[data-suite-app] *,html[data-suite-app] *::before,html[data-suite-app] *::after {
     scroll-behavior:auto!important;
     animation-duration:.01ms!important;
     transition-duration:.01ms!important;
@@ -61,16 +61,16 @@ html[data-sima-app] :where(.feed-title,.task-label,.schedule-title,.card-title,.
 }
 
 /* LiveIt: preserve existing W18E Work/Personal functionality and dark preference. */
-html[data-sima-app="liveit"][data-theme="dark"]{
-  --sima-focus:#72d2c5;
+html[data-suite-app="liveit"][data-theme="dark"]{
+  --suite-focus:#72d2c5;
   --navy:#e9f3f5;--teal:#72d2c5;--ink:#e7f0f2;--muted:#b3c6ce;
   --ground:#10212d;--chrome:#162c3b;--surface:#1c3444;
   --surface-raised:#223c4d;--soft:#263f4f;--panel-tint:#243d4d;
   --line:#3b5562;--accent-soft:#294b50;--focus:#a2e3da;
   --accent-on:#10212d;--shadow:0 8px 28px rgba(0,0,0,.22);
 }
-html[data-sima-app="liveit"][data-theme="light"]{
-  --sima-focus:#0d7475;
+html[data-suite-app="liveit"][data-theme="light"]{
+  --suite-focus:#0d7475;
   --navy:#102d40;--teal:#0d7475;--ink:#19384a;--muted:#5d7380;
   --ground:#f7f7f3;--chrome:#fff;--surface:#fff;--surface-raised:#fff;
   --soft:#edf5f4;--panel-tint:#eef5f4;--line:#d7e2e5;
@@ -78,87 +78,87 @@ html[data-sima-app="liveit"][data-theme="light"]{
   --shadow:0 7px 24px rgba(16,45,64,.07);
 }
 /* Personal retains a small lilac identity without changing the suite's surfaces. */
-html[data-sima-app="liveit"][data-theme="dark"][data-workspace="personal"]{
+html[data-suite-app="liveit"][data-theme="dark"][data-workspace="personal"]{
   --workspace-strong:#c5b5ee;--workspace-banner:#2a3851;
   --workspace-outline:#857da9;--workspace-ink:#ede5ff;
   --teal:#c5b5ee;--accent-soft:#3b4058;
 }
-html[data-sima-app="liveit"][data-theme="light"][data-workspace="personal"]{
+html[data-suite-app="liveit"][data-theme="light"][data-workspace="personal"]{
   --workspace-strong:#7665a7;--workspace-banner:#f0edf8;
   --workspace-outline:#b2a4d1;--workspace-ink:#463c6a;
   --teal:#7665a7;--accent-soft:#ebe7f5;
 }
-html[data-sima-app="liveit"] :where(.panel,.feed-card,.summary-tile,.quick-action-tile){
+html[data-suite-app="liveit"] :where(.panel,.feed-card,.summary-tile,.quick-action-tile){
   box-shadow:none;
 }
-html[data-sima-app="liveit"] .button{
+html[data-suite-app="liveit"] .button{
   min-height:40px;
 }
-html[data-sima-app="liveit"] .quick-action-tile{
+html[data-suite-app="liveit"] .quick-action-tile{
   min-height:64px;
 }
-html[data-sima-app="liveit"] .topbar{
+html[data-suite-app="liveit"] .topbar{
   border-bottom:1px solid var(--line);
 }
 
 /* ThinkIt: same paper/navy/teal system but preserve high-density CAD-like tools. */
-html[data-sima-app="thinkit"] body[data-theme="dark"] {
-  --sima-focus:#72d2c5;
+html[data-suite-app="thinkit"] body[data-theme="dark"] {
+  --suite-focus:#72d2c5;
   --paper:#10212d;--surface:#1c3444;--surface2:#223c4d;
   --navy:#e9f3f5;--teal:#72d2c5;--teal-light:#2b5155;
   --ink:#e7f0f2;--muted:#b3c6ce;--border:#3b5562;
   --toolbar:#162c3b;--outline:#517079;--focus:#72d2c5;
   --shadow:0 8px 28px rgba(0,0,0,.22);
 }
-html[data-sima-app="thinkit"] body[data-theme="light"] {
-  --sima-focus:#0d7475;
+html[data-suite-app="thinkit"] body[data-theme="light"] {
+  --suite-focus:#0d7475;
   --paper:#f7f7f3;--surface:#fff;--surface2:#edf5f4;
   --navy:#102d40;--teal:#0d7475;--teal-light:#e0f1ed;
   --ink:#19384a;--muted:#5d7380;--border:#d7e2e5;
   --toolbar:#fff;--outline:#d7e2e5;--focus:#0d7475;
 }
-html[data-sima-app="thinkit"] :where(.topbar,.di-menubar,.di-ribbon){
+html[data-suite-app="thinkit"] :where(.topbar,.di-menubar,.di-ribbon){
   border-color:var(--border);
 }
 /* Do NOT restyle diagram canvas, shapes, lines, print pages, or export colors. */
 
 /* TravelIt: keep its editorial Explore/Today content; same shell materials. */
-html[data-sima-app="travelit"] {
-  --sima-focus:#0d7475;
+html[data-suite-app="travelit"] {
+  --suite-focus:#0d7475;
   --navy:#102d40;--navy-2:#274659;--teal:#0d7475;
   --mint:#e0f1ed;--paper:#f7f7f3;--card:#fff;
   --line:#d7e2e5;--text:#19384a;--muted:#5d7380;
   --red:#a93c46;--shadow:0 7px 24px rgba(16,45,64,.07);
 }
-html[data-sima-app="travelit"] :where(.panel,.card,.modal,.trip-card){
+html[data-suite-app="travelit"] :where(.panel,.card,.modal,.trip-card){
   box-shadow:none;
 }
-html[data-sima-app="travelit"] .sidebar{
-  background:var(--sima-navy-900);
+html[data-suite-app="travelit"] .sidebar{
+  background:var(--suite-navy-900);
 }
-html[data-sima-app="travelit"] .brand-symbol{
-  background:var(--sima-teal-300);
-  color:var(--sima-navy-900);
+html[data-suite-app="travelit"] .brand-symbol{
+  background:var(--suite-teal-300);
+  color:var(--suite-navy-900);
 }
-html[data-sima-app="travelit"] .topbar{
+html[data-suite-app="travelit"] .topbar{
   border-bottom-color:var(--line);
 }
-html[data-sima-app="travelit"] .button{
+html[data-suite-app="travelit"] .button{
   min-height:40px;
 }
 
 /* KeepIt integrated preview: production KeepIt remains untouched. */
 .library-shell {
-  --sima-focus:#0d7475;
-  --sima-radius-sm:8px;--sima-radius-md:12px;--sima-radius-lg:16px;
+  --suite-focus:#0d7475;
+  --suite-radius-sm:8px;--suite-radius-md:12px;--suite-radius-lg:16px;
 }
 .library-shell :where(.library-top,.item-card,.item-dialog,.backup-dialog) {
-  border-color:var(--sima-line);
+  border-color:var(--suite-line);
 }
 .library-shell :where(.primary,.secondary,.icon-button,.side-backup){
-  border-radius:var(--sima-radius-md);
+  border-radius:var(--suite-radius-md);
 }
 .library-shell :where(button,a,input,select,textarea):focus-visible{
-  outline:3px solid var(--sima-focus);
+  outline:3px solid var(--suite-focus);
   outline-offset:2px;
 }
