@@ -176,7 +176,17 @@ try{
    await page.setViewportSize({width:1200,height:860});
    const thinkFrame=page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]');
    const mindTab=thinkFrame.locator('#pageTabs .page-tab[title*="Mind Map"]');
-   await mindTab.waitFor({state:'visible',timeout:25000});
+   await mindTab.waitFor({state:'visible',timeout:9000}).catch(async()=>{
+     const snapshot=await thinkFrame.locator('body').evaluate(el=>({
+      className:el.className,
+      text:el.innerText.slice(0,1250),
+      tabs:[...el.querySelectorAll('#pageTabs button')].map(x=>({name:x.textContent,title:x.title,visible:!!x.getClientRects().length})).slice(0,12),
+      current:el.querySelector('#modePill')?.textContent,
+      start:el.querySelector('#diStartDialog')?.textContent?.slice(0,500),
+      errors:[...el.querySelectorAll('[role="alert"]')].map(x=>x.textContent).slice(0,6)
+     }));
+     throw Error('ThinkIt Mind Map page not available in current startup: '+JSON.stringify({snapshot,errors}));
+   });
    await mindTab.click();
    await thinkFrame.locator('#btnMindNotes').waitFor({state:'visible',timeout:15000});
    await thinkFrame.locator('#btnMindNotes').click();
