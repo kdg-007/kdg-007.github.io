@@ -78,9 +78,12 @@ try{
    try {
     await page.waitForFunction(text=>{
      const d=document.querySelector('dialog.note-dialog');
-     return d?.dataset.mode==='preview' &&
-      d.querySelector('.note-reader')?.textContent?.includes(text) &&
-      d.querySelector('.note-status')?.textContent?.includes('Saved on this device');
+     // The current KeepIt native continuous-save editor correctly REMAINS
+     // in edit mode. Its verified local-original status, not a preview
+     // transition, is the durable-save acknowledgement.
+     return d?.dataset.mode==='edit' &&
+      d.querySelector('.note-editor')?.textContent?.includes(text) &&
+      d.querySelector('.note-status')?.textContent?.includes('Verified in KeepIt');
     },noteText,{timeout:18000});
    } catch(e) {
     const diagnostics=await page.evaluate(()=>{
@@ -93,7 +96,8 @@ try{
     });
     throw Error('Native KeepIt save evidence unresolved: '+JSON.stringify({diagnostics,errors,hostStatus:await host.getByRole('status').textContent()}));
    }
-   assert.match(await note.locator('.note-reader').innerText(),/Saved in canonical KeepIt library/);
+   assert.match(await note.locator('.note-editor').innerText(),/Saved in canonical KeepIt library/);
+   assert.match(await note.locator('.note-status').innerText(),/Verified in KeepIt/);
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:20000});
    await host.getByRole('button',{name:'Open native note'}).click();
