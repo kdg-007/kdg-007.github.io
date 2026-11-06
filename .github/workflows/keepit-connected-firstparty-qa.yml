@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
-      - name: Verify exact KeepIt bundle provenance and only permitted routing change
+      - name: Verify exact KeepIt bundle provenance and permitted LiveIt changes
         shell: bash
         run: |
           node --input-type=module <<'JS'
@@ -99,7 +99,23 @@ jobs:
           assert.ok(navigationStyle.includes('section[aria-label="LiveIt connected workspace"] > .connected-note-tools'));
           assert.ok(navigationStyle.includes('visibility:hidden'));
           assert.ok(navigationStyle.includes('#connected-apps-list button#connected-note-tools-toggle'));
-          assert.equal(patched,native.replace(from,to));
+          const liveItStartupChanges=[
+            [from,to],
+            ['function Io(){if(!(!Ve||go||!de||!f||f.readOnly)){',
+             'function Io(){if(Ve&&!go&&(Ve.id==="liveit"||de&&f&&!f.readOnly)){'],
+            [',Ve.id==="liveit"){Y=Li({workspace:V,getLibrary:()=>f,',
+             ',Ve.id==="liveit"){Y=Li({workspace:V,getLibrary:()=>de?f:null,'],
+            ['async function c(){return(!g||!await g.verifyHost(g.host))&&(g=await at({consumer:"liveit",',
+             'async function c(){const library=t();if(!library||library.readOnly)throw Error("Connect a writable KeepIt library before opening a native note.");return(!g||!await g.verifyHost(g.host))&&(g=await at({consumer:"liveit",'],
+            ['Y?.notifyReady()', 'Y?.notifyReady?.()'],
+            ['Jo().then(Io)', 'Ve?.id==="liveit"&&Io();Jo().then(Io)']
+          ];
+          let expectedBundle=native;
+          for(const [before,after] of liveItStartupChanges){
+            assert.equal(expectedBundle.split(before).length,2,'Expected one pinned bundle change: '+before);
+            expectedBundle=expectedBundle.replace(before,after);
+          }
+          assert.equal(patched,expectedBundle,'Connected bundle must match the original outside the permitted LiveIt changes');
           const oldLiveIt=get('partners/liveit/thinkit/c15396ee7cd1cba9b5e5/app-8.js');
           const connectedLiveIt=get('partners/liveit/thinkit/connected-w18e-c15396/app-8.js');
           let expected=oldLiveIt;
