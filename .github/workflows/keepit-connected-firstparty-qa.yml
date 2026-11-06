@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - "partners/connected/**"
+      - "keepit-responsive-qa.js"
+      - "ops/ui/keepit-responsive-qa.js"
+      - ".github/workflows/keepit-pages.yml"
       - "partners/design/**"
       - "partners/liveit/thinkit/c15396ee7cd1cba9b5e5/index.html"
       - "partners/liveit/thinkit/connected-w18e-c15396/index.html"
@@ -73,6 +76,16 @@ jobs:
           const keepItManifest=JSON.parse(get('manifest.webmanifest'));
           assert.equal(keepItManifest.name,'KeepIt');
           assert.equal(keepItManifest.id,'/');
+          // This extension survives the guarded Pages publisher regenerating
+          // root index.html; it canonicalizes old /?connected-app= links.
+          const legacy=get('keepit-responsive-qa.js');
+          assert.equal(legacy,get('ops/ui/keepit-responsive-qa.js'),
+            'Pages-publisher canonical app navigation must match stable ops source');
+          assert.ok(root.includes('/keepit-responsive-qa.js?v=20261103b'));
+          assert.ok(legacy.includes("location.pathname==='/'"));
+          assert.ok(legacy.includes("destination=new URL('/partners/connected/',location.origin)"));
+          assert.ok(legacy.includes('location.replace(destination.pathname+destination.search+destination.hash)'));
+          assert.ok(legacy.includes("connected.searchParams.set('connected-app',label.toLowerCase())"));
           const connectedNav=get('partners/connected/connected-nav.js');
           for(const url of ['liveit','keepit','thinkit','travelit'])
             assert.ok(connectedNav.includes("id:'"+url+"'"));

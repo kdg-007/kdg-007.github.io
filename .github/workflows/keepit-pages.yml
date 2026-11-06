@@ -69,6 +69,40 @@ jobs:
           html.write_text(s.replace('</head>',css+'</head>').replace('</body>',js+'</body>'))
           print('Mobile QA interface overlay applied to exactly one compiled homepage')
           PY
+      - name: Preserve shared first-party interface styling in generated previews
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          pages=[
+              ('thinkit/index.html','thinkit'),
+              ('thinkit/36f8901ec722db162bcf/index.html','thinkit'),
+              ('partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html','travelit'),
+          ]
+          css='<link rel="stylesheet" href="/partners/design/app-family-v1.css">'
+          for rel,app in pages:
+              file=Path('_site')/rel
+              if not file.is_file():
+                  # Pinned snapshots can already exist on Pages outside the
+                  # latest transfer archive; preserve them without failing.
+                  if rel=='thinkit/36f8901ec722db162bcf/index.html':
+                      continue
+                  raise SystemExit('Missing first-party app preview: '+rel)
+              html=file.read_text()
+              original='<html lang="en">'
+              tagged='<html lang="en" data-suite-app="'+app+'">'
+              if tagged not in html:
+                  if html.count(original)!=1:
+                      raise SystemExit('Unexpected HTML root in '+rel)
+                  html=html.replace(original,tagged,1)
+              if css not in html:
+                  if html.count('</head>')!=1:
+                      raise SystemExit('Unexpected HTML head in '+rel)
+                  html=html.replace('</head>',css+'</head>',1)
+              file.write_text(html)
+          print('Shared LiveIt-compatible interface tokens pinned to all generated previews')
+          PY
       - name: Reject source, secrets, and non-QA builds
         shell: bash
         run: |

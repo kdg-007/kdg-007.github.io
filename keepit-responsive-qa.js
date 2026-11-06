@@ -1,6 +1,26 @@
 /* KeepIt QA app buttons and collapsible mobile tools. No storage/auth changes. */
 (()=>{
 'use strict';
+// The branch-backed Pages publisher regenerates index.html. Keep the legacy
+// route migration here in the stable extension loaded by that generated page.
+const appIds=['liveit','keepit','thinkit','travelit'];
+const requested=new URLSearchParams(location.search).getAll('connected-app');
+if(location.pathname==='/'&&requested.length===1&&appIds.includes(requested[0])){
+ const destination=new URL('/partners/connected/',location.origin);
+ destination.search=location.search;
+ destination.hash=location.hash;
+ location.replace(destination.pathname+destination.search+destination.hash);
+ return;
+}
+// Root KeepIt remains the separate notes/files workspace by default.
+document.addEventListener('click',event=>{
+ if(location.pathname!=='/')return;
+ const original=event.target?.closest?.('#thinkit-launch');
+ if(!original)return;
+ event.preventDefault();
+ event.stopImmediatePropagation();
+ window.open('/partners/connected/?connected-app=thinkit','_blank','noopener,noreferrer');
+},true);
 const mobile=window.matchMedia('(max-width:700px)');
 let navReady=false,qaReady=false,observer;
 function enhanceNav(){
@@ -17,7 +37,9 @@ function enhanceNav(){
   const url=new URL(anchor.getAttribute('href'),document.baseURI);
   if(url.origin!==new URL(document.baseURI).origin||url.pathname!=='/'||url.searchParams.get('connected-app')!==label.toLowerCase())return null;
   const b=document.createElement('button');b.type='button';b.className='secondary keepit-app-button';b.textContent=label;b.title='Open '+label+' in a new tab';
-  b.addEventListener('click',()=>{window.open(url.href,'_blank','noopener,noreferrer');});
+  const connected=new URL('/partners/connected/',url.origin);
+  connected.searchParams.set('connected-app',label.toLowerCase());
+  b.addEventListener('click',()=>{window.open(connected.href,'_blank','noopener,noreferrer');});
   return b;
  }
  const travelButton=button(travel,'TravelIt'),liveButton=button(live,'LiveIt');
@@ -37,6 +59,9 @@ function enhanceQa(){
   const open=panel.dataset.qaOpen!=='true';panel.dataset.qaOpen=String(open);
   toggle.setAttribute('aria-expanded',String(open));toggle.textContent=open?'Close QA':'QA tools';
  });
+ // This is an owner-facing library, not a perpetual engineering test console.
+ // The recovery tools remain explicitly available through the ?qa=1 URL.
+ toggle.hidden=new URLSearchParams(location.search).get('qa')!=='1';
  document.body.append(toggle);qaReady=true;return true;
 }
 function apply(){enhanceNav();enhanceQa();if(navReady&&qaReady)observer?.disconnect()}
