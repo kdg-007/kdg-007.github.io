@@ -451,6 +451,11 @@ try{
    await page.close();
    const reopened=await ctx.newPage();
    await reopened.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
+   await reopened.waitForURL(url=>{
+    const u=new URL(url);
+    return u.pathname==='/partners/connected/'&&u.searchParams.get('connected-app')==='liveit';
+   },{timeout:30000});
+   await reopened.waitForLoadState('load');
    await reopened.locator('#result-count').waitFor({state:'visible',timeout:35000});
    const after=await reopened.evaluate(()=>new Promise((resolve,reject)=>{
      const open=indexedDB.open('mylibrary-device-v1');
