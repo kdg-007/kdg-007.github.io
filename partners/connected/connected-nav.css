@@ -165,3 +165,9 @@ html[data-connected-app="keepit"] #connected-apps-nav{
 html[data-connected-app="keepit"] #connected-apps-toggle{
   box-shadow:0 5px 18px rgba(4,27,40,.24);
 }
+
+/* The connected KeepIt library launches sister apps through one Apps menu;
+   do not duplicate them as large, competing top-row library shortcuts. */
+html[data-connected-app="keepit"] :is(#connected-thinkit-launch,#connected-travelit-launch,#connected-liveit-launch){
+ display:none!important;
+}
