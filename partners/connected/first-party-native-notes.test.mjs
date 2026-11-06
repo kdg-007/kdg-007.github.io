@@ -37,6 +37,34 @@ try{
  for(const engine of [chromium,webkit]){
   browser=await engine.launch({headless:true});
   const tag=engine.name().toUpperCase();
+  const desktop=await browser.newContext({ignoreHTTPSErrors:true,
+   viewport:{width:1440,height:900},serviceWorkers:'block'});
+  try{
+   await desktop.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'
+    ?route.continue():route.abort());
+   const page=await desktop.newPage();
+   await page.goto(origin+'/partners/connected/?connected-app=liveit',{waitUntil:'domcontentloaded'});
+   const host=page.getByRole('region',{name:'LiveIt connected workspace'});
+   const frame=host.frameLocator('iframe[title="LiveIt journal workspace"]');
+   await frame.locator('#app .app-shell').waitFor({state:'visible',timeout:15000});
+   assert.equal(await host.locator('.connected-shell-current').innerText(),'Today');
+
+   await frame.locator('.quick-actions-panel .quick-action-tile[data-shortcut="note"]').click();
+   await frame.locator('#captureBody').fill('LiveIt desktop capture without a KeepIt library');
+   await frame.locator('[data-action="capture-save"]').first().click();
+   await frame.locator('#captureDialog').waitFor({state:'hidden',timeout:15000});
+   await host.locator('#connected-apps-toggle').click();
+   await host.locator('#connected-note-tools-toggle').click();
+   const tools=host.locator('#connected-note-tools');
+   await tools.getByRole('button',{name:'Refresh LiveIt records'}).click();
+   await tools.locator('select option').first().waitFor({state:'attached',timeout:10000});
+   await tools.getByRole('button',{name:'Open native note'}).click();
+   await tools.getByText('Connect a writable KeepIt library before opening a native note.',{exact:true})
+    .waitFor({state:'visible',timeout:10000});
+   assert.equal(await page.locator('dialog.note-dialog[open]').count(),0);
+   console.log('LIVEIT_DESKTOP_WITHOUT_KEEPIT_LIBRARY_'+tag+'_PASS');
+  }finally{await desktop.close();}
+
   const ctx=await browser.newContext({userAgent:ua,ignoreHTTPSErrors:true,
    viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
   await ctx.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'
@@ -180,7 +208,8 @@ try{
    const editor=note.locator('.note-editor [contenteditable="true"]');
    await editor.waitFor({state:'visible',timeout:30000});
    const noteText='Saved in canonical KeepIt library via W18E LiveIt '+tag;
-   await editor.fill(noteText);
+   await editor.click();
+   await editor.pressSequentially(noteText);
    // Confirm the editor accepted the synthetic text before Save; this differentiates
    // an input event failure from a later save/refresh regression.
    const liveitBeforeSave=await editor.innerText();

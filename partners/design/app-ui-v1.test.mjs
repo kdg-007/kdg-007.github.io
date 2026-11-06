@@ -37,6 +37,61 @@ const screens=[
  {app:'travelit',path:'/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html',
   selector:'#app .topbar',token:'--paper',expected:'#f7f7f3'}
 ];
+const layouts=[
+ {name:'iphone',width:393,height:852,device:'iPhone'},
+ {name:'ipad_mini_portrait',width:744,height:1133,device:'iPad'},
+ {name:'ipad_mini_landscape',width:1133,height:744,device:'iPad'},
+ {name:'macbook',width:1440,height:900}
+];
+const workspaces=[
+ {id:'keepit',label:'KeepIt',content:page=>page.getByRole('heading',{name:'Library',exact:true})},
+ {id:'thinkit',label:'ThinkIt',content:page=>page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]').locator('#diStartScreen')},
+ {id:'travelit',label:'TravelIt',content:page=>page.frameLocator('iframe[title="TravelIt trip planning workspace"]').locator('#app .topbar')}
+];
+
+async function checkLauncher(browser,origin,layout){
+ const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',
+  viewport:{width:layout.width,height:layout.height},isMobile:!!layout.device,hasTouch:!!layout.device,
+  userAgent:layout.device?`Mozilla/5.0 (${layout.device}; CPU OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1`:undefined});
+ const entry='/partners/connected/?connected-app=';
+ const bar=page=>page.locator('.connected-shell-bar');
+ const open=async link=>{
+  const [page]=await Promise.all([context.waitForEvent('page',{timeout:15000}),link.click()]);
+  return page;
+ };
+ async function checkMenu(page,label){
+  const shell=bar(page);
+  assert.equal(await shell.locator('.connected-shell-current').innerText({timeout:15000}),label);
+  await shell.getByRole('button',{name:/Apps/}).click();
+  const menu=shell.locator('#connected-apps-list');
+  const bounds=await menu.boundingBox();
+  assert.ok(bounds && bounds.x>=0 && bounds.y>=0 && bounds.x+bounds.width<=layout.width &&
+   bounds.y+bounds.height<=layout.height,layout.name+' '+label+' menu exceeds its viewport');
+  return menu;
+ }
+ try{
+  await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'
+   ?route.continue():route.abort());
+  const home=await context.newPage();
+  await home.goto(origin+entry+'liveit',{waitUntil:'domcontentloaded'});
+  await home.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell')
+   .waitFor({state:'visible',timeout:20000});
+  for(const workspace of workspaces){
+   const menu=await checkMenu(home,'Today');
+   const page=await open(menu.locator('a[href="'+entry+workspace.id+'"]'));
+   await workspace.content(page).waitFor({state:'visible',timeout:20000});
+   await checkMenu(page,workspace.label);
+   const returned=await open(bar(page).getByRole('link',{name:'LiveIt',exact:true}));
+   assert.equal(await bar(returned).locator('.connected-shell-current').innerText({timeout:15000}),'Today');
+   await returned.close();
+   await page.close();
+   await menu.locator('a[aria-current="page"]').press('Escape');
+   await menu.waitFor({state:'hidden'});
+  }
+  console.log('CONNECTED_LAUNCHER_'+layout.name.toUpperCase()+'_'+browser.browserType().name().toUpperCase()+'_PASS');
+ }finally{await context.close();}
+}
+
 let browser;
 try {
  await new Promise((ok,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',ok);});
@@ -72,7 +127,9 @@ try {
    assert.equal(colors,'#102d40','Connected KeepIt did not receive suite tokens');
    console.log('SHARED_APP_UI_V1_KEEPIT_CONNECTED_'+engine.name().toUpperCase()+'_PASS');
    await page.close();
-  }finally{await ctx.close();await browser.close();browser=null;}
+  }finally{await ctx.close();}
+  for(const layout of layouts)await checkLauncher(browser,origin,layout);
+  await browser.close();browser=null;
  }
  console.log('SHARED_APP_UI_V1_PRESENTATION_SMOKE_PASS');
 }catch(e){console.error(e?.stack||String(e));process.exitCode=1;}

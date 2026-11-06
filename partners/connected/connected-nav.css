@@ -158,16 +158,14 @@ html[data-connected-app] #keepit-private-qa-panel:not([data-qa-open="true"]){
     width:calc(100% - 12px);gap:7px;padding:10px;
   }
 }
-/* Explicit app choice inside KeepIt stays accessible without covering its header. */
-html[data-connected-app="keepit"] #connected-apps-nav{
-  bottom:max(14px,env(safe-area-inset-bottom));top:auto;right:12px;
+/* Keep the shared bar above the library's own toolbar when it sticks. */
+html[data-connected-app="keepit"] .library-main > .connected-shell-bar{
+  position:sticky;top:0;z-index:25;min-height:50px;
 }
-html[data-connected-app="keepit"] #connected-apps-toggle{
-  box-shadow:0 5px 18px rgba(4,27,40,.24);
-}
+html[data-connected-app="keepit"] .library-top{top:50px}
 
 /* The connected KeepIt library launches sister apps through one Apps menu;
    do not duplicate them as large, competing top-row library shortcuts. */
-html[data-connected-app="keepit"] :is(#connected-thinkit-launch,#connected-travelit-launch,#connected-liveit-launch){
+html[data-connected-app="keepit"] :is(.keepit-app-launchers,#thinkit-launch,#connected-thinkit-launch,#connected-travelit-launch,#connected-liveit-launch){
  display:none!important;
 }
