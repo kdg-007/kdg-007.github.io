@@ -65,3 +65,109 @@ section[aria-label="LiveIt connected workspace"] > .connected-note-tools[open]{
 }
 #connected-apps-list button#connected-note-tools-toggle:hover{background:#274254}
 #connected-apps-list button#connected-note-tools-toggle:focus-visible{outline:3px solid #69d6ca;outline-offset:2px}
+
+/* v2 — LiveIt-first shared application chrome.
+   Applied only to the connected QA entry; root KeepIt is never restyled.
+   The native note writer, app canvas, diagrams and saved data are unchanged. */
+html[data-connected-app] .keepit-qa-toggle,
+html[data-connected-app] #keepit-private-qa-panel:not([data-qa-open="true"]){
+  display:none!important;
+}
+[data-connected-ui="ready"]{
+  --connected-ink:#e7f0f2;
+  --connected-line:#385363;
+  --connected-chrome:#162c3b;
+}
+[data-connected-ui="ready"] > .connected-shell-bar{
+  display:flex;align-items:center;gap:12px;flex:0 0 50px;
+  width:100%;min-width:0;box-sizing:border-box;
+  padding:4px max(10px,env(safe-area-inset-right));
+  color:var(--connected-ink);background:var(--connected-chrome);
+  border-bottom:1px solid var(--connected-line);
+  font:600 14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  position:relative;z-index:9;
+}
+.connected-shell-home{
+  display:inline-flex;align-items:center;justify-content:center;
+  box-sizing:border-box;min-height:40px;padding:7px 12px;
+  background:#213f50;color:#f0f7f7;text-decoration:none;
+  border:1px solid #416477;border-radius:11px;font-weight:800;
+}
+.connected-shell-home[aria-current="page"]{
+  background:#294d57;color:#9ce7db;border-color:#456d71;
+}
+.connected-shell-home:focus-visible{outline:3px solid #8adbcf;outline-offset:2px}
+.connected-shell-current{
+  display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:#cadde4;font-size:13px;font-weight:700;
+}
+[data-connected-ui="ready"] #connected-apps-nav{
+  position:relative;top:auto;right:auto;bottom:auto;left:auto;
+  flex:none;margin-left:auto;max-width:none;z-index:10;
+  color:var(--connected-ink);font:inherit;
+}
+[data-connected-ui="ready"] #connected-apps-toggle{
+  min-height:40px;box-shadow:none;padding:7px 13px;
+  background:#223e50;border-color:#48687a;border-radius:11px;
+  color:#f0f7f7;font-weight:750;
+}
+[data-connected-ui="ready"] #connected-apps-list{
+  top:calc(100% + 7px);bottom:auto;
+  right:0;z-index:20;max-height:min(70vh,540px);overflow-y:auto;
+}
+[data-connected-ui="ready"] > .connected-note-tools{
+  position:absolute!important;top:50px!important;left:0!important;right:0;
+  z-index:8;width:100%!important;max-width:none!important;
+  box-sizing:border-box;margin:0!important;
+  visibility:hidden;pointer-events:none;height:0;overflow:visible;
+  font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+[data-connected-ui="ready"] > .connected-note-tools[open]{
+  visibility:visible;pointer-events:auto;
+}
+[data-connected-ui="ready"] > .connected-note-tools > summary{display:none!important}
+[data-connected-ui="ready"] > .connected-note-tools[open] > header{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  box-sizing:border-box;width:min(720px,100vw - 12px);margin:6px auto 0;
+  max-height:55vh;overflow:auto;
+  padding:12px;background:#162c3b!important;color:#e7f0f2!important;
+  border:1px solid #48687a;border-radius:13px;
+  box-shadow:0 18px 40px rgba(4,16,26,.45);
+}
+[data-connected-ui="ready"] > .connected-note-tools[open] > header :where(button,select){
+  color:#e7f0f2!important;background:#274659!important;
+  border:1px solid #537583!important;border-radius:10px!important;
+  min-height:42px!important;max-width:100%;box-sizing:border-box;
+  font:600 13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+[data-connected-ui="ready"] > .connected-note-tools[open] > header :where(strong,span){
+  color:#e7f0f2!important;font-size:13px;
+}
+[data-connected-ui="ready"] > .connected-note-tools[open] > header :where(button,select):focus-visible{
+  outline:3px solid #8adbcf;outline-offset:2px;
+}
+@media(max-width:480px){
+  [data-connected-ui="ready"] > .connected-shell-bar{
+    gap:8px;padding:4px 10px;flex-basis:50px;min-height:50px;
+  }
+  [data-connected-ui="ready"] #connected-apps-list{
+    top:calc(100% + 6px)!important;bottom:auto!important;
+    width:min(270px,calc(100vw - 20px));
+  }
+  [data-connected-ui="ready"] > .connected-note-tools[open] > header{
+    width:calc(100% - 12px);gap:7px;padding:10px;
+  }
+}
+/* Explicit app choice inside KeepIt stays accessible without covering its header. */
+html[data-connected-app="keepit"] #connected-apps-nav{
+  bottom:max(14px,env(safe-area-inset-bottom));top:auto;right:12px;
+}
+html[data-connected-app="keepit"] #connected-apps-toggle{
+  box-shadow:0 5px 18px rgba(4,27,40,.24);
+}
+
+/* The connected KeepIt library launches sister apps through one Apps menu;
+   do not duplicate them as large, competing top-row library shortcuts. */
+html[data-connected-app="keepit"] :is(#connected-thinkit-launch,#connected-travelit-launch,#connected-liveit-launch){
+ display:none!important;
+}

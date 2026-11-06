@@ -96,6 +96,13 @@ try{
    });
   },text);
   try{
+   // Previously installed KeepIt app links must not reopen the obsolete parent
+   // banner; only an explicitly selected legacy app URL is redirected.
+   await page.goto(origin+'/?connected-app=liveit',{waitUntil:'domcontentloaded'});
+   await page.waitForURL(u=>{
+    const url=new URL(u);
+    return url.pathname==='/partners/connected/'&&url.searchParams.get('connected-app')==='liveit';
+   },{timeout:25000});
    // The installed connected app must launch LiveIt first, even with no app query.
    await page.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
    await page.waitForURL(url=>new URL(url).searchParams.get('connected-app')==='liveit',
@@ -118,6 +125,11 @@ try{
    await host.waitFor({state:'visible',timeout:40000}).catch(async()=>{
     throw Error('Actual KeepIt owner host not mounted: '+JSON.stringify(await inspect()));
    });
+   const chrome=host.locator('.connected-shell-bar');
+   await chrome.waitFor({state:'visible',timeout:20000});
+   assert.equal(await chrome.locator('.connected-shell-current').innerText(),'Today');
+   assert.equal(await page.locator('.keepit-qa-toggle').isVisible(),false,
+    'QA controls must not float over the LiveIt workspace');
    const noteDrawer=host.locator('#connected-note-tools');
    await noteDrawer.waitFor({state:'attached',timeout:15000});
    assert.equal(await noteDrawer.getAttribute('open'),null,'KeepIt note tools must begin collapsed');
@@ -224,6 +236,13 @@ try{
      .locator('body').waitFor({state:'visible'});
    console.log('KEEPIT_CONNECTED_TRAVELIT_NATIVE_HOST_MOUNT_'+tag+'_PASS');
    const travelHost=page.locator('section[aria-label="TravelIt connected workspace"]');
+   const travelBar=travelHost.locator('.connected-shell-bar');
+   await travelBar.waitFor({state:'visible',timeout:18000});
+   assert.equal(await travelBar.locator('.connected-shell-current').innerText(),'TravelIt');
+   const travelTools=travelHost.locator('#connected-note-tools');
+   assert.equal(await travelTools.getAttribute('open'),null);
+   assert.equal(await travelHost.getByRole('button',{name:'Return to KeepIt'}).count(),0);
+   assert.equal(await page.locator('.keepit-qa-toggle').isVisible(),false);
    const trip=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
    await trip.locator('#mobile-nav [data-view="trips"]').click();
    await trip.locator('[data-action="new-trip"]').first().click();
@@ -234,6 +253,9 @@ try{
    await trip.locator('#f-endDate').fill('2026-11-13');
    await trip.locator('#modal-form button[type="submit"]').click();
    await trip.locator('#modal-backdrop').waitFor({state:'hidden',timeout:25000});
+   await page.locator('#connected-apps-toggle').click();
+   await page.locator('#connected-note-tools-toggle').click();
+   assert.notEqual(await travelTools.getAttribute('open'),null,'TravelIt note drawer did not open');
    await travelHost.getByRole('button',{name:'Refresh travel records'}).click();
    const travelTarget=travelHost.locator('select[aria-label="TravelIt note target"]');
    await page.waitForFunction(()=>document.querySelector(
@@ -282,7 +304,14 @@ try{
    await note.waitFor({state:'hidden'});
    console.log('KEEPIT_CONNECTED_TRAVELIT_NATIVE_CREATE_SAVE_REOPEN_'+tag+'_PASS');
    await page.goto(origin+'/partners/connected/?connected-app=thinkit',{waitUntil:'domcontentloaded'});
-   await page.locator('#thinkit-host-panel').waitFor({state:'visible',timeout:40000});
+   const thinkHost=page.locator('#thinkit-host-panel');
+   await thinkHost.waitFor({state:'visible',timeout:40000});
+   const thinkBar=thinkHost.locator('.connected-shell-bar');
+   await thinkBar.waitFor({state:'visible',timeout:18000});
+   assert.equal(await thinkBar.locator('.connected-shell-current').innerText(),'ThinkIt');
+   assert.equal(await thinkHost.locator('#connected-note-tools').getAttribute('open'),null);
+   assert.equal(await thinkHost.getByRole('button',{name:'Return to KeepIt'}).count(),0);
+   assert.equal(await page.locator('.keepit-qa-toggle').isVisible(),false);
    console.log('KEEPIT_CONNECTED_THINKIT_NATIVE_HOST_MOUNT_'+tag+'_PASS');
    // Actual Mind Map topic -> native KeepIt editor. Keep project/topic link
    // in ThinkIt's original record; KeepIt retains the only note body.
@@ -422,6 +451,11 @@ try{
    await page.close();
    const reopened=await ctx.newPage();
    await reopened.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
+   await reopened.waitForURL(url=>{
+    const u=new URL(url);
+    return u.pathname==='/partners/connected/'&&u.searchParams.get('connected-app')==='liveit';
+   },{timeout:30000});
+   await reopened.waitForLoadState('load');
    await reopened.locator('#result-count').waitFor({state:'visible',timeout:35000});
    const after=await reopened.evaluate(()=>new Promise((resolve,reject)=>{
      const open=indexedDB.open('mylibrary-device-v1');
