@@ -55,28 +55,7 @@
   });
   list.append(toolsButton);
  }
- // Move the existing first-party host tools into one optional drawer. The
- // compiled KeepIt note writer and application iframes remain untouched.
- // Each application gets the same slim navigation chrome; LiveIt remains home.
- function presentConnectedNoteTools(){
-  if(current==='keepit')return true;
-  const host=current==='thinkit'
-    ?document.getElementById('thinkit-host-panel')
-    :document.querySelector('section[aria-label="'+(current==='liveit'?'LiveIt':'TravelIt')+' connected workspace"]');
-  if(!host)return false;
-  if(host.dataset.connectedUi==='ready')return true;
-  const header=host.querySelector(':scope > header');
-  if(!header)return false;
-  const oldReturn=[...header.querySelectorAll('button')].find(button=>button.textContent.trim()==='Return to KeepIt');
-  oldReturn?.remove();
-  const drawer=document.createElement('details');
-  drawer.id='connected-note-tools';
-  drawer.className='connected-note-tools';
-  const summary=document.createElement('summary');
-  summary.textContent='KeepIt notes';
-  summary.setAttribute('aria-label','Close KeepIt note tools');
-  header.replaceWith(drawer);
-  drawer.append(summary,header);
+ function mountShellBar(host){
   const bar=document.createElement('div');
   bar.className='connected-shell-bar';
   bar.setAttribute('role','navigation');
@@ -90,10 +69,34 @@
   if(current==='liveit')home.setAttribute('aria-current','page');
   const app=document.createElement('strong');
   app.className='connected-shell-current';
-  app.textContent=current==='liveit'?'Today':current==='travelit'?'TravelIt':'ThinkIt';
+  app.textContent=current==='liveit'?'Today':modes.find(mode=>mode.id===current).label;
   bar.append(home,app,nav);
   host.prepend(bar);
   host.dataset.connectedUi='ready';
+ }
+ function presentConnectedWorkspace(){
+  if(current==='keepit'){
+   const library=document.querySelector('.library-main');
+   if(!library)return false;
+   mountShellBar(library);
+   return true;
+  }
+  const host=current==='thinkit'
+    ?document.getElementById('thinkit-host-panel')
+    :document.querySelector('section[aria-label="'+(current==='liveit'?'LiveIt':'TravelIt')+' connected workspace"]');
+  const header=host?.querySelector(':scope > header');
+  if(!header)return false;
+  const oldReturn=[...header.querySelectorAll('button')].find(button=>button.textContent.trim()==='Return to KeepIt');
+  oldReturn?.remove();
+  const drawer=document.createElement('details');
+  drawer.id='connected-note-tools';
+  drawer.className='connected-note-tools';
+  const summary=document.createElement('summary');
+  summary.textContent='KeepIt notes';
+  summary.setAttribute('aria-label','Close KeepIt note tools');
+  header.replaceWith(drawer);
+  drawer.append(summary,header);
+  mountShellBar(host);
   drawer.addEventListener('toggle',()=>{
    const toggle=document.getElementById('connected-note-tools-toggle');
    if(toggle)toggle.setAttribute('aria-expanded',String(drawer.open));
@@ -103,9 +106,9 @@
  const note=document.createElement('p');note.className='connected-apps-notice';
  note.textContent='Native notes use KeepIt. Device save is not proof of OneDrive sync. Existing standalone app data is not migrated.';
  list.append(note);nav.append(opener,list);document.body.append(nav);
- if(!presentConnectedNoteTools()){
+ if(!presentConnectedWorkspace()){
   const observer=new MutationObserver(()=>{
-   if(presentConnectedNoteTools())observer.disconnect();
+   if(presentConnectedWorkspace())observer.disconnect();
   });
   observer.observe(document.body,{childList:true,subtree:true});
  }

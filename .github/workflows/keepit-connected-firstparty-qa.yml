@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
-      - name: Verify exact KeepIt bundle provenance and permitted LiveIt changes
+      - name: Verify exact KeepIt bundle provenance and permitted connected workspace changes
         shell: bash
         run: |
           node --input-type=module <<'JS'
@@ -99,23 +99,32 @@ jobs:
           assert.ok(navigationStyle.includes('section[aria-label="LiveIt connected workspace"] > .connected-note-tools'));
           assert.ok(navigationStyle.includes('visibility:hidden'));
           assert.ok(navigationStyle.includes('#connected-apps-list button#connected-note-tools-toggle'));
-          const liveItStartupChanges=[
+          const connectedWorkspaceChanges=[
             [from,to],
             ['function Io(){if(!(!Ve||go||!de||!f||f.readOnly)){',
-             'function Io(){if(Ve&&!go&&(Ve.id==="liveit"||de&&f&&!f.readOnly)){'],
+             'function getWritableConnectedLibrary(){return de&&f&&!f.readOnly?f:null}function Io(){if(Ve&&!go){'],
             [',Ve.id==="liveit"){Y=Li({workspace:V,getLibrary:()=>f,',
-             ',Ve.id==="liveit"){Y=Li({workspace:V,getLibrary:()=>de?f:null,'],
+             ',Ve.id==="liveit"){Y=Li({workspace:V,getLibrary:getWritableConnectedLibrary,'],
+            ['if(Ve.id==="travelit"){Y=Ni({workspace:V,getLibrary:()=>f,',
+             'if(Ve.id==="travelit"){Y=Ni({workspace:V,getLibrary:getWritableConnectedLibrary,'],
             ['async function c(){return(!g||!await g.verifyHost(g.host))&&(g=await at({consumer:"liveit",',
-             'async function c(){const library=t();if(!library||library.readOnly)throw Error("Connect a writable KeepIt library before opening a native note.");return(!g||!await g.verifyHost(g.host))&&(g=await at({consumer:"liveit",'],
+             'async function c(){if(!t())throw Error("Connect a writable KeepIt library before opening a native note.");return(!g||!await g.verifyHost(g.host))&&(g=await at({consumer:"liveit",'],
+            ['async function E(){return(!g||!await g.verifyHost(g.host))&&(g=await at({consumer:"travelit",',
+             'async function E(){if(!t())throw Error("Connect a writable KeepIt library before opening a native note.");return(!g||!await g.verifyHost(g.host))&&(g=await at({consumer:"travelit",'],
+            ['if(Gt.click(),Y){Y.root.dataset.connectedApp=Ve.id;',
+             'if(toggleThinkItWorkspace(),Y){Y.root.dataset.connectedApp=Ve.id;'],
+            ['Gt&&Gt.addEventListener("click",()=>{if(Y){Y.dispose(),Y=null;return}Y=Pi({getLibrary:()=>f,',
+             'Gt?.addEventListener("click",toggleThinkItWorkspace);function toggleThinkItWorkspace(){if(Y){Y.dispose(),Y=null;return}Y=Pi({getLibrary:getWritableConnectedLibrary,'],
+            [':void 0})});async function je()', ':void 0})}async function je()'],
             ['Y?.notifyReady()', 'Y?.notifyReady?.()'],
             ['Jo().then(Io)', 'Ve?.id==="liveit"&&Io();Jo().then(Io)']
           ];
           let expectedBundle=native;
-          for(const [before,after] of liveItStartupChanges){
+          for(const [before,after] of connectedWorkspaceChanges){
             assert.equal(expectedBundle.split(before).length,2,'Expected one pinned bundle change: '+before);
             expectedBundle=expectedBundle.replace(before,after);
           }
-          assert.equal(patched,expectedBundle,'Connected bundle must match the original outside the permitted LiveIt changes');
+          assert.equal(patched,expectedBundle,'Connected bundle must match the original outside the permitted workspace changes');
           const oldLiveIt=get('partners/liveit/thinkit/c15396ee7cd1cba9b5e5/app-8.js');
           const connectedLiveIt=get('partners/liveit/thinkit/connected-w18e-c15396/app-8.js');
           let expected=oldLiveIt;
