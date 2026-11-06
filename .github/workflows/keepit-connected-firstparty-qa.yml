@@ -5,6 +5,8 @@ on:
     paths:
       - "partners/connected/**"
       - "keepit-responsive-qa.js"
+      - "ops/ui/keepit-responsive-qa.js"
+      - ".github/workflows/keepit-pages.yml"
       - "partners/design/**"
       - "partners/liveit/thinkit/c15396ee7cd1cba9b5e5/index.html"
       - "partners/liveit/thinkit/connected-w18e-c15396/index.html"
@@ -77,6 +79,8 @@ jobs:
           // This extension survives the guarded Pages publisher regenerating
           // root index.html; it canonicalizes old /?connected-app= links.
           const legacy=get('keepit-responsive-qa.js');
+          assert.equal(legacy,get('ops/ui/keepit-responsive-qa.js'),
+            'Pages-publisher canonical app navigation must match stable ops source');
           assert.ok(root.includes('/keepit-responsive-qa.js?v=20261103b'));
           assert.ok(legacy.includes("location.pathname==='/'"));
           assert.ok(legacy.includes("destination=new URL('/partners/connected/',location.origin)"));
