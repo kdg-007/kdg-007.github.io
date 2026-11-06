@@ -208,7 +208,8 @@ try{
    const editor=note.locator('.note-editor [contenteditable="true"]');
    await editor.waitFor({state:'visible',timeout:30000});
    const noteText='Saved in canonical KeepIt library via W18E LiveIt '+tag;
-   await editor.fill(noteText);
+   await editor.click();
+   await editor.pressSequentially(noteText);
    // Confirm the editor accepted the synthetic text before Save; this differentiates
    // an input event failure from a later save/refresh regression.
    const liveitBeforeSave=await editor.innerText();

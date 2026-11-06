@@ -37,13 +37,13 @@ jobs:
           const native=get('assets/library-app-TEDOLCCE.js');
           const patched=get('assets/library-app-connected-w18e.js');
           const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
-          const b='<script type="module" src="/assets/library-app-connected-w18e.js"></script>';
+          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=liveit-launcher-2"></script>';
           const from='h.src="/partners/liveit/thinkit/1a26c53e24e1b903260b/index.html"';
           const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html"';
           assert.equal(root.split(a).length,2);
           assert.equal(native.split(from).length,2);
-          const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css">';
-          const navigationJS='<script src="/partners/connected/connected-nav.js" defer></script>';
+          const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css?v=liveit-launcher-2">';
+          const navigationJS='<script src="/partners/connected/connected-nav.js?v=liveit-launcher-2" defer></script>';
           const installChanges=[
             ['<meta name="theme-color" content="#FFFFFF">','<meta name="theme-color" content="#142331">'],
             ['<meta name="description" content="Keep anything. Find everything.">',
@@ -155,7 +155,9 @@ jobs:
         with:
           node-version: "22"
       - name: Install browser test runtime in disposable runner
+        id: browser_runtime
         shell: bash
+        timeout-minutes: 4
         run: |
           printf '{"type":"module","private":true}\n' > package.json
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
@@ -166,7 +168,8 @@ jobs:
         env:
           CI: "true"
         run: node partners/connected/first-party-native-notes.test.mjs
-      - name: Verify common app UI tokens in Chromium and WebKit
+      - name: Verify shared navigation across devices in Chromium and WebKit
+        if: ${{ !cancelled() && steps.browser_runtime.outcome == 'success' }}
         shell: bash
         timeout-minutes: 6
         run: node partners/design/app-ui-v1.test.mjs
