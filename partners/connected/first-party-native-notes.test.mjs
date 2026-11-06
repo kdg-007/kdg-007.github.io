@@ -96,6 +96,13 @@ try{
    });
   },text);
   try{
+   // Previously installed KeepIt app links must not reopen the obsolete parent
+   // banner; only an explicitly selected legacy app URL is redirected.
+   await page.goto(origin+'/?connected-app=liveit',{waitUntil:'domcontentloaded'});
+   await page.waitForURL(u=>{
+    const url=new URL(u);
+    return url.pathname==='/partners/connected/'&&url.searchParams.get('connected-app')==='liveit';
+   },{timeout:25000});
    // The installed connected app must launch LiveIt first, even with no app query.
    await page.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
    await page.waitForURL(url=>new URL(url).searchParams.get('connected-app')==='liveit',
