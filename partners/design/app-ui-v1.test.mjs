@@ -79,14 +79,16 @@ async function checkLauncher(browser,origin,layout){
   await home.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell')
    .waitFor({state:'visible',timeout:20000});
   if(layout.name==='macbook'){
-   const live=home.frameLocator('iframe[title="LiveIt journal workspace"]');
-   // Exercise the actual in-app launcher as well as the outer shared menu.
-   await live.locator('#liveit-apps-button').click();
-   const trip=await open(live.locator('#liveit-app-switcher a[data-app="travelit"]'));
+   const standalone=await context.newPage();
+   await standalone.goto(origin+'/partners/liveit/thinkit/connected-w18e-c15396/index.html',{waitUntil:'domcontentloaded'});
+   await standalone.locator('#liveit-apps-button').click();
+   const trip=await open(standalone.locator('#liveit-app-switcher a[data-app="travelit"]'));
    await trip.frameLocator('iframe[title="TravelIt trip planning workspace"]').locator('#app .topbar')
     .waitFor({state:'visible',timeout:20000});
    await trip.close();
-   await live.locator('#liveit-apps-button').press('Escape');
+   await standalone.close();
+   const live=home.frameLocator('iframe[title="LiveIt journal workspace"]');
+   assert.equal(await live.locator('#liveit-apps-button').isVisible(),false,'Integrated LiveIt uses one Apps menu');
    console.log('LIVEIT_INTERNAL_TRAVELIT_LAUNCH_'+browser.browserType().name().toUpperCase()+'_PASS');
   }
   for(const workspace of workspaces){
@@ -147,6 +149,124 @@ async function checkLauncher(browser,origin,layout){
  }finally{await context.close();}
 }
 
+async function checkWorkspaceStartup(browser,origin){
+ for(const [id,selector,content] of [
+  ['travelit','iframe[title="TravelIt trip planning workspace"]','#app .topbar'],
+  ['thinkit','iframe[title="ThinkIt diagramming and Mind Map workspace"]','#diStartScreen']
+ ]){
+  const context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:900},serviceWorkers:'block'});
+  let release;
+  const gate=new Promise(resolve=>{release=resolve;});
+  try{
+   await context.route('**/*',async route=>{
+    const url=new URL(route.request().url());
+    if(url.hostname!=='127.0.0.1')return route.abort();
+    if(url.pathname==='/assets/chunk-KPMKH2FY.js')await gate;
+    await route.continue().catch(()=>{});
+   });
+   await context.addInitScript(()=>{
+    window.libraryFlashed=false;
+    new MutationObserver(()=>{
+     const library=document.querySelector('.library-shell');
+     if(library&&!document.querySelector('[data-connected-ui="ready"]')&&getComputedStyle(library).visibility!=='hidden')window.libraryFlashed=true;
+    }).observe(document,{childList:true,subtree:true});
+   });
+   const page=await context.newPage();
+   await page.goto(origin+'/partners/connected/?connected-app='+id,{waitUntil:'domcontentloaded'});
+   await page.frameLocator(selector).locator(content).waitFor({state:'visible',timeout:10000});
+   await page.locator('#connected-startup').waitFor({state:'hidden',timeout:10000});
+   assert.equal(await page.evaluate(()=>window.libraryFlashed),false,'KeepIt must stay hidden while '+id+' opens');
+   console.log('CONNECTED_EARLY_START_'+id.toUpperCase()+'_'+browser.browserType().name().toUpperCase()+'_PASS');
+  }finally{release();await context.unrouteAll({behavior:'wait'});await context.close();}
+ }
+}
+
+async function checkTravelActivities(browser,origin){
+ const context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:950},serviceWorkers:'block'});
+ const path='/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html';
+ const stops=page=>page.evaluate(()=>new Promise((resolve,reject)=>{
+  const request=indexedDB.open('travelit-foundation');
+  request.onerror=()=>reject(request.error);
+  request.onsuccess=()=>{
+   const db=request.result,tx=db.transaction('records','readonly'),rows=tx.objectStore('records').getAll();
+   tx.oncomplete=()=>{db.close();resolve(rows.result.filter(row=>row.type==='stop'));};
+   tx.onerror=()=>{db.close();reject(tx.error);};
+  };
+ }));
+ try{
+  await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+  const page=await context.newPage();
+  await page.goto(origin+'/partners/connected/?connected-app=travelit',{waitUntil:'domcontentloaded'});
+  const trip=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
+  await trip.locator('#side-nav [data-view="map"]').click();
+  await trip.locator('#geo-canvas').waitFor({state:'visible',timeout:10000});
+  await trip.locator('#side-nav [data-view="trips"]').click();
+  await trip.locator('[data-action="new-trip"]').first().click();
+  await trip.locator('#f-title').fill('Activities table verification');
+  await trip.locator('#f-startDate').fill('2026-12-05');
+  await trip.locator('#f-endDate').fill('2026-12-09');
+  await trip.locator('#modal-form button[type="submit"]').click();
+  await trip.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await trip.locator('[data-action="add-stop"]').first().click();
+  const rows=trip.locator('#activity-entry-rows tr');
+  for(const [index,title,time,minutes,kind] of [[0,'Drive north','04:00','60','Travel'],[1,'Breakfast','06:00','45','Meal'],[2,'Beach visit','09:00','90','Activity']]){
+   const row=rows.nth(index);
+   await row.locator('[data-field="title"]').fill(title);
+   await row.locator('[data-field="time"]').fill(time);
+   await row.locator('[data-field="durationMinutes"]').fill(minutes);
+   await row.locator('[data-field="kind"]').selectOption(kind);
+  }
+  await rows.nth(2).locator('[data-field="date"]').fill('2026-12-10');
+  await trip.getByRole('button',{name:'Save activities',exact:true}).click();
+  await trip.locator('#form-error').waitFor({state:'visible'});
+  assert.match(await trip.locator('#form-error').innerText(),/Row 3/);
+  assert.equal((await stops(page)).length,0,'An invalid row must prevent the entire batch');
+  await rows.nth(2).locator('[data-field="date"]').fill('2026-12-06');
+  await trip.getByRole('button',{name:'Save activities',exact:true}).click();
+  await trip.locator('#modal-backdrop').waitFor({state:'hidden'});
+  assert.equal((await stops(page)).length,3);
+  assert.equal(await trip.locator('.activity-summary-table tbody tr').count(),2);
+
+  const first=trip.locator('.activity-summary-table tbody tr').filter({hasText:'Drive north'});
+  await first.getByRole('button',{name:'Details',exact:true}).click();
+  await trip.locator('#f-legOrigin').fill('Home');
+  await trip.locator('#f-legDistanceKm').fill('80');
+  await trip.locator('#f-legTravelMinutes').fill('90');
+  await trip.locator('#modal-form button[type="submit"]').click();
+  await trip.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await trip.locator('[data-action="add-stop"]').first().click();
+  await trip.locator('#activity-entry-rows [data-field="title"]').first().fill('Drive north revised');
+  if(browser.browserType().name()==='chromium')await page.screenshot({path:join(screenshots,'travelit-activities-table.png')});
+  await trip.getByRole('button',{name:'Save activities',exact:true}).click();
+  await trip.locator('#modal-backdrop').waitFor({state:'hidden'});
+  const stored=(await stops(page)).find(row=>row.data.title==='Drive north revised');
+  assert.equal(stored.data.legOrigin,'Home');assert.equal(stored.data.legDistanceKm,80);assert.equal(stored.data.legTravelMinutes,90);
+
+  await trip.locator('[data-action="add-stop"]').first().click();
+  const second=await context.newPage();
+  await second.goto(origin+path+'?view=trips',{waitUntil:'domcontentloaded'});
+  await second.locator('.activity-summary-table tbody tr').filter({hasText:'Drive north revised'}).getByRole('button',{name:'Details',exact:true}).click();
+  await second.locator('#f-notes').fill('Changed in another tab');
+  await second.locator('#modal-form button[type="submit"]').click();
+  await second.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await trip.locator('#activity-entry-rows [data-field="title"]').first().fill('Stale table edit');
+  await trip.getByRole('button',{name:'Save activities',exact:true}).click();
+  await trip.locator('#form-error').waitFor({state:'visible'});
+  assert.match(await trip.locator('#form-error').innerText(),/changed/i);
+  assert.equal((await stops(page)).find(row=>row.id===stored.id).data.notes,'Changed in another tab');
+  assert.equal((await stops(page)).find(row=>row.id===stored.id).data.title,'Drive north revised');
+  await page.close();
+  await second.close();
+  const reopened=await context.newPage();
+  await reopened.goto(origin+path+'?view=trips',{waitUntil:'domcontentloaded'});
+  await reopened.locator('.activity-summary-table tbody tr').filter({hasText:'Drive north revised'}).waitFor({state:'visible'});
+  await reopened.locator('[data-action="day-next"]').click();
+  await reopened.locator('.activity-summary-table tbody tr').filter({hasText:'Beach visit'}).waitFor({state:'visible'});
+  assert.equal((await stops(reopened)).length,3,'Reopening must retain all three activities without duplication');
+  console.log('TRAVELIT_MAP_AND_ATOMIC_ACTIVITY_TABLE_'+browser.browserType().name().toUpperCase()+'_PASS');
+ }finally{await context.close();}
+}
+
 let browser;
 try {
  await new Promise((ok,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',ok);});
@@ -184,6 +304,8 @@ try {
    await page.close();
   }finally{await ctx.close();}
   for(const layout of layouts)await checkLauncher(browser,origin,layout);
+  await checkWorkspaceStartup(browser,origin);
+  await checkTravelActivities(browser,origin);
   await browser.close();browser=null;
  }
  console.log('SHARED_APP_UI_V1_PRESENTATION_SMOKE_PASS');

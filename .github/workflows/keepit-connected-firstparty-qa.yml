@@ -10,7 +10,7 @@ on:
       - "partners/design/**"
       - "partners/liveit/thinkit/c15396ee7cd1cba9b5e5/index.html"
       - "partners/liveit/thinkit/connected-w18e-c15396/index.html"
-      - "partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html"
+      - "partners/travelit/thinkit/afda98f5ced9406d0fe5/**"
       - "thinkit/index.html"
       - "assets/library-app-connected-w18e.js"
       - ".github/workflows/keepit-connected-firstparty-qa.yml"
@@ -37,13 +37,14 @@ jobs:
           const native=get('assets/library-app-TEDOLCCE.js');
           const patched=get('assets/library-app-connected-w18e.js');
           const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
-          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=journal-1"></script>';
+          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=workspace-2"></script>';
           const from='h.src="/partners/liveit/thinkit/1a26c53e24e1b903260b/index.html"';
-          const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html?v=journal-1"';
+          const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html?v=workspace-2"';
           assert.equal(root.split(a).length,2);
           assert.equal(native.split(from).length,2);
-          const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css?v=liveit-launcher-2">';
-          const navigationJS='<script src="/partners/connected/connected-nav.js?v=journal-1" defer></script>';
+          const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css?v=workspace-2">';
+          const navigationJS='<script src="/partners/connected/connected-nav.js?v=workspace-2" defer></script>';
+          const startupJS='<script src="/partners/connected/connected-boot.js?v=workspace-2"></script>';
           const installChanges=[
             ['<meta name="theme-color" content="#FFFFFF">','<meta name="theme-color" content="#142331">'],
             ['<meta name="description" content="Keep anything. Find everything.">',
@@ -58,7 +59,8 @@ jobs:
              '<meta name="apple-mobile-web-app-title" content="LiveIt"><meta name="apple-mobile-web-app-capable" content="yes">'],
             ['<title>KeepIt</title>','<title>LiveIt — Today</title>']
           ];
-          let expectedConnected=root.replace(a,b).replace('</head>',navigationCSS+'</head>')
+          let expectedConnected=root.replace(a,b).replace('</head>',navigationCSS+startupJS+'</head>')
+            .replace('<body>','<body><div id="connected-startup" role="status" aria-live="polite">Opening workspace…</div>')
             .replace('</body>',navigationJS+'</body>');
           for(const [oldValue,newValue] of installChanges){
             assert.equal(expectedConnected.split(oldValue).length,2,'Exact connected metadata: '+oldValue);
@@ -102,9 +104,9 @@ jobs:
           const connectedWorkspaceChanges=[
             [from,to],
             ['h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html"',
-             'h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=journal-1"'],
+             'h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=workspace-2"'],
             ['d.src="/thinkit/36f8901ec722db162bcf/index.html"',
-             'd.src="/thinkit/36f8901ec722db162bcf/index.html?v=journal-1"'],
+             'd.src="/thinkit/36f8901ec722db162bcf/index.html?v=workspace-2"'],
             ['function Io(){if(!(!Ve||go||!de||!f||f.readOnly)){',
              'function getWritableConnectedLibrary(){return de&&f&&!f.readOnly?f:null}function Io(){if(Ve&&!go){'],
             [',Ve.id==="liveit"){Y=Li({workspace:V,getLibrary:()=>f,',
@@ -121,7 +123,7 @@ jobs:
              'Gt?.addEventListener("click",toggleThinkItWorkspace);function toggleThinkItWorkspace(){if(Y){Y.dispose(),Y=null;return}Y=Pi({getLibrary:getWritableConnectedLibrary,'],
             [':void 0})});async function je()', ':void 0})}async function je()'],
             ['Y?.notifyReady()', 'Y?.notifyReady?.()'],
-            ['Jo().then(Io)', 'Ve?.id==="liveit"&&Io();Jo().then(Io)']
+            ['Jo().then(Io)', 'Io();Jo().then(Io)']
           ];
           let expectedBundle=native;
           for(const [before,after] of connectedWorkspaceChanges){

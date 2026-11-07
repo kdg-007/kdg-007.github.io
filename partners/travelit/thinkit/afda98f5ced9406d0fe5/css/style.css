@@ -70,3 +70,26 @@
 .road-stop-content{flex:1;min-width:0}.road-stop-title{font-size:15px;font-weight:800;overflow-wrap:anywhere}.road-stop-actions{display:flex;gap:8px;flex-wrap:wrap;margin:9px 0}
 .road-stop-actions .button{min-height:44px;display:inline-flex;align-items:center}
 @media(max-width:720px){.road-quick{padding:13px}.road-stop-actions .button{flex:1;justify-content:center}.road-stop-content .subtext{overflow-wrap:anywhere}}
+/* Activity planning uses one grid for several edits and additions. */
+.activity-grid-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+.activity-entry-table,.activity-summary-table{width:100%;border-collapse:separate;border-spacing:0;text-align:left;font-size:13px}
+.activity-entry-table{min-width:1220px}
+.activity-summary-table{min-width:760px}
+.activity-entry-table th,.activity-summary-table th{padding:10px 8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);white-space:nowrap}
+.activity-entry-table td,.activity-summary-table td{padding:8px;vertical-align:top;border-bottom:1px solid var(--line)}
+.activity-entry-table :is(input,select,textarea){width:100%;min-height:40px;padding:7px 8px;box-sizing:border-box;border:1px solid var(--line);border-radius:8px}
+.activity-entry-table input[type=checkbox]{width:20px;min-height:20px;height:20px;margin-top:10px}
+.activity-entry-table textarea{height:42px;resize:vertical}
+.activity-entry-table td:nth-child(1){min-width:145px}.activity-entry-table td:nth-child(2){min-width:110px}
+.activity-entry-table td:nth-child(3){min-width:84px}.activity-entry-table td:nth-child(4){min-width:230px}
+.activity-entry-table td:nth-child(5){min-width:110px}.activity-entry-table td:nth-child(6){min-width:150px}
+.activity-entry-table td:nth-child(7){min-width:210px}
+.activity-summary-table td:nth-child(3){min-width:180px}.activity-summary-table td:nth-child(6){min-width:160px;white-space:pre-wrap}
+.activity-summary-table td:nth-child(-n+2){white-space:nowrap}
+.activity-row-actions{display:flex;gap:5px;flex-wrap:wrap;min-width:140px}
+.activity-table-dialog .modal{width:min(1380px,calc(100vw - 28px));max-width:1380px}
+.activity-table-dialog .modal-head{padding:0;margin-bottom:12px}
+.activity-table-dialog #modal-body{padding:0}
+.activity-table-dialog .modal-actions{position:sticky;bottom:0;background:var(--card);padding-top:14px}
+.itinerary-table-card{padding:10px}
+@media(max-width:720px){.mobile-nav .navitem{min-width:0;flex:1}}

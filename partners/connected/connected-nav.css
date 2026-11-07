@@ -1,4 +1,11 @@
 @import url("/partners/design/app-family-v1.css");
+html[data-connected-starting] .library-shell{visibility:hidden}
+#connected-startup{display:none}
+html[data-connected-starting] #connected-startup{
+ display:flex;position:fixed;inset:0;align-items:center;justify-content:center;gap:12px;
+ background:var(--app-ground,#10212d);color:var(--app-text,#e7f0f2);z-index:1500;
+ font:600 16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
 /* One neutral shell control for KeepIt-owned first-party integration.
    No changes to the native editor, existing LiveIt data or app rendering. */
 #connected-apps-nav{position:fixed;top:9px;right:10px;z-index:1300;
@@ -168,4 +175,15 @@ html[data-connected-app="keepit"] .library-top{top:50px}
    do not duplicate them as large, competing top-row library shortcuts. */
 html[data-connected-app="keepit"] :is(.keepit-app-launchers,#thinkit-launch,#connected-thinkit-launch,#connected-travelit-launch,#connected-liveit-launch){
  display:none!important;
+}
+html[data-connected-app="liveit"] .connected-shell-home{display:none}
+@media(min-width:1100px){
+ html[data-connected-app] [data-connected-ui="ready"] > .connected-shell-bar{
+  position:absolute;top:9px;right:12px;left:auto;width:auto;min-height:44px;
+  padding:0;gap:8px;border:0;background:transparent;z-index:80;
+ }
+ html[data-connected-app] .connected-shell-current{display:none}
+ html[data-connected-app="keepit"] .library-main{position:relative}
+ html[data-connected-app="keepit"] .library-top{padding-right:310px;top:0}
+ html[data-connected-app="keepit"] .library-main > .connected-shell-bar{z-index:30}
 }

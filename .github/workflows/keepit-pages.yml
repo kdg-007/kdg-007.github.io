@@ -63,7 +63,7 @@ jobs:
           html=Path('_site/index.html')
           s=html.read_text()
           css='<link rel="stylesheet" href="/keepit-responsive-qa.css?v=20261103b">'
-          appearance='<link rel="stylesheet" href="/partners/design/app-appearance.css?v=journal-1"><script src="/partners/design/app-appearance.js?v=journal-1"></script>'
+          appearance='<link rel="stylesheet" href="/partners/design/app-appearance.css?v=workspace-2"><script src="/partners/design/app-appearance.js?v=journal-1"></script>'
           js='<script src="/keepit-responsive-qa.js?v=20261103b" defer></script>'
           if s.count('</head>')!=1 or s.count('</body>')!=1:raise SystemExit('Unexpected KeepIt HTML: QA overlay refused')
           if 'keepit-responsive-qa.css' in s or 'keepit-responsive-qa.js' in s:raise SystemExit('Refusing duplicate QA overlay')
@@ -76,6 +76,14 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import shutil
+          for rel in [
+              'partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app.js',
+              'partners/travelit/thinkit/afda98f5ced9406d0fe5/css/style.css',
+          ]:
+              destination=Path('_site')/rel
+              destination.parent.mkdir(parents=True,exist_ok=True)
+              shutil.copyfile(rel,destination)
           pages=[
               ('thinkit/index.html','thinkit'),
               ('thinkit/36f8901ec722db162bcf/index.html','thinkit'),
@@ -84,16 +92,15 @@ jobs:
               ('partners/liveit/thinkit/connected-w18e-c15396/index.html','liveit'),
           ]
           css='<link rel="stylesheet" href="/partners/design/app-family-v1.css">'
-          appearance='<link rel="stylesheet" href="/partners/design/app-appearance.css?v=journal-1"><script src="/partners/design/app-appearance.js?v=journal-1"></script>'
+          appearance='<link rel="stylesheet" href="/partners/design/app-appearance.css?v=workspace-2"><script src="/partners/design/app-appearance.js?v=journal-1"></script>'
           for rel,app in pages:
               file=Path('_site')/rel
-              if not file.is_file():
-                  # Recent pinned app pages can be newer than the transfer archive.
-                  current=Path(rel)
-                  if not current.is_file():
-                      raise SystemExit('Missing first-party app preview: '+rel)
+              current=Path(rel)
+              if current.is_file():
                   file.parent.mkdir(parents=True,exist_ok=True)
                   file.write_text(current.read_text())
+              elif not file.is_file():
+                  raise SystemExit('Missing first-party app preview: '+rel)
               html=file.read_text()
               original='<html lang="en">'
               tagged='<html lang="en" data-suite-app="'+app+'">'

@@ -74,6 +74,15 @@
   bar.append(home,app,nav);
   host.prepend(bar);
   host.dataset.connectedUi='ready';
+  const finishOpening=()=>{
+   delete document.documentElement.dataset.connectedStarting;
+   window.dispatchEvent(new Event('connected-workspace-ready'));
+  };
+  const frame=host.querySelector('iframe');
+  if(frame){
+   frame.addEventListener('load',finishOpening,{once:true});
+   if(frame.contentDocument?.readyState==='complete'&&frame.contentDocument.URL!=='about:blank')finishOpening();
+  }else finishOpening();
  }
  function presentConnectedWorkspace(){
   if(current==='keepit'){
