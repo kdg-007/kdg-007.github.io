@@ -329,7 +329,12 @@ async function checkStreetMap(browser,origin){
   await page.locator('#street-map-status[data-state="ready"]').waitFor();
   failTiles=true;
   await page.getByRole('button',{name:'Retry street map',exact:true}).click();
-  await page.locator('#street-map-status[data-state="unavailable"]').waitFor({timeout:15000});
+  // WebKit can reuse decoded images for this same viewport even with routing.
+  // Request an unseen zoom level to test unavailable tiles, rather than rejecting
+  // the useful display of tiles already held in the browser's image cache.
+  await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+  try{await page.locator('#street-map-status[data-state="unavailable"]').waitFor({timeout:15000});}
+  catch(error){console.error('STREET_MAP_FAILURE_DIAGNOSTIC',await page.locator('#street-map-status').innerText(),requested.slice(-20));await page.screenshot({path:join(screenshots,'street-map-failure-'+browser.browserType().name()+'.png')});throw error;}
   await page.getByRole('button',{name:'Offline maps',exact:true}).click();
   await page.locator('#geo-canvas').waitFor({state:'visible'});
   failTiles=false;
