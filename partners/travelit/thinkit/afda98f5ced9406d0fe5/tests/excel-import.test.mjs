@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {readExcelWorkbook} from '../js/excel-reader.js';
+import {planExcelImport} from '../js/excel-import-plan.js';
+import {buildExcelBatch,digestImport} from '../js/excel-save.js';
+import {normalizeTrip,normalizeStop,normalizePlace,validateBackup} from '../js/domain.js?v=excel-import-1';
+import {createBackup,verifyBackup} from '../js/backup.js?v=excel-import-1';
+const temp=mkdtempSync(join(tmpdir(),'excel-save-'));
+try{
+ const file=join(temp,'fixture.xlsx');execFileSync('python3',[fileURLToPath(new URL('./excel-fixture.py',import.meta.url)),file]);
+ const plan=planExcelImport(readExcelWorkbook(readFileSync(file))),opts={filename:'fixture.xlsx',fileDigest:'a'.repeat(64)};
+ const batch=await buildExcelBatch(plan,opts),trip=batch.trip,stops=batch.records.filter(r=>r.type==='stop').map(r=>r.data),places=batch.records.filter(r=>r.type==='place').map(r=>r.data);
+ assert.equal(stops.length,48);assert.equal(places.length,2);assert.equal(trip.importReceipt.createdKeys.length,51);
+ assert.equal(stops.reduce((n,s)=>n+s.importSource.predecessors.length,0),42);assert.equal(stops[0].time,'06:00');assert.equal(stops[0].fixed,false);assert.equal(places[0].lat,null);
+ assert.deepEqual(normalizeTrip({...trip,title:'Edited trip'}).importReceipt,trip.importReceipt);
+ assert.deepEqual(normalizeStop({...stops[0],title:'Edited activity'},trip).importSource,stops[0].importSource);
+ assert.deepEqual(normalizePlace({...places[0],name:'Edited destination'}).importSource,places[0].importSource);
+ const backup=await createBackup({records:batch.records,outbox:[]});assert.equal(backup.schemaVersion,6);assert.deepEqual((await verifyBackup(backup)).backup.records,batch.records);
+ for(const schemaVersion of [1,2,3,4,5])assert.equal(validateBackup({format:'travelit-local-backup',schemaVersion,records:[],outbox:[]}),true);
+ assert.throws(()=>validateBackup({...backup,schemaVersion:5}),/schema 6/);
+ const renamed=await buildExcelBatch(plan,{...opts,filename:'renamed.xlsx',title:'New display name'});assert.equal(renamed.trip.importReceipt.semanticDigest,trip.importReceipt.semanticDigest);assert.notEqual(renamed.trip.id,trip.id);
+ const formatted=structuredClone(plan);formatted.activities.forEach(a=>a.sourceRow+=3);assert.equal((await buildExcelBatch(formatted,opts)).trip.importReceipt.semanticDigest,trip.importReceipt.semanticDigest);
+ await assert.rejects(()=>buildExcelBatch({...plan,statistics:{...plan.statistics,errorCount:1}},opts),/Resolve/);
+ const unknown=structuredClone(plan);unknown.activities[0].sourceType='Custom';await assert.rejects(()=>buildExcelBatch(unknown,opts),/Choose/);assert.equal((await buildExcelBatch(unknown,{...opts,mappings:{Custom:'Activity'}})).records.find(r=>r.type==='stop').data.kind,'Activity');
+ const long=structuredClone(plan);long.activities[0].detail.notes='n'.repeat(2001);await assert.rejects(()=>buildExcelBatch(long,opts));
+ console.log('TRAVELIT_EXCEL_BATCH_METADATA_BACKUP_PASS');
+}finally{rmSync(temp,{recursive:true,force:true});}

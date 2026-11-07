@@ -1,8 +1,8 @@
-import {VALID_TYPES} from './domain.js';
+import {VALID_TYPES,validateBackup,SCHEMA_VERSION} from './domain.js?v=excel-import-1';
 import {normalizeKeepItAssociation,logicalAssociationKey} from './keepit-associations.js';
-import {verifyBackup} from './backup.js';
+import {verifyBackup} from './backup.js?v=excel-import-1';
 /** Local-only persistent store. The v2 upgrade adds a protected, on-device pre-restore snapshot slot. */
-const NAME='travelit-foundation';const VERSION=4;
+const NAME='travelit-foundation';const VERSION=5;
 function request(req){return new Promise((resolve,reject)=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('Database request failed'));});}
 function done(tx){return new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||Error('Database transaction error'));tx.onabort=()=>reject(tx.error||Error('Database transaction aborted'));});}
 export function openDatabase(onVersionChange=()=>{}){return new Promise((resolve,reject)=>{const req=indexedDB.open(NAME,VERSION);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('records'))db.createObjectStore('records',{keyPath:'key'});if(!db.objectStoreNames.contains('outbox'))db.createObjectStore('outbox',{keyPath:'commandId'});if(!db.objectStoreNames.contains('recovery'))db.createObjectStore('recovery',{keyPath:'id'});if(!db.objectStoreNames.contains('mapPacks'))db.createObjectStore('mapPacks',{keyPath:'id'});if(!db.objectStoreNames.contains('settings'))db.createObjectStore('settings',{keyPath:'key'});if(!db.objectStoreNames.contains('atlasRegions'))db.createObjectStore('atlasRegions',{keyPath:'id'});if(!db.objectStoreNames.contains('atlasTiles'))db.createObjectStore('atlasTiles',{keyPath:'key'});};req.onsuccess=()=>{req.result.onversionchange=()=>{req.result.close();onVersionChange();};resolve(req.result);};req.onerror=()=>reject(req.error);req.onblocked=()=>reject(Error('Close other TravelIt tabs before upgrading storage.'));});}
@@ -55,7 +55,7 @@ export function assertLocalRelationships(before,changes){
   return true;
 }
 
-async function guardedMutation(db,changes,{expectedEpoch=null,expectedRevisionByKey={},expectedPresenceByKey={},expectedWorkspaceRevision=null}={}){
+async function guardedMutation(db,changes,{expectedEpoch=null,expectedRevisionByKey={},expectedPresenceByKey={},expectedWorkspaceRevision=null,checkBefore=null}={}){
   if(!Array.isArray(changes)||!changes.length)return 0;
   const seen=new Set();for(const c of changes){const key=`${c.type}:${c.id}`;if(!c.type||!c.id||seen.has(key)||!['upsert','delete'].includes(c.verb))throw Error('Invalid or duplicate local edit.');seen.add(key);}
   const tx=db.transaction(['records','outbox','settings'],'readwrite'),settled=done(tx);
@@ -69,6 +69,7 @@ async function guardedMutation(db,changes,{expectedEpoch=null,expectedRevisionBy
     const actualEpoch=currentSetting(epoch,null),actualRevision=currentSetting(workspaceRevision,0);
     if(actualEpoch!==expectedEpoch)throw new StaleWorkspaceError('This workspace was restored in another tab. Your draft was not saved. Reopen the latest workspace before editing.');
     if(expectedWorkspaceRevision!==null&&actualRevision!==expectedWorkspaceRevision)throw new StaleWorkspaceError('TravelIt changed since this operation began. No records were replaced. Refresh and review before retrying.');
+    if(checkBefore)checkBefore(await request(records.getAll()));
     // Enforce relationship invariants inside the SAME transaction as the guarded write.
     // This prevents parent deletion, stale child creation, and date edits from leaving
     // orphaned trip data that can no longer be exported as a valid TravelIt backup.
@@ -90,6 +91,7 @@ async function guardedMutation(db,changes,{expectedEpoch=null,expectedRevisionBy
       if((Object.prototype.hasOwnProperty.call(expectedPresenceByKey,key) && Boolean(row)!==expectedPresenceByKey[key]) || (row?revisionFor(row):0)!==expected || (c.verb==='delete'&&!row) || (c.verb==='upsert'&&!!row&&expected===0&&revisionFor(row)===0&&c.requireAbsent)){
         throw new StaleWorkspaceError('This item has changed or was removed in another tab. Your edit was not saved. Refresh and review the latest version.');
       }
+      if(c.verb==='upsert'&&row)for(const field of ['importReceipt','importSource'])if(row.data[field]!==undefined&&JSON.stringify(c.data[field])!==JSON.stringify(row.data[field]))throw new StaleWorkspaceError('Excel source metadata must be preserved. Refresh TravelIt before editing this item.');
       if(c.verb==='upsert')records.put({key,type:c.type,id:c.id,data:c.data,localRevision:revisionFor(row)+1});
       else records.delete(key);
       outbox.put({commandId:globalThis.crypto.randomUUID(),entityType:c.type,entityId:c.id,verb:c.verb,createdAt:new Date().toISOString(),state:'LOCAL_ONLY_ADAPTER_NOT_CONNECTED'});
@@ -107,6 +109,28 @@ export async function guardedDeleteRecord(db,type,id,opts={}){
 export async function guardedSaveRecords(db,type,items,opts={}){
  return guardedMutation(db,items.map(data=>({type,id:data.id,data,verb:'upsert'})),opts);
 }
+
+/** Add an entire validated import using the same guarded transaction as ordinary edits. */
+export async function importExcelBatch(db,batch,opts){
+ validateBackup({format:'travelit-local-backup',schemaVersion:SCHEMA_VERSION,records:batch.records,outbox:[]});
+ const receipt=batch.trip.importReceipt;
+ if(!receipt||JSON.stringify(receipt.createdKeys)!==JSON.stringify(batch.records.map(r=>r.key))||batch.records.filter(r=>r.type==='trip').length!==1||batch.records[0].id!==batch.trip.id||JSON.stringify(batch.records[0].data)!==JSON.stringify(batch.trip)||batch.records.some(r=>r.type!=='trip'&&(!['stop','place'].includes(r.type)||r.data.importSource?.batchId!==receipt.batchId||(r.type==='stop'&&r.data.tripId!==batch.trip.id)))||batch.records.filter(r=>r.type==='stop').length!==receipt.activityCount||batch.records.filter(r=>r.type==='place').length!==receipt.placeCount)throw Error('Incomplete Excel import batch.');
+ const changes=batch.records.map(r=>({type:r.type,id:r.id,data:r.data,verb:'upsert',requireAbsent:true}));
+ return guardedMutation(db,changes,{...opts,expectedPresenceByKey:Object.fromEntries(batch.records.map(r=>[r.key,false])),checkBefore:before=>{
+  if(before.some(r=>r.type==='trip'&&r.data.importReceipt&&(r.data.importReceipt.semanticDigest===receipt.semanticDigest||r.data.importReceipt.fileDigest===receipt.fileDigest)))throw Error('This itinerary has already been imported. Open the existing imported trip instead.');
+ }});
+}
+/** Batch-scoped undo; edited or shared imported records are retained by declining undo. */
+export async function undoExcelImport(db,trip,opts){
+ const receipt=trip.importReceipt;if(!receipt)throw Error('This trip was not imported from Excel.');
+ const changes=receipt.createdKeys.map(key=>{const at=key.indexOf(':');return {type:key.slice(0,at),id:key.slice(at+1),verb:'delete'};});
+ const keys=new Set(receipt.createdKeys),placeIds=new Set(changes.filter(c=>c.type==='place').map(c=>c.id));
+ return guardedMutation(db,changes,{...opts,expectedRevisionByKey:Object.fromEntries(receipt.createdKeys.map(key=>[key,1])),expectedPresenceByKey:Object.fromEntries(receipt.createdKeys.map(key=>[key,true])),checkBefore:before=>{
+  for(const r of before.filter(r=>keys.has(r.key)))if(r.type==='trip'?r.id!==trip.id||r.data.importReceipt?.batchId!==receipt.batchId:!['stop','place'].includes(r.type)||r.data.importSource?.batchId!==receipt.batchId)throw Error('Import receipt does not match its records. Undo was blocked.');
+  if(before.some(r=>!keys.has(r.key)&&((r.data.tripId===trip.id)||placeIds.has(r.data.placeId)||(r.type==='keepitAssociation'&&keys.has(r.data.entityType+':'+r.data.entityId)))))throw Error('Imported records are now used by other items. Undo was blocked to preserve your work.');
+ }});
+}
+
 export async function getWorkspaceMetadata(db){
  const tx=db.transaction(['settings'],'readonly'),settled=done(tx),settings=tx.objectStore('settings');
  const [epoch,rev,mapRev]=await Promise.all([request(settings.get('workspace-generation')),request(settings.get('workspace-revision')),request(settings.get('map-revision'))]);

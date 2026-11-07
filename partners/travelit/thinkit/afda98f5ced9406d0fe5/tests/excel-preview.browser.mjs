@@ -37,7 +37,7 @@ export async function checkExcelPreview(browser,origin){
    });db.close();
   },path);
   const baseline=await snapshot(page);assert.ok(baseline.records.length>=2);assert.ok(baseline.outbox.length>=2);
-  const open=async()=>page.getByRole('button',{name:'Preview Excel',exact:true}).click();
+  const open=async()=>page.getByRole('button',{name:'Import Excel',exact:true}).click();
   const choose=async()=>page.locator('#excel-preview-file').setInputFiles(fixture);
   const read=async()=>page.getByRole('button',{name:'Preview workbook',exact:true}).click();
   await open();assert.equal(await page.locator('#modal-form button[type="submit"]').count(),0);
