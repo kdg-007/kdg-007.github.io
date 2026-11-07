@@ -37,7 +37,7 @@ jobs:
           const native=get('assets/library-app-TEDOLCCE.js');
           const patched=get('assets/library-app-connected-w18e.js');
           const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
-          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=workspace-2"></script>';
+          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=map-1"></script>';
           const from='h.src="/partners/liveit/thinkit/1a26c53e24e1b903260b/index.html"';
           const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html?v=workspace-2"';
           assert.equal(root.split(a).length,2);
