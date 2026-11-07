@@ -211,7 +211,7 @@ async function checkTravelActivities(browser,origin){
   await page.goto(origin+'/partners/connected/?connected-app=travelit',{waitUntil:'domcontentloaded'});
   const trip=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await trip.locator('#side-nav [data-view="map"]').click();
-  await trip.locator('#geo-canvas').waitFor({state:'visible',timeout:10000});
+  await trip.locator('#street-map').waitFor({state:'visible',timeout:10000});
   await trip.locator('#side-nav [data-view="trips"]').click();
   await trip.locator('[data-action="new-trip"]').first().click();
   await trip.locator('#f-title').fill('Activities table verification');
@@ -279,6 +279,74 @@ async function checkTravelActivities(browser,origin){
  }finally{await context.close();}
 }
 
+async function checkStreetMap(browser,origin){
+ const context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:1000},serviceWorkers:'block'});
+ let failTiles=false;const requested=[];
+ try{
+  await context.route('**/*',route=>{
+   const url=new URL(route.request().url());
+   if(url.hostname==='127.0.0.1')return route.continue();
+   if(url.hostname==='tile.openstreetmap.org'){
+    requested.push(url.pathname);
+    // CI never uses OSM's public servers or downloads real map regions.
+    return failTiles?route.abort():route.fulfill({status:200,contentType:'image/png',body:readFileSync(resolve('partners/design/fixtures/street-tile-test.png'))});
+   }
+   return route.abort();
+  });
+  const page=await context.newPage();
+  const path=origin+'/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?view=map';
+  await page.goto(path,{waitUntil:'domcontentloaded'});
+  await page.locator('#street-map-status[data-state="ready"]').waitFor();
+  assert.ok(requested.length>0,'Opening Map without imports must request visible street tiles');
+  assert.ok(await page.locator('#street-map .leaflet-tile-loaded').count()>0);
+  assert.equal(await page.locator('#geo-canvas').count(),0,'Street map is the default view');
+  assert.match(await page.locator('.leaflet-control-attribution').innerText(),/OpenStreetMap/);
+  const initialZoom=Math.max(...requested.map(path=>Number(path.split('/')[1])));
+  await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+  await page.waitForFunction(initial=>[...document.querySelectorAll('.leaflet-tile-loaded')].some(image=>Number(new URL(image.src).pathname.split('/')[1])>initial),initialZoom);
+  const pane=page.locator('#street-map .leaflet-map-pane');const before=await pane.getAttribute('style');
+  await page.locator('#street-map').focus();await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(style=>document.querySelector('#street-map .leaflet-map-pane').getAttribute('style')!==style,before);
+  await page.locator('#quick-save').click();
+  await page.locator('#f-name').fill('Map verification place');
+  await page.locator('#f-lat').fill('17.62');await page.locator('#f-lng').fill('121.72');
+  await page.locator('#modal-form button[type="submit"]').click();
+  await page.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Fit saved places',exact:true}).click();
+  await page.getByRole('button',{name:'Open Map verification place',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Add note pin',exact:true}).click();
+  const box=await page.locator('#street-map').boundingBox();
+  await page.locator('#street-map').click({position:{x:box.width*.7,y:box.height*.6}});
+  await page.getByText('1 point(s).',{exact:false}).waitFor();
+  await page.getByRole('button',{name:'Save annotation',exact:true}).click();
+  await page.locator('#f-label').fill('Map verification note');
+  await page.locator('#modal-form button[type="submit"]').click();
+  await page.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Open annotation Map verification note',exact:true}).waitFor();
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.getByRole('button',{name:'Open Map verification place',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Open annotation Map verification note',exact:true}).waitFor();
+  await page.locator('#street-map-status[data-state="ready"]').waitFor();
+  failTiles=true;
+  await page.getByRole('button',{name:'Retry street map',exact:true}).click();
+  // WebKit can reuse decoded images for this same viewport even with routing.
+  // Request an unseen zoom level to test unavailable tiles, rather than rejecting
+  // the useful display of tiles already held in the browser's image cache.
+  await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+  try{await page.locator('#street-map-status[data-state="unavailable"]').waitFor({timeout:15000});}
+  catch(error){console.error('STREET_MAP_FAILURE_DIAGNOSTIC',await page.locator('#street-map-status').innerText(),requested.slice(-20));await page.screenshot({path:join(screenshots,'street-map-failure-'+browser.browserType().name()+'.png')});throw error;}
+  await page.getByRole('button',{name:'Offline maps',exact:true}).click();
+  await page.locator('#geo-canvas').waitFor({state:'visible'});
+  failTiles=false;
+  await page.getByRole('button',{name:'Street map',exact:true}).click();
+  await page.locator('#street-map-status[data-state="ready"]').waitFor();
+  await page.setViewportSize({width:393,height:852});
+  await page.waitForFunction(()=>document.querySelector('#street-map').getBoundingClientRect().width<=393);
+  assert.equal(await page.locator('.leaflet-container').count(),1);
+  console.log('TRAVELIT_STREET_MAP_TILES_ZOOM_PAN_PINS_REOPEN_AND_FAILURE_'+browser.browserType().name().toUpperCase()+'_PASS');
+ }finally{await context.close();}
+}
+
 let browser;
 try {
  await new Promise((ok,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',ok);});
@@ -318,6 +386,7 @@ try {
   for(const layout of layouts)await checkLauncher(browser,origin,layout);
   await checkWorkspaceStartup(browser,origin);
   await checkTravelActivities(browser,origin);
+  await checkStreetMap(browser,origin);
   await browser.close();browser=null;
  }
  console.log('SHARED_APP_UI_V1_PRESENTATION_SMOKE_PASS');

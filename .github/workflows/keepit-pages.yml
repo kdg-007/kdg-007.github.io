@@ -84,6 +84,9 @@ jobs:
               destination=Path('_site')/rel
               destination.parent.mkdir(parents=True,exist_ok=True)
               shutil.copyfile(rel,destination)
+          map_root=Path('partners/travelit/thinkit/afda98f5ced9406d0fe5')
+          shutil.copyfile(map_root/'js/online-map.js',Path('_site')/map_root/'js/online-map.js')
+          shutil.copytree(map_root/'vendor',Path('_site')/map_root/'vendor',dirs_exist_ok=True)
           pages=[
               ('thinkit/index.html','thinkit'),
               ('thinkit/36f8901ec722db162bcf/index.html','thinkit'),
