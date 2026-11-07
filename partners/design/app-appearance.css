@@ -109,6 +109,41 @@ html[data-app-scheme] :where(.primary,.button.primary,.button-primary) {
 html[data-app-scheme] :where(.navitem.active,.navitem:hover) {
   background:var(--app-chrome-soft);color:var(--app-chrome-ink);
 }
+html[data-app-scheme] .library-sidebar,
+html[data-app-scheme][data-suite-app] .sidebar {
+  background-color:var(--app-chrome)!important;color:var(--app-chrome-ink)!important;
+  --navy:var(--app-chrome-ink)!important;--teal:var(--app-chrome-ink)!important;
+  --ink:var(--app-chrome-ink)!important;--muted:var(--app-chrome-ink)!important;
+}
+html[data-app-scheme] .library-sidebar :where(button,a,span,p),
+html[data-app-scheme] .library-sidebar .side-link::before {
+  color:var(--app-chrome-ink)!important;
+}
+html[data-app-scheme] .library-sidebar .side-link.selected,
+html[data-app-scheme][data-suite-app="travelit"] :is(.navitem.active,.navitem:hover) {
+  background:var(--app-chrome-soft)!important;color:var(--app-chrome-ink)!important;
+}
+html[data-app-scheme][data-suite-app="liveit"] .sidebar .space-tile {
+  --navy:var(--app-text)!important;--teal:var(--app-accent)!important;
+  --ink:var(--app-text)!important;--muted:var(--app-muted)!important;
+  background:var(--app-surface);color:var(--app-text);
+}
+html[data-app-scheme][data-suite-app="travelit"] .hero {
+  background:var(--app-chrome);color:var(--app-chrome-ink);
+}
+html[data-app-scheme][data-suite-app="travelit"] .hero :is(h2,p,.eyebrow) {color:var(--app-chrome-ink)}
+html[data-app-scheme][data-suite-app="travelit"] :is(.hero .button,.stage-chip) {
+  background:var(--app-soft);border-color:var(--app-line);color:var(--app-text);
+}
+html[data-app-scheme][data-suite-app="travelit"] .stage-chip.active {
+  background:var(--app-accent);border-color:var(--app-accent);color:var(--app-accent-on);
+}
+html[data-app-scheme][data-suite-app="travelit"] :is(.stage-chip span,.pill,.conn-pill) {
+  background:var(--app-soft);color:var(--app-text);
+}
+html[data-app-scheme][data-suite-app="travelit"] .brand-symbol {
+  background:var(--app-chrome-soft);color:var(--app-chrome-ink);
+}
 html[data-app-scheme] .di-start-card {background:var(--app-surface);color:var(--app-text);border-color:var(--app-line)}
 html[data-app-scheme] .di-start-action {background:var(--app-raised);color:var(--app-text);border-color:var(--app-line)}
 html[data-app-scheme] .di-start-card :where(h1,p,strong,small,.di-start-logo) {color:var(--app-text)}
@@ -135,6 +170,10 @@ html[data-app-scheme][data-suite-app="liveit"] .button.primary:hover {
 }
 html[data-app-scheme] #connected-apps-list {
   background:var(--app-surface);color:var(--app-text);border-color:var(--app-line);
+}
+html[data-app-scheme] #connected-apps-toggle {
+  background:var(--app-chrome-soft)!important;color:var(--app-chrome-ink)!important;
+  border-color:var(--app-line)!important;
 }
 html[data-app-scheme] #connected-apps-list :where(a,small,p,#connected-note-tools-toggle) {color:var(--app-text)}
 html[data-app-scheme] #connected-apps-list :where(a:hover,a[aria-current="page"],button:hover) {

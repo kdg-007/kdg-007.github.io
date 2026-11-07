@@ -93,6 +93,9 @@ async function checkLauncher(browser,origin,layout){
    const menu=await checkMenu(home,'Today');
    const page=await open(menu.locator('a[href="'+entry+workspace.id+'"]'));
    await workspace.content(page).waitFor({state:'visible',timeout:20000});
+   if(workspace.id==='keepit'){
+    await page.waitForFunction(()=>document.querySelector('#result-count')?.textContent?.includes('items'),null,{timeout:15000});
+   }
    assert.equal(await page.locator('html').getAttribute('data-app-scheme'),'journal');
    if(layout.name==='macbook'&&browser.browserType().name()==='chromium'){
     await page.screenshot({path:join(screenshots,workspace.id+'-journal.png')});
@@ -106,20 +109,28 @@ async function checkLauncher(browser,origin,layout){
    await menu.waitFor({state:'hidden'});
   }
   if(layout.name==='macbook'){
+   const mirror=await context.newPage();
+   await mirror.goto(origin+'/partners/connected/?connected-app=keepit',{waitUntil:'domcontentloaded'});
    await home.getByRole('button',{name:'Appearance',exact:true}).click();
    const preference=home.getByLabel('Color scheme',{exact:true});
    const frame=home.frameLocator('iframe[title="LiveIt journal workspace"]');
    for(const value of ['midnight','linen','lavender','forest','journal']){
     await preference.selectOption(value);
     await frame.locator('html[data-app-scheme="'+value+'"]').waitFor({state:'attached'});
+    await mirror.locator('html[data-app-scheme="'+value+'"]').waitFor({state:'attached'});
     assert.equal(await home.locator('html').getAttribute('data-app-scheme'),value);
    }
    await home.getByRole('button',{name:'Done',exact:true}).click();
-   await home.reload();
-   await frame.locator('#app .app-shell').waitFor({state:'visible',timeout:20000});
-   assert.equal(await home.locator('html').getAttribute('data-app-scheme'),'journal');
-   if(browser.browserType().name()==='chromium')await home.screenshot({path:join(screenshots,'liveit-journal.png')});
-   console.log('SHARED_APPEARANCE_SYNC_AND_RELOAD_'+browser.browserType().name().toUpperCase()+'_PASS');
+   await mirror.close();
+   const address=home.url();
+   await home.close();
+   const reopened=await context.newPage();
+   await reopened.goto(address,{waitUntil:'domcontentloaded'});
+   await reopened.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell')
+    .waitFor({state:'visible',timeout:20000});
+   assert.equal(await reopened.locator('html').getAttribute('data-app-scheme'),'journal');
+   if(browser.browserType().name()==='chromium')await reopened.screenshot({path:join(screenshots,'liveit-journal.png')});
+   console.log('SHARED_APPEARANCE_SYNC_AND_REOPEN_'+browser.browserType().name().toUpperCase()+'_PASS');
   }
   console.log('CONNECTED_LAUNCHER_'+layout.name.toUpperCase()+'_'+browser.browserType().name().toUpperCase()+'_PASS');
  }finally{await context.close();}
