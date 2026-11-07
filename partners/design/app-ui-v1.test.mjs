@@ -1,3 +1,4 @@
+import {checkExcelPreview} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-preview.browser.mjs';
 // Presentation-only browser regression. Disposable HTTPS and no real user data.
 import assert from 'node:assert/strict';
 import {createServer} from 'node:https';
@@ -463,6 +464,7 @@ try {
   for(const layout of layouts)await checkLauncher(browser,origin,layout);
   await checkWorkspaceStartup(browser,origin);
   await checkTravelActivities(browser,origin);
+  await checkExcelPreview(browser,origin);
   await checkStreetMap(browser,origin);
   await checkThinkitTopicOrder(browser,origin);
   await browser.close();browser=null;
