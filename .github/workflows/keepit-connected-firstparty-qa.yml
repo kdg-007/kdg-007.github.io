@@ -12,6 +12,8 @@ on:
       - "partners/liveit/thinkit/connected-w18e-c15396/index.html"
       - "partners/travelit/thinkit/afda98f5ced9406d0fe5/**"
       - "thinkit/index.html"
+      - "thinkit/assets/**"
+      - "thinkit/36f8901ec722db162bcf/**"
       - "assets/library-app-connected-w18e.js"
       - ".github/workflows/keepit-connected-firstparty-qa.yml"
   workflow_dispatch:
@@ -37,7 +39,7 @@ jobs:
           const native=get('assets/library-app-TEDOLCCE.js');
           const patched=get('assets/library-app-connected-w18e.js');
           const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
-          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=map-1"></script>';
+          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=topic-order-1"></script>';
           const from='h.src="/partners/liveit/thinkit/1a26c53e24e1b903260b/index.html"';
           const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html?v=workspace-2"';
           assert.equal(root.split(a).length,2);
@@ -106,7 +108,7 @@ jobs:
             ['h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html"',
              'h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=map-1"'],
             ['d.src="/thinkit/36f8901ec722db162bcf/index.html"',
-             'd.src="/thinkit/36f8901ec722db162bcf/index.html?v=workspace-2"'],
+             'd.src="/thinkit/36f8901ec722db162bcf/index.html?v=topic-order-1"'],
             ['function Io(){if(!(!Ve||go||!de||!f||f.readOnly)){',
              'function getWritableConnectedLibrary(){return de&&f&&!f.readOnly?f:null}function Io(){if(Ve&&!go){'],
             [',Ve.id==="liveit"){Y=Li({workspace:V,getLibrary:()=>f,',

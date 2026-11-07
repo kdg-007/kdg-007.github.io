@@ -347,6 +347,83 @@ async function checkStreetMap(browser,origin){
  }finally{await context.close();}
 }
 
+async function checkThinkitTopicOrder(browser,origin){
+ for(const route of ['/thinkit/index.html','/thinkit/36f8901ec722db162bcf/index.html']){
+  const context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:1000},serviceWorkers:'block'});
+  const reference={provider:'keepit',version:1,scope:'sha256:'+'a'.repeat(64),itemId:'11111111-1111-4111-8111-111111111111',revision:1,label:'Preserved test reference',kind:'file'};
+  const makeNode=(id,label,parentId,x,y,extra={})=>({id,label,parentId,x,y,w:150,h:60,shape:'subtopic',collapsed:false,pinned:false,fontSize:13,fontFamily:'sans',fontWeight:600,fill:'plain',noteHtml:'',...extra});
+  const project={format:'DIAGRAMIT',version:3,id:'sequence-test',name:'Topic sequence verification',activePageId:'mind-sequence',createdAt:'2026-11-07T00:00:00Z',updatedAt:'2026-11-07T00:00:00Z',pages:[{id:'mind-sequence',name:'Trip ideas',mode:'mind',edges:[],mindLayout:{style:'one-sided',side:'right',order:'manual',siblingGap:38,levelGap:96,branchGap:90,scope:'all'},nodes:[
+   makeNode('root','Trip',null,0,200),makeNode('day1','Day 1','root',260,200),
+   makeNode('a','First stop','day1',520,100),makeNode('a1','First stop child','a',780,100),
+   makeNode('b','Second stop','day1',520,300,{noteHtml:'<p>Original second-stop note</p>'}),
+   makeNode('b1','Second stop child 1','b',780,260,{keepitFiles:[reference],noteHtml:'<p>Child note stays attached</p>'}),
+   makeNode('b2','Second stop child 2','b',780,350),makeNode('c','Last stop','day1',520,500),makeNode('day2','Day 2','root',260,600)
+  ]}]};
+  try{
+   await context.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());
+   const page=await context.newPage();await page.goto(origin+route,{waitUntil:'domcontentloaded'});
+   await page.locator('#diStartScreen').waitFor({state:'visible'});
+   await page.locator('#fileInput').setInputFiles({name:'topic-sequence.diagramit.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
+   await page.locator('#diStartScreen').waitFor({state:'hidden'});
+   if(await page.locator('body').evaluate(el=>el.classList.contains('sidebar-collapsed'))){
+    await page.locator('#diMenuTabs [data-tab="View"]').click();await page.locator('#diMenuPopup [data-dcmd="view.outline"]').click();
+   }
+   async function stored(){return page.evaluate(()=>new Promise((resolve,reject)=>{
+    const open=indexedDB.open('ThinkIt_v094');open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,tx=db.transaction('documents','readonly'),req=tx.objectStore('documents').get('current');tx.oncomplete=()=>{db.close();resolve(req.result?JSON.parse(req.result):null);};};
+   }));}
+   async function waitOrder(expected){
+    for(let attempt=0;attempt<120;attempt++){
+     const current=await stored();
+     if(current&&JSON.stringify(current.pages[0].nodes.filter(n=>n.parentId==='day1').map(n=>n.id))===JSON.stringify(expected))return current;
+     await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    throw Error('Sequence not saved: '+JSON.stringify(expected)+'; '+await page.locator('#saveStatus').innerText());
+   }
+   await page.locator('#btnMindNotes').click();
+   await page.locator('[data-mind-node="b"]').click();
+   await page.locator('#mindNoteEditor[contenteditable="true"]').waitFor();
+   await page.locator('#mindNoteEditor').fill('Edited note immediately before moving');
+   await page.locator('#mindTopicEarlier').click();
+   await waitOrder(['b','a','c']);
+   assert.equal(await page.locator('#mindTopicEarlier').isDisabled(),true,'First sibling cannot move earlier');
+   assert.deepEqual(await page.locator('#mindTopicList .mind-topic-label').allTextContents(),['Trip','Day 1','Second stop','Second stop child 1','Second stop child 2','First stop','First stop child','Last stop','Day 2']);
+   let saved=await stored(),nodes=saved.pages[0].nodes;
+   assert.ok(nodes.find(n=>n.id==='b').noteHtml.includes('Edited note immediately before moving'));
+   assert.deepEqual(nodes.find(n=>n.id==='b1').keepitFiles,[reference]);
+   assert.equal(nodes.find(n=>n.id==='b1').parentId,'b');
+   assert.ok(nodes.find(n=>n.id==='b').y<nodes.find(n=>n.id==='a').y,'Canvas follows the new sequence');
+   await page.locator('#modalRoot .modal-footer').getByRole('button',{name:'Close',exact:true}).click();
+   await page.locator('#diagramSvg').focus();await page.keyboard.press('Control+z');await waitOrder(['a','b','c']);
+   saved=await stored();assert.ok(saved.pages[0].nodes.find(n=>n.id==='b').noteHtml.includes('Edited note immediately before moving'),'Undo sequence retains the preceding note edit');
+   await page.keyboard.press('Control+Shift+z');await waitOrder(['b','a','c']);
+   await page.locator('#outlineTree [data-outline-id="b"]').click();
+   await page.locator('#diMenuTabs [data-tab="Edit"]').click();await page.locator('#diMenuPopup [data-dcmd="edit.topicLater"]').click();await waitOrder(['a','b','c']);
+   await page.locator('#diagramSvg').focus();await page.keyboard.press('Control+Shift+ArrowUp');await waitOrder(['b','a','c']);
+   await page.locator('#nodeLayer g.node-g[data-node-id="b"]').click({button:'right'});
+   const menuBounds=await page.locator('#nodeContextMenu').boundingBox();assert.ok(menuBounds.y>=0&&menuBounds.y+menuBounds.height<=1000,'Topic context menu fits the viewport');
+   await page.locator('#nodeContextMenu').getByRole('button',{name:'Move topic later',exact:true}).click();await waitOrder(['a','b','c']);
+   await page.locator('#diagramSvg').focus();await page.keyboard.press('Control+Shift+ArrowUp');await waitOrder(['b','a','c']);
+   await page.locator('#btnMindNotes').click();await page.locator('[data-mind-node="b"]').click();
+   await page.locator('[data-mind-collapse="b"]').click();
+   await page.waitForFunction(()=>document.querySelector('[data-mind-node="b"]')?.getAttribute('aria-expanded')==='false');
+   const before=(await stored()).pages[0].nodes;await page.locator('#mindTopicLater').click();await waitOrder(['a','b','c']);
+   nodes=(await stored()).pages[0].nodes;
+   const b=nodes.find(n=>n.id==='b'),oldB=before.find(n=>n.id==='b'),child=nodes.find(n=>n.id==='b1'),oldChild=before.find(n=>n.id==='b1');
+   assert.equal(b.collapsed,true);assert.equal(child.y-oldChild.y,b.y-oldB.y,'Hidden children move with the collapsed branch');
+   assert.deepEqual(child.keepitFiles,[reference]);assert.equal(nodes.length,9);
+   await page.locator('#mindSearch').fill('Second');assert.equal(await page.locator('#mindTopicLater').isDisabled(),true,'Search does not conceal siblings during reordering');
+   await page.locator('#mindSearch').fill('');
+   await page.locator('#modalRoot .modal-footer').getByRole('button',{name:'Close',exact:true}).click();
+   await page.reload({waitUntil:'domcontentloaded'});await page.locator('#diStartResume').click();
+   await page.locator('#diStartScreen').waitFor({state:'hidden'});await page.locator('#btnMindNotes').click();
+   await page.locator('[data-mind-collapse="b"]').click();
+   await page.locator('[data-mind-node="b1"]').waitFor({state:'visible'});
+   assert.deepEqual(await page.locator('#mindTopicList .mind-topic-label').allTextContents(),['Trip','Day 1','First stop','First stop child','Second stop','Second stop child 1','Second stop child 2','Last stop','Day 2']);
+   console.log('THINKIT_TOPIC_SEQUENCE_BRANCH_NOTES_UNDO_REDO_AND_REOPEN_'+browser.browserType().name().toUpperCase()+'_'+(route.includes('36f890')?'CONNECTED':'STANDALONE')+'_PASS');
+  }finally{await context.close();}
+ }
+}
+
 let browser;
 try {
  await new Promise((ok,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',ok);});
@@ -387,6 +464,7 @@ try {
   await checkWorkspaceStartup(browser,origin);
   await checkTravelActivities(browser,origin);
   await checkStreetMap(browser,origin);
+  await checkThinkitTopicOrder(browser,origin);
   await browser.close();browser=null;
  }
  console.log('SHARED_APP_UI_V1_PRESENTATION_SMOKE_PASS');
