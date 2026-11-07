@@ -88,11 +88,12 @@ jobs:
           for rel,app in pages:
               file=Path('_site')/rel
               if not file.is_file():
-                  # Pinned snapshots can already exist on Pages outside the
-                  # latest transfer archive; preserve them without failing.
-                  if rel=='thinkit/36f8901ec722db162bcf/index.html':
-                      continue
-                  raise SystemExit('Missing first-party app preview: '+rel)
+                  # Recent pinned app pages can be newer than the transfer archive.
+                  current=Path(rel)
+                  if not current.is_file():
+                      raise SystemExit('Missing first-party app preview: '+rel)
+                  file.parent.mkdir(parents=True,exist_ok=True)
+                  file.write_text(current.read_text())
               html=file.read_text()
               original='<html lang="en">'
               tagged='<html lang="en" data-suite-app="'+app+'">'
