@@ -399,6 +399,10 @@ async function checkThinkitTopicOrder(browser,origin){
    await page.locator('#outlineTree [data-outline-id="b"]').click();
    await page.locator('#diMenuTabs [data-tab="Edit"]').click();await page.locator('#diMenuPopup [data-dcmd="edit.topicLater"]').click();await waitOrder(['a','b','c']);
    await page.locator('#diagramSvg').focus();await page.keyboard.press('Control+Shift+ArrowUp');await waitOrder(['b','a','c']);
+   await page.locator('#nodeLayer [data-node-id="b"]').click({button:'right'});
+   const menuBounds=await page.locator('#nodeContextMenu').boundingBox();assert.ok(menuBounds.y>=0&&menuBounds.y+menuBounds.height<=1000,'Topic context menu fits the viewport');
+   await page.locator('#nodeContextMenu').getByRole('button',{name:'Move topic later',exact:true}).click();await waitOrder(['a','b','c']);
+   await page.locator('#diagramSvg').focus();await page.keyboard.press('Control+Shift+ArrowUp');await waitOrder(['b','a','c']);
    await page.locator('#btnMindNotes').click();await page.locator('[data-mind-node="b"]').click();
    await page.locator('[data-mind-collapse="b"]').click();
    await page.waitForFunction(()=>document.querySelector('[data-mind-node="b"]')?.getAttribute('aria-expanded')==='false');
