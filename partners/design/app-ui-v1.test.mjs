@@ -371,9 +371,14 @@ async function checkThinkitTopicOrder(browser,origin){
    async function stored(){return page.evaluate(()=>new Promise((resolve,reject)=>{
     const open=indexedDB.open('ThinkIt_v094');open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,tx=db.transaction('documents','readonly'),req=tx.objectStore('documents').get('current');tx.oncomplete=()=>{db.close();resolve(req.result?JSON.parse(req.result):null);};};
    }));}
-   async function waitOrder(expected){await page.waitForFunction(expected=>new Promise(resolve=>{
-    const open=indexedDB.open('ThinkIt_v094');open.onerror=()=>resolve(false);open.onsuccess=()=>{const db=open.result,tx=db.transaction('documents','readonly'),req=tx.objectStore('documents').get('current');tx.oncomplete=()=>{db.close();try{const doc=JSON.parse(req.result);resolve(JSON.stringify(doc.pages[0].nodes.filter(n=>n.parentId==='day1').map(n=>n.id))===JSON.stringify(expected));}catch{resolve(false);}};};
-   }),expected);}
+   async function waitOrder(expected){
+    for(let attempt=0;attempt<120;attempt++){
+     const current=await stored();
+     if(current&&JSON.stringify(current.pages[0].nodes.filter(n=>n.parentId==='day1').map(n=>n.id))===JSON.stringify(expected))return current;
+     await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    throw Error('Sequence not saved: '+JSON.stringify(expected)+'; '+await page.locator('#saveStatus').innerText());
+   }
    await page.locator('#btnMindNotes').click();
    await page.locator('[data-mind-node="b"]').click();
    await page.locator('#mindNoteEditor[contenteditable="true"]').waitFor();
