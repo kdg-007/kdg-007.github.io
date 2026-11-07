@@ -128,6 +128,19 @@ html[data-app-scheme][data-suite-app="liveit"] .sidebar .space-tile {
   --ink:var(--app-text)!important;--muted:var(--app-muted)!important;
   background:var(--app-surface);color:var(--app-text);
 }
+html[data-app-scheme][data-suite-app="liveit"] .sidebar .mini-day.today {
+  background:var(--app-accent);color:var(--app-accent-on);
+}
+html[data-app-scheme][data-suite-app="liveit"] .sidebar .mini-toolbar .tiny-button {
+  background:var(--app-chrome-soft);color:var(--app-chrome-ink);border-color:var(--app-line);
+}
+html[data-app-scheme] :is(#add-files,#write-note) {
+  background:var(--app-accent)!important;color:var(--app-accent-on)!important;
+  border-color:var(--app-accent)!important;
+}
+html[data-app-scheme] #choose-folder {
+  color:var(--app-text)!important;border-color:var(--app-line)!important;
+}
 html[data-app-scheme][data-suite-app="travelit"] .hero {
   background:var(--app-chrome);color:var(--app-chrome-ink);
 }

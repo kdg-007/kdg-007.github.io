@@ -119,6 +119,17 @@ async function checkLauncher(browser,origin,layout){
     await frame.locator('html[data-app-scheme="'+value+'"]').waitFor({state:'attached'});
     await mirror.locator('html[data-app-scheme="'+value+'"]').waitFor({state:'attached'});
     assert.equal(await home.locator('html').getAttribute('data-app-scheme'),value);
+    const contrast=await frame.locator('.sidebar .mini-day.today').evaluate(element=>{
+     const style=getComputedStyle(element);
+     const luminance=color=>{
+      const channels=color.match(/[\d.]+/g).slice(0,3).map(Number).map(c=>c/255)
+       .map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4);
+      return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722;
+     };
+     const values=[luminance(style.color),luminance(style.backgroundColor)].sort((a,b)=>a-b);
+     return (values[1]+.05)/(values[0]+.05);
+    });
+    assert.ok(contrast>=4.5,value+' selected calendar day must remain readable');
    }
    await home.getByRole('button',{name:'Done',exact:true}).click();
    await mirror.close();
