@@ -78,6 +78,8 @@ jobs:
           from pathlib import Path
           import shutil
           for rel in [
+              'thinkit/assets/thinkit-2.js',
+              'thinkit/36f8901ec722db162bcf/assets/thinkit-2.js',
               'partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app.js',
               'partners/travelit/thinkit/afda98f5ced9406d0fe5/css/style.css',
           ]:

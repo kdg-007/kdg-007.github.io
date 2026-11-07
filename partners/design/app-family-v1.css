@@ -162,3 +162,7 @@ html[data-suite-app="travelit"] .button{
   outline:3px solid var(--suite-focus);
   outline-offset:2px;
 }
+
+html[data-suite-app="thinkit"] .mind-topic-order{display:flex;gap:6px;margin:0 0 9px;flex-wrap:wrap}
+html[data-suite-app="thinkit"] .mind-topic-order button{min-height:34px;padding:6px 10px;border-radius:8px;border:1px solid var(--outline);background:var(--surface2);color:var(--ink);cursor:pointer}
+html[data-suite-app="thinkit"] .mind-topic-order button:disabled{opacity:.45;cursor:default}
