@@ -93,3 +93,15 @@
 .activity-table-dialog .modal-actions{position:sticky;bottom:0;background:var(--card);padding-top:14px}
 .itinerary-table-card{padding:10px}
 @media(max-width:720px){.mobile-nav .navitem{min-width:0;flex:1}}
+
+/* Street map is independent of the app palette so geographic labels retain contrast. */
+.street-map-frame{border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:14px}
+#street-map{height:clamp(360px,60vh,660px);width:100%;background:#e9eee5;color:#263b45;z-index:0;font:13px/1.4 Arial,sans-serif}
+#street-map .leaflet-control a{color:#263b45;background:#fff;border-radius:0}
+#street-map .leaflet-control-attribution{background:#fffffff0;color:#263b45;font-size:12px}
+#street-map .leaflet-control-attribution a{color:#075b88;background:transparent}
+#street-map .leaflet-tooltip{background:#fff;color:#263b45;border:1px solid #aaa}
+#street-map.map-is-drawing{cursor:crosshair}
+.street-map-status{padding:10px 2px;color:var(--muted);font-size:13px}
+.street-map-status[data-state="unavailable"],.street-map-status[data-state="partial"]{color:#a04328;font-weight:650}
+@media(max-width:640px){#street-map{height:55vh;min-height:340px}.leaflet-control-attribution{max-width:240px}}
