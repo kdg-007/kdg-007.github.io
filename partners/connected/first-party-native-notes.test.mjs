@@ -179,13 +179,11 @@ try{
     assert.equal(uri.searchParams.get('connected-app'),id);
    }
    await page.locator('#connected-apps-toggle').click();
-   await frame.locator('#liveit-apps-button').click();
    const menuLinks=await frame.locator('#liveit-app-switcher a').evaluateAll(els=>
      els.map(el=>el.getAttribute('href')));
    assert.ok(menuLinks.includes('/partners/connected/?connected-app=keepit'));
    assert.ok(menuLinks.includes('/partners/connected/?connected-app=thinkit'));
    assert.ok(menuLinks.includes('/partners/connected/?connected-app=travelit'));
-   await frame.locator('#liveit-apps-button').click();
    await frame.locator('.quick-actions-panel .quick-action-tile[data-shortcut="note"]').click();
    await frame.locator('#captureDialog').waitFor({state:'visible'});
    const body='W18E connected note original '+tag;
