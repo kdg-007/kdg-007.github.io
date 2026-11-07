@@ -75,7 +75,7 @@ export function readExcelWorkbook(input){
    const rowNumber=Number(row['@_r']);if(!Number.isSafeInteger(rowNumber)||rowNumber<1||rowNumber>1048576)throw Error('Invalid worksheet row.');if(rowNumbers.has(rowNumber))throw Error('Duplicate worksheet row.');rowNumbers.add(rowNumber);const cells={};
    for(const cell of array(row.c)){
     const address=cell['@_r'];if(!/^[A-Z]{1,3}[1-9]\d*$/.test(address||'')||Number(address.match(/\d+$/)[0])!==rowNumber||seen.has(address))throw Error('Invalid or duplicate cell address.');const column=address.replace(/\d+$/,'');if([...column].reduce((n,c)=>n*26+c.charCodeAt(0)-64,0)>16384)throw Error('Invalid worksheet column.');seen.add(address);
-    const hasValue=cell.v!==undefined||cell.is!==undefined,formula=cell.f!==undefined?text(cell.f):null;if(!hasValue&&!formula)continue;
+    const hasValue=cell.v!==undefined||cell.is!==undefined,formula=cell.f!==undefined?text(cell.f):null;if(!hasValue&&formula===null)continue;
     if(++cellCount>EXCEL_LIMITS.cells)throw Error('Workbook has too many populated cells.');
     const type=cell['@_t']||'n';let value=null;
     if(type==='s'&&cell.v!==undefined){const ix=Number(text(cell.v));if(!Number.isInteger(ix)||strings[ix]===undefined)throw Error('Invalid shared text cell.');value=strings[ix];}

@@ -30,6 +30,9 @@ try{
  assert.equal(overnight.activities[0].durationMinutes,120);assert.equal(overnight.activities[0].finish,'01:00 (+1d)');
  assert.ok(altered(w=>{w.sheets[0].rows.find(r=>r.number===5).cells.A.value='1.01';}).statistics.errorCount>0);
  assert.ok(altered(w=>{first(w).H.value='missing';}).statistics.errorCount>0);
+ assert.ok(altered(w=>{first(w).B.type='e';first(w).B.value='#REF!';}).issues.some(i=>/Excel error/.test(i.message)));
+ assert.ok(altered(w=>{first(w).H.value='1.02';}).issues.some(i=>/cycle/.test(i.message)));
+ assert.equal(overnight.statistics.overlapCount,0);
  assert.ok(altered(w=>{w.sheets.find(s=>s.name==='Places & Maps').rows[1].cells.H.value='javascript:alert(1)';}).statistics.errorCount>0);
  assert.equal(altered(w=>{first(w).G.value='Custom';}).activities[0].sourceType,'Custom');
  assert.throws(()=>readExcelWorkbook(new Uint8Array([0,1,2,3])));

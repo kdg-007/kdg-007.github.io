@@ -1,5 +1,5 @@
 /** Pure preview planner. It cannot open storage, fetch links or save records. */
-import {normalizeTrip,normalizeStop,validDate,conflicts} from './domain.js';
+import {normalizeTrip,normalizeStop,validDate} from './domain.js';
 const DAY=86400000;
 const TYPE_MAP=Object.freeze({transport:'Travel',travel:'Travel',meal:'Meal',tour:'Activity',activity:'Activity','prep/admin':'Other',free:'Other',hotel:'Hotel',other:'Other'});
 const labels={code:['code'],title:['activity','activity / stop'],date:['date'],start:['start'],finish:['finish','end'],type:['type'],duration:['duration'],predecessor:['predecessor','predecessors']};
@@ -77,6 +77,7 @@ export function planExcelImport(workbook){
   if(norm(rawCode)==='code'&&norm(rawTitle)==='activity'){skipped.repeatedHeaders++;continue;}
   if(activities.length>=5000)throw Error('The preview supports up to 5,000 activities. Split the workbook into smaller trips.');
   const activity={sourceRow:row.number,code:rawCode,title:rawTitle,date:null,time:null,finish:null,durationMinutes:null,sourceType:cellText(c.type),kind:TYPE_MAP[norm(val(c.type))]||'Other',predecessors:[],detail:null};
+  for(const cell of Object.values(c))if(cell?.type==='e')issue(issues,'error','Excel error result: '+cellText(cell),sheet.name,row.number,cell.address,activity.code);
   const check=(key,run)=>{try{return run();}catch(error){issue(issues,'error',error.message,sheet.name,row.number,c[key]?.address,activity.code);return null;}};
   activity.code=check('code',()=>codeValue(c.code))||rawCode;
   if(codes.has(activity.code))issue(issues,'error','Duplicate activity code.',sheet.name,row.number,c.code?.address,activity.code);codes.add(activity.code);
@@ -117,7 +118,9 @@ export function planExcelImport(workbook){
  for(const activity of activities)if(activity.date&&activity.durationMinutes){const finishDay=new Date(Date.parse(activity.date+'T00:00:00Z')+Math.floor((Number(activity.time?.slice(0,2))*60+Number(activity.time?.slice(3))+activity.durationMinutes)/1440)*DAY).toISOString().slice(0,10);if(finishDay>trip.endDate)trip.endDate=finishDay;}
  try{normalizeTrip(trip);}catch(error){issue(issues,'error',error.message,sheet.name);}
  const normalized=[];for(const [index,a] of activities.entries())if(a.date&&a.time&&a.durationMinutes&&a.title&&a.title.length<=150){try{normalized.push(normalizeStop({id:'preview-'+a.code,title:a.title,date:a.date,time:a.time,durationMinutes:a.durationMinutes,kind:a.kind,sortOrder:index,notes:a.detail?.notes||''},trip));}catch(error){issue(issues,'error',error.message,sheet.name,a.sourceRow,null,a.code);}}
- const overlapCount=conflicts(normalized).length;if(overlapCount)issue(issues,'warning',overlapCount+' overlapping activity interval(s); review the schedule before saving is enabled.',sheet.name);
+ const starts=normalized.map(a=>Date.parse(a.date+'T00:00:00Z')/60000+Number(a.time.slice(0,2))*60+Number(a.time.slice(3))).sort((a,b)=>a-b),ends=normalized.map(a=>Date.parse(a.date+'T00:00:00Z')/60000+Number(a.time.slice(0,2))*60+Number(a.time.slice(3))+a.durationMinutes).sort((a,b)=>a-b);
+ let overlapCount=0,ended=0;for(let i=0;i<starts.length;i++){while(ended<ends.length&&ends[ended]<=starts[i])ended++;overlapCount+=i-ended;}
+ if(overlapCount)issue(issues,'warning',overlapCount+' overlapping activity interval(s); review the schedule before saving is enabled.',sheet.name);
  const coverage=workbook.sheets.map(s=>({name:s.name,status:s.name===sheet.name?'Schedule preview':s.name===detailsSheet?.name?'Matched place details':norm(s.name)==='activity types'?'Source category definitions':'Not included in this preview'}));
  return {profile:'travelit-excel-itinerary-v1',readOnly:true,trip,activities,issues,skipped,coverage,statistics:{activityCount:activities.length,dayCount:dates.length,dateCounts,typeCounts,predecessorCount:activities.reduce((sum,a)=>sum+a.predecessors.length,0),matchedDetails:activities.length-missingDetails,explicitCoordinates:activities.filter(a=>a.detail?.coordinate).length,overlapCount,errorCount:issues.filter(i=>i.level==='error').length,warningCount:issues.filter(i=>i.level==='warning').length}};
 }
