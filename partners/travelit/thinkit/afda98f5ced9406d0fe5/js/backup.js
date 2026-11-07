@@ -1,4 +1,4 @@
-import {SCHEMA_VERSION,validateBackup} from './domain.js';
+import {SCHEMA_VERSION,validateBackup} from './domain.js?v=excel-import-1';
 const payload=b=>JSON.stringify({format:b.format,schemaVersion:b.schemaVersion,records:b.records,outbox:b.outbox});
 async function checksum(text){if(!globalThis.crypto?.subtle)throw Error('Secure Web Crypto unavailable; cannot verify backup integrity.');const bytes=new TextEncoder().encode(text);const digest=await globalThis.crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');}
 export async function createBackup(data,now=new Date().toISOString()){

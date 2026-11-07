@@ -1,3 +1,4 @@
+import {checkExcelImport} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-import.browser.mjs';
 import {checkExcelPreview} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-preview.browser.mjs';
 // Presentation-only browser regression. Disposable HTTPS and no real user data.
 import assert from 'node:assert/strict';
@@ -465,6 +466,7 @@ try {
   await checkWorkspaceStartup(browser,origin);
   await checkTravelActivities(browser,origin);
   await checkExcelPreview(browser,origin);
+  await checkExcelImport(browser,origin);
   await checkStreetMap(browser,origin);
   await checkThinkitTopicOrder(browser,origin);
   await browser.close();browser=null;
