@@ -56,6 +56,7 @@
   list.append(toolsButton);
  }
  function mountShellBar(host){
+  document.title=current==='liveit'?'LiveIt — Today':modes.find(mode=>mode.id===current).label+' — LiveIt';
   const bar=document.createElement('div');
   bar.className='connected-shell-bar';
   bar.setAttribute('role','navigation');

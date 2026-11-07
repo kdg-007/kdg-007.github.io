@@ -758,6 +758,7 @@
     render();
   }
   document.addEventListener('click',ev=>{
+    if(ev.target.closest('#liveit-app-switcher a'))return;
     const el=ev.target.closest('[data-action]');
     if(!el){
       if(ui.appsOpen&&!ev.target.closest('#liveit-app-switcher')){ui.appsOpen=false;render();}

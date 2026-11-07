@@ -1,0 +1,176 @@
+/* Shared visual preferences. Drawing objects and note contents keep their colors. */
+html[data-app-scheme="journal"] {
+  --app-ground:#e9dfcb;--app-surface:#fbf4e3;--app-raised:#fffaf0;
+  --app-chrome:#4a3128;--app-chrome-ink:#f7ebd1;--app-chrome-soft:#664a3c;
+  --app-text:#35281e;--app-muted:#6a5945;--app-line:#c8b79b;
+  --app-accent:#86502f;--app-accent-on:#fff8e9;--app-soft:#e9d9be;
+  --app-focus:#b36c31;--app-shadow:0 6px 24px #4a312817;
+}
+html[data-app-scheme="midnight"] {
+  --app-ground:#10212d;--app-surface:#1c3444;--app-raised:#223c4d;
+  --app-chrome:#162c3b;--app-chrome-ink:#e7f0f2;--app-chrome-soft:#294858;
+  --app-text:#e7f0f2;--app-muted:#b3c6ce;--app-line:#3b5562;
+  --app-accent:#72d2c5;--app-accent-on:#10212d;--app-soft:#294b50;
+  --app-focus:#a2e3da;--app-shadow:0 6px 24px #0002;
+}
+html[data-app-scheme="linen"] {
+  --app-ground:#f2efe7;--app-surface:#fffdf8;--app-raised:#ffffff;
+  --app-chrome:#eae3d4;--app-chrome-ink:#3c382e;--app-chrome-soft:#d8cfbd;
+  --app-text:#302e28;--app-muted:#696457;--app-line:#cec8ba;
+  --app-accent:#52664a;--app-accent-on:#ffffff;--app-soft:#e3e8dc;
+  --app-focus:#596f50;--app-shadow:0 6px 24px #35312710;
+}
+html[data-app-scheme="lavender"] {
+  --app-ground:#f0edf8;--app-surface:#fbf9ff;--app-raised:#ffffff;
+  --app-chrome:#473957;--app-chrome-ink:#f3eaff;--app-chrome-soft:#655174;
+  --app-text:#3d304a;--app-muted:#6a6077;--app-line:#cec2df;
+  --app-accent:#745b98;--app-accent-on:#ffffff;--app-soft:#e8dff1;
+  --app-focus:#8a65ad;--app-shadow:0 6px 24px #47395712;
+}
+html[data-app-scheme="forest"] {
+  --app-ground:#12211d;--app-surface:#203a30;--app-raised:#294739;
+  --app-chrome:#182e25;--app-chrome-ink:#edf1e7;--app-chrome-soft:#365343;
+  --app-text:#edf1e7;--app-muted:#b8ccbb;--app-line:#496452;
+  --app-accent:#afd3ad;--app-accent-on:#15291c;--app-soft:#35543e;
+  --app-focus:#c6e3b6;--app-shadow:0 6px 24px #0002;
+}
+
+/* Adapt each app's existing palette to the shared selection. */
+html[data-app-scheme],html[data-app-scheme] body {
+  --ground:var(--app-ground)!important;--paper:var(--app-ground)!important;
+  --surface:var(--app-surface)!important;--surface2:var(--app-raised)!important;
+  --surface-raised:var(--app-raised)!important;--card:var(--app-surface)!important;
+  --chrome:var(--app-chrome)!important;--toolbar:var(--app-surface)!important;
+  --text:var(--app-text)!important;--ink:var(--app-text)!important;
+  --muted:var(--app-muted)!important;--navy:var(--app-text)!important;
+  --navy-2:var(--app-chrome)!important;--teal:var(--app-accent)!important;
+  --mint:var(--app-soft)!important;--teal-light:var(--app-soft)!important;
+  --soft:var(--app-soft)!important;--panel-tint:var(--app-surface)!important;
+  --line:var(--app-line)!important;--border:var(--app-line)!important;
+  --outline:var(--app-line)!important;--focus:var(--app-focus)!important;
+  --accent-soft:var(--app-soft)!important;--accent-on:var(--app-accent-on)!important;
+  --workspace-strong:var(--app-accent)!important;--workspace-banner:var(--app-soft)!important;
+  --workspace-outline:var(--app-line)!important;--workspace-ink:var(--app-text)!important;
+  --suite-focus:var(--app-focus)!important;--shadow:var(--app-shadow)!important;
+  --ui-ink:var(--app-text)!important;--ui-muted:var(--app-muted)!important;
+  --ui-soft:var(--app-ground)!important;--ui-line:var(--app-line)!important;
+  --ui-green:var(--app-accent)!important;
+  --sima-paper:var(--app-ground)!important;--sima-surface:var(--app-surface)!important;
+  --sima-ink:var(--app-text)!important;--sima-muted:var(--app-muted)!important;
+  --sima-line:var(--app-line)!important;--sima-soft:var(--app-soft)!important;
+  --sima-navy:var(--app-text)!important;--sima-dark:var(--app-chrome)!important;
+  --sima-teal:var(--app-accent)!important;
+  background-color:var(--app-ground);color:var(--app-text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+html[data-app-scheme] :where(button,input,select,textarea) {font:inherit}
+html[data-app-scheme] :where(button,a,input,select,textarea):focus-visible {
+  outline:3px solid var(--app-focus)!important;outline-offset:3px!important;
+}
+html[data-app-scheme] :where(.panel,.feed-card,.summary-tile,.card,.trip-card,.item-card) {
+  background-color:var(--app-surface);color:var(--app-text);
+  border-color:var(--app-line);border-radius:16px;
+}
+html[data-app-scheme] :where(.topbar,.library-top,.di-menubar,.di-ribbon) {
+  background-color:var(--app-surface);color:var(--app-text);border-color:var(--app-line);
+}
+html[data-app-scheme] :where(.button,.nav-button,.secondary,.primary,.top-btn) {border-radius:11px}
+html[data-app-scheme] :where(.library-sidebar,.sidebar,.left-panel,.right-panel) {
+  background-color:var(--app-chrome);color:var(--app-chrome-ink);
+}
+html[data-app-scheme] :where(.library-sidebar,.sidebar,.left-panel,.right-panel) :where(
+  p,.muted,.section-label,.sidebar-title,.sidebar-kicker,.wordmark,.side-link,.side-backup,
+  .small,.small-sub,.calendar-nav,.calendar-label,.mini-day) {
+  color:var(--app-chrome-ink);
+}
+html[data-app-scheme] .library-sidebar :where(button,a) {color:var(--app-chrome-ink)}
+html[data-app-scheme] :where(.library-sidebar,.sidebar) button.selected {
+  background:var(--app-chrome-soft);color:var(--app-chrome-ink);
+}
+html[data-app-scheme] :where(input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select) {
+  background-color:var(--app-raised);color:var(--app-text);border-color:var(--app-line);
+}
+html[data-app-scheme] :where(input,textarea)::placeholder {color:var(--app-muted);opacity:1}
+html[data-app-scheme] .item-card-body {background:var(--app-surface);color:var(--app-text)}
+html[data-app-scheme] .library-main {background:var(--app-ground)}
+html[data-app-scheme] :where(.library-top,.item-card) :where(h1,h2,h3) {color:var(--app-text)}
+html[data-app-scheme] :where(.backup-dialog,.settings-dialog,.capture-dialog,.modal,.item-dialog) {
+  background-color:var(--app-surface);color:var(--app-text);border-color:var(--app-line);
+}
+html[data-app-scheme] :where(.button,.secondary) {
+  background-color:var(--app-soft);color:var(--app-text);border-color:var(--app-line);
+}
+html[data-app-scheme][data-suite-app="liveit"] .button.secondary {
+  background-color:var(--app-soft);color:var(--app-text);border-color:var(--app-line);
+}
+html[data-app-scheme] :where(.primary,.button.primary,.button-primary) {
+  background-color:var(--app-accent);color:var(--app-accent-on);border-color:var(--app-accent);
+}
+html[data-app-scheme] :where(.navitem.active,.navitem:hover) {
+  background:var(--app-chrome-soft);color:var(--app-chrome-ink);
+}
+html[data-app-scheme] .di-start-card {background:var(--app-surface);color:var(--app-text);border-color:var(--app-line)}
+html[data-app-scheme] .di-start-action {background:var(--app-raised);color:var(--app-text);border-color:var(--app-line)}
+html[data-app-scheme] .di-start-card :where(h1,p,strong,small,.di-start-logo) {color:var(--app-text)}
+
+/* Navigation uses the same leather/navy/plum/green surface in every app. */
+html[data-app-scheme] .connected-shell-bar,
+html[data-app-scheme][data-suite-app="liveit"] .topbar {
+  background-color:var(--app-chrome);color:var(--app-chrome-ink);border-color:var(--app-line);
+}
+html[data-app-scheme] .connected-shell-bar :where(.connected-shell-current,.connected-shell-home,#connected-apps-toggle),
+html[data-app-scheme][data-suite-app="liveit"] .topbar :where(.brand-name,.brand-sub,.nav-button,.button,.utility-button) {
+  color:var(--app-chrome-ink);
+}
+html[data-app-scheme] .connected-shell-bar :where(.connected-shell-home,#connected-apps-toggle),
+html[data-app-scheme][data-suite-app="liveit"] .topbar :where(.nav-button.active,.button,.utility-button) {
+  background-color:var(--app-chrome-soft);border-color:var(--app-line);
+}
+html[data-app-scheme][data-suite-app="liveit"] .brand-mark {
+  background:var(--app-chrome-soft);color:var(--app-chrome-ink);
+}
+html[data-app-scheme] .settings-section:has(#appearance) {display:none}
+html[data-app-scheme][data-suite-app="liveit"] .button.primary:hover {
+  background:var(--app-accent);color:var(--app-accent-on);filter:brightness(.96);
+}
+html[data-app-scheme] #connected-apps-list {
+  background:var(--app-surface);color:var(--app-text);border-color:var(--app-line);
+}
+html[data-app-scheme] #connected-apps-list :where(a,small,p,#connected-note-tools-toggle) {color:var(--app-text)}
+html[data-app-scheme] #connected-apps-list :where(a:hover,a[aria-current="page"],button:hover) {
+  background:var(--app-soft);color:var(--app-text);
+}
+html[data-app-scheme="journal"] :where(.connected-shell-bar,.library-sidebar,.sidebar,.left-panel) {
+  background-image:repeating-linear-gradient(115deg,#ffffff08 0 1px,transparent 1px 5px),
+    linear-gradient(145deg,#ffffff06,#00000012);
+  background-size:7px 9px,auto;
+}
+/* Paper keeps the diagram workspace readable independently of the chrome. */
+html[data-app-scheme][data-suite-app="thinkit"] #canvasWrap {background:#fbf8ee}
+html[data-app-scheme][data-appearance-embedded] .theme-toggle {display:none}
+html[data-app-scheme] :is(#theme-toggle,.app-appearance-button) {flex-shrink:0}
+html[data-app-scheme] #theme-toggle {display:none}
+
+html[data-app-scheme] .app-appearance-button {
+  appearance:none;min-height:40px;padding:8px 12px;border-radius:11px;
+  border:1px solid var(--app-line);background:var(--app-chrome-soft);
+  color:var(--app-chrome-ink);font:600 13px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  cursor:pointer;white-space:nowrap;
+}
+html[data-app-scheme] .app-appearance-dialog {
+  box-sizing:border-box;width:min(420px,calc(100vw - 28px));padding:26px;
+  border:1px solid var(--app-line);border-radius:18px;
+  background:var(--app-surface);color:var(--app-text);box-shadow:0 20px 80px #0004;
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.app-appearance-dialog::backdrop {background:#10141999;backdrop-filter:blur(3px)}
+.app-appearance-dialog h2 {margin:0 0 8px;font-size:24px;line-height:1.2;color:var(--app-text)}
+.app-appearance-dialog p {color:var(--app-muted);margin:12px 0}
+.app-appearance-dialog label {display:block;margin:20px 0 6px;font-weight:650}
+.app-appearance-dialog select {box-sizing:border-box;width:100%;min-height:46px;padding:8px 12px;border:1px solid var(--app-line);border-radius:10px}
+.app-appearance-dialog .app-appearance-preview {min-height:48px;border-radius:12px;padding:14px;background:var(--app-soft);color:var(--app-text)}
+.app-appearance-dialog .app-appearance-done {min-height:44px;padding:9px 22px;border:0;border-radius:10px;background:var(--app-accent);color:var(--app-accent-on);font:inherit;font-weight:650;cursor:pointer;float:right}
+@media(max-width:480px) {
+  html[data-app-scheme] .app-appearance-button {padding:7px 9px;font-size:12px}
+  html[data-app-scheme] .connected-shell-current {display:none}
+}
