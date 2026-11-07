@@ -52,13 +52,15 @@ export function showExcelPreview({openModal,closeModal,setCleanup,onImport,setBu
      for(const type of unknown){const label=document.createElement('label');label.textContent=type+' → ';const select=document.createElement('select');select.dataset.sourceType=type;for(const kind of ['','Activity','Travel','Meal','Hotel','Other']){const option=document.createElement('option');option.value=kind;option.textContent=kind||'Choose type';select.append(option);}label.append(select);mappings.append(label);}
      const placeCount=new Set(plan.activities.map(a=>a.detail?.mapUrl).filter(Boolean)).size;
      root.querySelector('#excel-destination-count').textContent=`${placeCount} new destination links will be created, grouped by identical map URL within this import. Existing saved places will not be merged. Locations remain unverified until you pin them.`;
+     let preparedBatch=null,preparedKey=null;
      root.querySelector('#excel-import-save').addEventListener('click',async()=>{
       const error=root.querySelector('#excel-import-error');error.textContent='';
       if(!root.querySelector('#excel-import-accept').checked){error.textContent='Confirm the import scope before saving.';return;}
       const controls=[...root.querySelectorAll('input,select,button')];controls.forEach(el=>el.disabled=true);setBusy(true);
       try{
-       const batch=await buildExcelBatch(plan,{filename:file.name,fileDigest:plan.fileDigest,title:root.querySelector('#excel-trip-title').value,timezone:root.querySelector('#excel-trip-timezone').value,mappings:Object.fromEntries([...mappings.querySelectorAll('select')].map(el=>[el.dataset.sourceType,el.value]))});
-       await onImport(batch);setBusy(false);closeModal(true);
+       const options={filename:file.name,fileDigest:plan.fileDigest,title:root.querySelector('#excel-trip-title').value,timezone:root.querySelector('#excel-trip-timezone').value,mappings:Object.fromEntries([...mappings.querySelectorAll('select')].map(el=>[el.dataset.sourceType,el.value]))};
+       const key=JSON.stringify(options);if(!preparedBatch||key!==preparedKey){preparedBatch=await buildExcelBatch(plan,options);preparedKey=key;}
+       await onImport(preparedBatch);setBusy(false);closeModal(true);
       }catch(e){error.textContent=e.message||'Import was not saved.';controls.forEach(el=>el.disabled=false);setBusy(false);}
      });
     }
