@@ -89,6 +89,18 @@ async function checkLauncher(browser,origin,layout){
    await standalone.close();
    const live=home.frameLocator('iframe[title="LiveIt journal workspace"]');
    assert.equal(await live.locator('#liveit-apps-button').isVisible(),false,'Integrated LiveIt uses one Apps menu');
+   for(const width of [1100,1280,1440,1600]){
+    await home.setViewportSize({width,height:900});
+    const navigation=await live.locator('.header-nav').evaluate(nav=>{
+     const bounds=nav.getBoundingClientRect();
+     return [...nav.querySelectorAll('button')].every(button=>{
+      const box=button.getBoundingClientRect();
+      return box.width>0&&box.left>=bounds.left-1&&box.right<=bounds.right+1;
+     });
+    });
+    assert.ok(navigation,'All LiveIt navigation tabs fit at '+width+'px');
+   }
+   await home.setViewportSize({width:layout.width,height:layout.height});
    console.log('LIVEIT_INTERNAL_TRAVELIT_LAUNCH_'+browser.browserType().name().toUpperCase()+'_PASS');
   }
   for(const workspace of workspaces){
