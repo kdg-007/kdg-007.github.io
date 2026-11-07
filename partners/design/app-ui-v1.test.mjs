@@ -2,13 +2,15 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'node:https';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync,readFileSync,rmSync,statSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,readFileSync,rmSync,statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve,join,extname,sep} from 'node:path';
 import {createRequire} from 'node:module';
 const require=createRequire(resolve(process.cwd(),'package.json'));
 const {chromium,webkit}=require('playwright');
 const root=resolve('.'),tmp=mkdtempSync(join(tmpdir(),'app-ui-v1-'));
+const screenshots=resolve('appearance-qa');
+mkdirSync(screenshots,{recursive:true});
 const key=join(tmp,'key.pem'),cert=join(tmp,'cert.pem');
 execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes',
  '-keyout',key,'-out',cert,'-days','1','-subj','/CN=127.0.0.1',
@@ -29,13 +31,13 @@ const server=createServer({key:readFileSync(key),cert:readFileSync(cert)},(req,r
 });
 const screens=[
  {app:'liveit',path:'/partners/liveit/thinkit/c15396ee7cd1cba9b5e5/index.html',
-  selector:'.app-shell',token:'--ground',expected:'#10212d'},
+  selector:'.app-shell',token:'--ground',expected:'#e9dfcb'},
  {app:'liveit',path:'/partners/liveit/thinkit/connected-w18e-c15396/index.html',
-  selector:'.app-shell',token:'--ground',expected:'#10212d'},
+  selector:'.app-shell',token:'--ground',expected:'#e9dfcb'},
  {app:'thinkit',path:'/thinkit/index.html',
-  selector:'#app .topbar',token:'--paper',expected:'#f7f7f3',onBody:true},
+  selector:'#app .topbar',token:'--paper',expected:'#e9dfcb',onBody:true},
  {app:'travelit',path:'/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html',
-  selector:'#app .topbar',token:'--paper',expected:'#f7f7f3'}
+  selector:'#app .topbar',token:'--paper',expected:'#e9dfcb'}
 ];
 const layouts=[
  {name:'iphone',width:393,height:852,device:'iPhone'},
@@ -76,10 +78,28 @@ async function checkLauncher(browser,origin,layout){
   await home.goto(origin+entry+'liveit',{waitUntil:'domcontentloaded'});
   await home.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell')
    .waitFor({state:'visible',timeout:20000});
+  if(layout.name==='macbook'){
+   const live=home.frameLocator('iframe[title="LiveIt journal workspace"]');
+   // Exercise the actual in-app launcher as well as the outer shared menu.
+   await live.locator('#liveit-apps-button').click();
+   const trip=await open(live.locator('#liveit-app-switcher a[data-app="travelit"]'));
+   await trip.frameLocator('iframe[title="TravelIt trip planning workspace"]').locator('#app .topbar')
+    .waitFor({state:'visible',timeout:20000});
+   await trip.close();
+   await live.locator('#liveit-apps-button').press('Escape');
+   console.log('LIVEIT_INTERNAL_TRAVELIT_LAUNCH_'+browser.browserType().name().toUpperCase()+'_PASS');
+  }
   for(const workspace of workspaces){
    const menu=await checkMenu(home,'Today');
    const page=await open(menu.locator('a[href="'+entry+workspace.id+'"]'));
    await workspace.content(page).waitFor({state:'visible',timeout:20000});
+   if(workspace.id==='keepit'){
+    await page.waitForFunction(()=>document.querySelector('#result-count')?.textContent?.includes('items'),null,{timeout:15000});
+   }
+   assert.equal(await page.locator('html').getAttribute('data-app-scheme'),'journal');
+   if(layout.name==='macbook'&&browser.browserType().name()==='chromium'){
+    await page.screenshot({path:join(screenshots,workspace.id+'-journal.png')});
+   }
    await checkMenu(page,workspace.label);
    const returned=await open(bar(page).getByRole('link',{name:'LiveIt',exact:true}));
    assert.equal(await bar(returned).locator('.connected-shell-current').innerText({timeout:15000}),'Today');
@@ -87,6 +107,41 @@ async function checkLauncher(browser,origin,layout){
    await page.close();
    await menu.locator('a[aria-current="page"]').press('Escape');
    await menu.waitFor({state:'hidden'});
+  }
+  if(layout.name==='macbook'){
+   const mirror=await context.newPage();
+   await mirror.goto(origin+'/partners/connected/?connected-app=keepit',{waitUntil:'domcontentloaded'});
+   await home.getByRole('button',{name:'Appearance',exact:true}).click();
+   const preference=home.getByLabel('Color scheme',{exact:true});
+   const frame=home.frameLocator('iframe[title="LiveIt journal workspace"]');
+   for(const value of ['midnight','linen','lavender','forest','journal']){
+    await preference.selectOption(value);
+    await frame.locator('html[data-app-scheme="'+value+'"]').waitFor({state:'attached'});
+    await mirror.locator('html[data-app-scheme="'+value+'"]').waitFor({state:'attached'});
+    assert.equal(await home.locator('html').getAttribute('data-app-scheme'),value);
+    const contrast=await frame.locator('.sidebar .mini-day.today').evaluate(element=>{
+     const style=getComputedStyle(element);
+     const luminance=color=>{
+      const channels=color.match(/[\d.]+/g).slice(0,3).map(Number).map(c=>c/255)
+       .map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4);
+      return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722;
+     };
+     const values=[luminance(style.color),luminance(style.backgroundColor)].sort((a,b)=>a-b);
+     return (values[1]+.05)/(values[0]+.05);
+    });
+    assert.ok(contrast>=4.5,value+' selected calendar day must remain readable');
+   }
+   await home.getByRole('button',{name:'Done',exact:true}).click();
+   await mirror.close();
+   const address=home.url();
+   await home.close();
+   const reopened=await context.newPage();
+   await reopened.goto(address,{waitUntil:'domcontentloaded'});
+   await reopened.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell')
+    .waitFor({state:'visible',timeout:20000});
+   assert.equal(await reopened.locator('html').getAttribute('data-app-scheme'),'journal');
+   if(browser.browserType().name()==='chromium')await reopened.screenshot({path:join(screenshots,'liveit-journal.png')});
+   console.log('SHARED_APPEARANCE_SYNC_AND_REOPEN_'+browser.browserType().name().toUpperCase()+'_PASS');
   }
   console.log('CONNECTED_LAUNCHER_'+layout.name.toUpperCase()+'_'+browser.browserType().name().toUpperCase()+'_PASS');
  }finally{await context.close();}

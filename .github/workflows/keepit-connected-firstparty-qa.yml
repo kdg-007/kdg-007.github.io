@@ -37,13 +37,13 @@ jobs:
           const native=get('assets/library-app-TEDOLCCE.js');
           const patched=get('assets/library-app-connected-w18e.js');
           const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
-          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=liveit-launcher-2"></script>';
+          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=journal-1"></script>';
           const from='h.src="/partners/liveit/thinkit/1a26c53e24e1b903260b/index.html"';
-          const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html"';
+          const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html?v=journal-1"';
           assert.equal(root.split(a).length,2);
           assert.equal(native.split(from).length,2);
           const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css?v=liveit-launcher-2">';
-          const navigationJS='<script src="/partners/connected/connected-nav.js?v=liveit-launcher-2" defer></script>';
+          const navigationJS='<script src="/partners/connected/connected-nav.js?v=journal-1" defer></script>';
           const installChanges=[
             ['<meta name="theme-color" content="#FFFFFF">','<meta name="theme-color" content="#142331">'],
             ['<meta name="description" content="Keep anything. Find everything.">',
@@ -101,6 +101,10 @@ jobs:
           assert.ok(navigationStyle.includes('#connected-apps-list button#connected-note-tools-toggle'));
           const connectedWorkspaceChanges=[
             [from,to],
+            ['h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html"',
+             'h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=journal-1"'],
+            ['d.src="/thinkit/36f8901ec722db162bcf/index.html"',
+             'd.src="/thinkit/36f8901ec722db162bcf/index.html?v=journal-1"'],
             ['function Io(){if(!(!Ve||go||!de||!f||f.readOnly)){',
              'function getWritableConnectedLibrary(){return de&&f&&!f.readOnly?f:null}function Io(){if(Ve&&!go){'],
             [',Ve.id==="liveit"){Y=Li({workspace:V,getLibrary:()=>f,',
@@ -131,12 +135,13 @@ jobs:
           for(const [a,b] of [
             ["url:'https://kdg-007.github.io/'","url:'/partners/connected/?connected-app=keepit'"],
             ["url:'https://kdg-it.github.io/thinkit/'","url:'/partners/connected/?connected-app=thinkit'"],
-            ["url:'https://kdg-it.github.io/'","url:'/partners/connected/?connected-app=travelit'"]
+            ["url:'https://kdg-it.github.io/'","url:'/partners/connected/?connected-app=travelit'"],
+            ["document.addEventListener('click',ev=>{", "document.addEventListener('click',ev=>{\n    if(ev.target.closest('#liveit-app-switcher a'))return;"]
           ]) {
             assert.equal(expected.split(a).length,2,'Expected a single pinned app link '+a);
             expected=expected.replace(a,b);
           }
-          assert.equal(connectedLiveIt,expected,'Connected LiveIt may ONLY change the three app routes');
+          assert.equal(connectedLiveIt,expected,'Connected LiveIt changes are limited to app routes and allowing their native link clicks');
           const originalDir='partners/liveit/thinkit/c15396ee7cd1cba9b5e5';
           const connectedDir='partners/liveit/thinkit/connected-w18e-c15396';
           {
@@ -173,3 +178,10 @@ jobs:
         shell: bash
         timeout-minutes: 6
         run: node partners/design/app-ui-v1.test.mjs
+      - name: Save interface previews
+        if: ${{ !cancelled() && steps.browser_runtime.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: appearance-previews
+          path: appearance-qa/*.png
+          if-no-files-found: ignore
