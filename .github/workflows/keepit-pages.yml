@@ -88,6 +88,8 @@ jobs:
               shutil.copyfile(rel,destination)
           map_root=Path('partners/travelit/thinkit/afda98f5ced9406d0fe5')
           shutil.copyfile(map_root/'js/online-map.js',Path('_site')/map_root/'js/online-map.js')
+          for name in ['excel-reader.js','excel-import-plan.js','excel-preview.js','excel-preview-worker.js']:
+              shutil.copyfile(map_root/'js'/name,Path('_site')/map_root/'js'/name)
           shutil.copytree(map_root/'vendor',Path('_site')/map_root/'vendor',dirs_exist_ok=True)
           pages=[
               ('thinkit/index.html','thinkit'),

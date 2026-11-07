@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {readExcelWorkbook,inspectExcelArchive} from '../js/excel-reader.js';
+import {planExcelImport,excelDate} from '../js/excel-import-plan.js';
+const temp=mkdtempSync(join(tmpdir(),'travelit-excel-'));
+function fixture(mode='normal'){const path=join(temp,mode+'.xlsx');execFileSync('python3',[fileURLToPath(new URL('./excel-fixture.py',import.meta.url)),path,mode]);return new Uint8Array(readFileSync(path));}
+try{
+ const bytes=fixture(),workbook=readExcelWorkbook(bytes),before=JSON.stringify(workbook),plan=planExcelImport(workbook);
+ assert.equal(JSON.stringify(workbook),before,'Planner may not change its input');
+ assert.equal(plan.readOnly,true);assert.equal(plan.statistics.activityCount,48);assert.equal(plan.statistics.dayCount,6);
+ assert.deepEqual(Object.values(plan.statistics.dateCounts),[8,9,8,8,8,7]);assert.equal(plan.statistics.predecessorCount,42);assert.equal(plan.statistics.matchedDetails,48);assert.equal(plan.statistics.explicitCoordinates,1);assert.equal(plan.statistics.errorCount,0);
+ assert.deepEqual(plan.skipped,{dayHeadings:6,footerRows:2,blankRows:0,repeatedHeaders:0});
+ assert.deepEqual(plan.statistics.typeCounts,{Transport:14,Meal:15,'Prep/Admin':7,Free:6,Tour:6});
+ assert.equal(plan.trip.startDate,'2026-12-05');assert.equal(plan.trip.endDate,'2026-12-10');
+ assert.equal(excelDate(0,true),'1904-01-01');assert.equal(excelDate(61),'1900-03-01');assert.throws(()=>excelDate(60));assert.throws(()=>excelDate('12/05/2026'));
+ const altered=fn=>{const w=structuredClone(workbook);fn(w);return planExcelImport(w);};
+ const first=w=>w.sheets[0].rows.find(r=>r.number===4).cells;
+ assert.ok(altered(w=>{first(w).B.value='<img src=x onerror=alert(1)> & text';}).activities[0].title.startsWith('<img'));
+ assert.equal(altered(w=>{first(w).A.value=1.1;first(w).A.format='0.00';}).activities[0].code,'1.10');
+ assert.ok(altered(w=>{first(w).A.value=1.1;}).statistics.errorCount>0);
+ assert.ok(altered(w=>{first(w).D.value='Dec 5';}).statistics.errorCount>0);
+ assert.ok(altered(w=>{first(w).F.value=first(w).E.value-.1;}).statistics.errorCount>0);
+ assert.ok(altered(w=>{first(w).C.value=null;first(w).C.formula='F4-E4';}).issues.some(i=>i.level==='warning'&&/saved formula/.test(i.message)));
+ assert.ok(altered(w=>{first(w).E.value=null;first(w).E.formula='NOW()';}).statistics.errorCount>0);
+ const overnight=altered(w=>{const c=first(w);c.E.value=23/24;c.F.value=46362+1/24;c.C.value=2/24;});
+ assert.equal(overnight.activities[0].durationMinutes,120);assert.equal(overnight.activities[0].finish,'01:00 (+1d)');
+ assert.ok(altered(w=>{w.sheets[0].rows.find(r=>r.number===5).cells.A.value='1.01';}).statistics.errorCount>0);
+ assert.ok(altered(w=>{first(w).H.value='missing';}).statistics.errorCount>0);
+ assert.ok(altered(w=>{w.sheets.find(s=>s.name==='Places & Maps').rows[1].cells.H.value='javascript:alert(1)';}).statistics.errorCount>0);
+ assert.equal(altered(w=>{first(w).G.value='Custom';}).activities[0].sourceType,'Custom');
+ assert.throws(()=>readExcelWorkbook(new Uint8Array([0,1,2,3])));
+ for(const mode of ['badxml','entity','macro'])assert.throws(()=>readExcelWorkbook(fixture(mode)),mode);
+ assert.ok(planExcelImport(readExcelWorkbook(fixture('invalid'))).statistics.errorCount>0);
+ const corrupt=bytes.slice(),view=new DataView(corrupt.buffer);let at=0;while(view.getUint32(at,true)!==0x02014b50)at++;view.setUint32(at+16,0,true);assert.throws(()=>readExcelWorkbook(corrupt),/checksum|damaged/);
+ const oversized=bytes.slice(),v=new DataView(oversized.buffer);v.setUint32(at+24,9*1024*1024,true);assert.throws(()=>inspectExcelArchive(oversized),/size limit/);
+ console.log('TRAVELIT_EXCEL_READER_PLANNER_PASS');
+}finally{rmSync(temp,{recursive:true,force:true});}
