@@ -1,0 +1,81 @@
+/* Content-first workspace; visual preferences remain owned by the shared palette. */
+html[data-suite-app="travelit"] .sidebar{display:none;position:fixed;z-index:45;top:60px;bottom:0;height:auto;width:235px;box-shadow:0 10px 30px #0004}
+html[data-suite-app="travelit"][data-nav-open="true"] .sidebar{display:flex}
+html[data-suite-app="travelit"] .app-main{margin-left:0;width:100%;min-width:0}
+html[data-suite-app="travelit"] .mobile-nav{display:none}
+html[data-suite-app="travelit"] .app-footer{display:none}
+html[data-suite-app="travelit"] .topbar{min-height:60px;padding:8px 310px 8px 16px;gap:12px;position:sticky;top:0;z-index:25}
+html[data-suite-app="travelit"] .topbar .top-actions{gap:8px}
+html[data-suite-app="travelit"] .topbar .conn-pill,html[data-suite-app="travelit"] .button-today{display:none}
+html[data-suite-app="travelit"] main{padding:14px 18px 24px;max-width:none;margin:0}
+html[data-suite-app="travelit"] .workspace-navigation{display:flex;align-items:center;gap:12px;min-width:0}
+html[data-suite-app="travelit"] .workspace-navigation select{max-width:160px}
+html[data-suite-app="travelit"] select{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--text);min-height:38px}
+html[data-suite-app="travelit"] .sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.action-menu{position:relative;display:inline-block;flex-shrink:0;font-size:14px}
+.action-menu>summary{cursor:pointer;list-style:none;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 12px;min-height:38px}
+.action-menu>summary:after{content:' ▾'}
+.action-menu-items{position:absolute;right:0;top:calc(100% + 5px);min-width:210px;max-width:min(400px,85vw);max-height:65vh;overflow:auto;background:var(--card);padding:8px;border:1px solid var(--line);box-shadow:0 8px 28px #0003;border-radius:10px;z-index:55;display:grid;gap:6px}
+.action-menu-items p{padding:5px;max-width:300px;overflow-wrap:anywhere}
+.action-menu-items .button{justify-content:flex-start;text-align:left;width:100%;min-height:38px}
+.trip-command-bar,.trip-title-row,.map-command-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.trip-select-label{display:flex;gap:10px;align-items:center;max-width:60%}
+.trip-select-label select{width:min(540px,100%)}
+html[data-suite-app="travelit"] .trip-workspace{margin-top:8px}
+html[data-suite-app="travelit"] .trip-title-row h2{font-size:22px;margin:0}
+html[data-suite-app="travelit"] .view-tabs{margin-bottom:14px;padding-bottom:6px}
+html[data-suite-app="travelit"] .day-tools{margin:8px 0;gap:8px}
+html[data-suite-app="travelit"] .day-strip{margin:8px 0}
+html[data-suite-app="travelit"] .day-tile{padding:6px 9px;min-height:56px;min-width:70px}
+html[data-suite-app="travelit"] .day-tile strong{font-size:18px}
+html[data-suite-app="travelit"] .itinerary-table-card{padding:0;border:0;border-radius:0;background:transparent}
+html[data-suite-app="travelit"] .activity-summary-table{font-size:16px;width:100%;min-width:760px}
+html[data-suite-app="travelit"] .activity-summary-table th{font-size:14px}
+html[data-suite-app="travelit"] .activity-summary-table td{padding:12px 10px;vertical-align:middle}
+html[data-suite-app="travelit"] .activity-summary-table td:first-child{min-width:240px;width:45%}
+html[data-suite-app="travelit"] .activity-row-actions{display:flex;flex-wrap:nowrap;gap:6px}
+html[data-suite-app="travelit"] .calendar-day.has-schedule{background:var(--app-soft,var(--mint,#def4ee));border:2px solid var(--app-accent,var(--teal,#267e78));color:var(--app-text,var(--text));box-shadow:inset 0 -5px 0 var(--app-accent,var(--teal,#267e78))}
+html[data-suite-app="travelit"] .calendar-day.has-schedule strong:after{content:' ●';font-size:10px;color:var(--teal)}
+html[data-suite-app="travelit"] .calendar-day.active{outline:3px solid var(--text);outline-offset:-5px}
+html[data-suite-app="travelit"] .calendar-day.other-month{background:transparent;border:1px solid var(--line);color:var(--muted);opacity:.6}
+html[data-suite-app="travelit"] .empty-inline{margin:12px 0;color:var(--muted)}
+html[data-suite-app="travelit"] .placeholder{min-height:70px;padding:12px;background:transparent;color:var(--text)}
+html[data-suite-app="travelit"] .map-command-bar{justify-content:flex-start;margin:0 0 8px}
+html[data-suite-app="travelit"] .map-command-bar>span{font-size:13px;color:var(--muted);margin-left:auto}
+html[data-suite-app="travelit"] .street-map-frame{height:calc(100dvh - 146px);min-height:360px;margin:0;border-radius:8px}
+html[data-suite-app="travelit"] #street-map{height:100%;min-height:360px}
+html[data-suite-app="travelit"] .street-map-status{font-size:12px;padding:4px 0;margin:0}
+html[data-suite-app="travelit"] .map-editing{padding:6px 10px;margin:0 0 6px;font-size:14px}
+html[data-suite-app="travelit"] .map-editing .button{padding:5px 9px;min-height:32px;margin-left:5px}
+.gantt-wrap{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px}
+.gantt-table{border-collapse:collapse;width:100%;min-width:1080px;font-size:16px;text-align:left}
+.gantt-table td,.gantt-table th{padding:12px 10px;border-bottom:1px solid var(--line)}
+.gantt-table th{position:sticky;top:0;background:var(--card);z-index:2}
+.gantt-table td:first-child{width:27%;min-width:230px}
+.gantt-table td:nth-child(3),.gantt-table td:nth-child(4){white-space:nowrap}
+.gantt-table th:last-child{width:45%;min-width:480px;padding-right:30px}
+.gantt-axis{height:25px;position:relative;margin-right:10px}
+.gantt-axis span{position:absolute;font-size:12px;transform:translateX(-15%);white-space:nowrap}
+.gantt-track{position:relative;height:25px;min-width:450px;background:repeating-linear-gradient(90deg,transparent,transparent calc(12.5% - 1px),var(--line) 12.5%)}
+.gantt-bar{position:absolute;top:3px;height:19px;min-width:3px;background:var(--teal,#267e78);border:1px solid var(--text);border-radius:5px}
+.gantt-activity{font:inherit;background:transparent;color:var(--text);border:0;text-align:left;cursor:pointer;font-weight:650}
+.budget-input-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px}
+.budget-input-table{border-collapse:collapse;min-width:1000px;width:100%;font-size:15px;text-align:left}
+.budget-input-table th,.budget-input-table td{padding:8px;border-bottom:1px solid var(--line)}
+.budget-input-table input,.budget-input-table select{width:100%;min-width:100px;background:var(--card);color:var(--text);border:1px solid var(--line);padding:9px;border-radius:6px;font:inherit}
+.budget-input-table td:nth-child(2){min-width:220px}
+.budget-metrics{display:flex;gap:25px;flex-wrap:wrap;margin:15px 0}
+.budget-metrics strong{display:block;font-size:24px}
+.packing-groups{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:16px;margin:12px 0}
+.packing-groups label{display:block;padding:6px 0;font-size:15px}
+@media(max-width:1000px){html[data-suite-app="travelit"] .topbar{padding-right:285px}.workspace-navigation>strong{display:none}html[data-suite-app="travelit"] .topbar #quick-save{display:none}}
+@media(max-width:720px){html[data-suite-app="travelit"] .topbar{padding:8px 12px}.trip-select-label{max-width:100%;width:100%}.trip-command-bar .row{width:100%}html[data-suite-app="travelit"] main{padding:10px}.packing-groups{grid-template-columns:1fr 1fr}.gantt-table{font-size:15px}html[data-suite-app="travelit"] .street-map-frame{height:calc(100dvh - 160px)}html[data-suite-app="travelit"] .topbar #quick-save{display:block}.trip-title-row h2{max-width:100%}}
+
+html[data-suite-app="travelit"][data-workspace-view="map"] .section-head{margin:4px 0 8px}
+html[data-suite-app="travelit"][data-workspace-view="map"] .section-head h2{font-size:17px}
+html[data-suite-app="travelit"] .map-panel svg{height:calc(100dvh - 270px);min-height:350px}
+html[data-suite-app="travelit"] .map-panel{min-height:350px}
+html[data-suite-app="travelit"] .map-viewport-controls{display:inline-flex;gap:5px;margin:6px 0 6px 10px;flex-wrap:wrap}
+html[data-suite-app="travelit"] .map-viewport-controls .button{min-height:32px;padding:5px 9px}
+html[data-suite-app="travelit"] .offline-annotation-list{margin-top:10px}
+html[data-suite-app="travelit"] .offline-map-menu .map-toolbar{display:grid;margin:0}

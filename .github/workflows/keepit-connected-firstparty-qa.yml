@@ -39,14 +39,14 @@ jobs:
           const native=get('assets/library-app-TEDOLCCE.js');
           const patched=get('assets/library-app-connected-w18e.js');
           const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
-          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=excel-import-1"></script>';
+          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=workspace-3"></script>';
           const from='h.src="/partners/liveit/thinkit/1a26c53e24e1b903260b/index.html"';
           const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html?v=workspace-2"';
           assert.equal(root.split(a).length,2);
           assert.equal(native.split(from).length,2);
           const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css?v=workspace-2">';
           const navigationJS='<script src="/partners/connected/connected-nav.js?v=workspace-2" defer></script>';
-          const startupJS='<script src="/partners/connected/connected-boot.js?v=workspace-2"></script>';
+          const startupJS='<script src="/partners/connected/connected-boot.js?v=workspace-3" defer></script>';
           const installChanges=[
             ['<meta name="theme-color" content="#FFFFFF">','<meta name="theme-color" content="#142331">'],
             ['<meta name="description" content="Keep anything. Find everything.">',
@@ -68,6 +68,14 @@ jobs:
             assert.equal(expectedConnected.split(oldValue).length,2,'Exact connected metadata: '+oldValue);
             expectedConnected=expectedConnected.replace(oldValue,newValue);
           }
+          // Only the connected entry changes scheduling of presentation resources.
+          const critical="<style id=\"connected-critical\">body{margin:0;background:#10212d}body>.library-shell{visibility:hidden}#connected-startup{display:flex;position:fixed;inset:0;align-items:center;justify-content:center;background:#10212d;color:#e7f0f2;z-index:1500;font:600 16px system-ui}html[data-connected-boot] #connected-startup{display:none}html[data-connected-starting] #connected-startup{display:flex}html[data-connected-boot]:not([data-connected-starting]) body>.library-shell{visibility:visible}</style>";
+          const importHead=patched.slice(0,patched.indexOf('function '));
+          const preloadImports=[...importHead.matchAll(/import(?:[^;]*?from)?"(\.\/[^"\n]+)";/g)].map(match=>'<link rel="modulepreload" href="/assets/'+match[1].slice(2)+'">').join('');
+          expectedConnected=expectedConnected.replace('<head>','<head>'+critical+preloadImports)
+            .replace('src="/assets/appearance-init-09598643a711.js"','defer src="/assets/appearance-init-09598643a711.js"')
+            .replace('src="/partners/design/app-appearance.js?v=journal-1"','defer src="/partners/design/app-appearance.js?v=journal-1"')
+            .replaceAll('<link rel="stylesheet"','<link rel="stylesheet" media="print" data-connected-style');
           assert.equal(connected,expectedConnected,'KeepIt base must remain byte-identical except approved LiveIt shell metadata');
           const manifest=JSON.parse(get('partners/connected/liveit.webmanifest'));
           assert.equal(manifest.id,'/partners/connected/?connected-app=liveit');
@@ -106,7 +114,7 @@ jobs:
           const connectedWorkspaceChanges=[
             [from,to],
             ['h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html"',
-             'h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=excel-import-1"'],
+             'h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=workspace-3"'],
             ['d.src="/thinkit/36f8901ec722db162bcf/index.html"',
              'd.src="/thinkit/36f8901ec722db162bcf/index.html?v=topic-order-1"'],
             ['function Io(){if(!(!Ve||go||!de||!f||f.readOnly)){',
@@ -169,12 +177,20 @@ jobs:
         timeout-minutes: 4
         run: |
           printf '{"type":"module","private":true}\n' > package.json
-          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 esbuild@0.28.2
           npx playwright install --with-deps chromium webkit
+      - name: Verify committed TravelIt startup bundle matches source
+        shell: bash
+        run: |
+          cp partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app-fast.js /tmp/travelit-committed.js
+          npx esbuild partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app.js --bundle --format=esm --platform=browser --target=es2020 --minify '--external:./excel-preview.js*' --outfile=partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app-fast.js
+          cmp /tmp/travelit-committed.js partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app-fast.js
       - name: Verify bounded read-only Excel reader and planner
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-preview.test.mjs
       - name: Verify Excel batch metadata and backup compatibility
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-import.test.mjs
+      - name: Verify combined packing templates
+        run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.test.mjs
       - name: Exercise canonical KeepIt native-note create, save and reopen
         shell: bash
         timeout-minutes: 9
@@ -191,5 +207,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: appearance-previews
-          path: appearance-qa/*.png
+          path: appearance-qa/*
           if-no-files-found: ignore

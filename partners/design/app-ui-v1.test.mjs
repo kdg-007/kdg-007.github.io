@@ -1,3 +1,4 @@
+import {checkWorkspaceV3,checkStartupBundle} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.browser.mjs';
 import {checkExcelImport} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-import.browser.mjs';
 import {checkExcelPreview} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-preview.browser.mjs';
 // Presentation-only browser regression. Disposable HTTPS and no real user data.
@@ -212,9 +213,9 @@ async function checkTravelActivities(browser,origin){
   const page=await context.newPage();
   await page.goto(origin+'/partners/connected/?connected-app=travelit',{waitUntil:'domcontentloaded'});
   const trip=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
-  await trip.locator('#side-nav [data-view="map"]').click();
+  await trip.getByLabel('Workspace',{exact:true}).selectOption('map');
   await trip.locator('#street-map').waitFor({state:'visible',timeout:10000});
-  await trip.locator('#side-nav [data-view="trips"]').click();
+  await trip.getByLabel('Workspace',{exact:true}).selectOption('trips');
   await trip.locator('[data-action="new-trip"]').first().click();
   await trip.locator('#f-title').fill('Activities table verification');
   await trip.locator('#f-startDate').fill('2026-12-05');
@@ -314,8 +315,11 @@ async function checkStreetMap(browser,origin){
   await page.locator('#f-lat').fill('17.62');await page.locator('#f-lng').fill('121.72');
   await page.locator('#modal-form button[type="submit"]').click();
   await page.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await page.getByText('Map tools',{exact:true}).click();
   await page.getByRole('button',{name:'Fit saved places',exact:true}).click();
   await page.getByRole('button',{name:'Open Map verification place',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Open Map verification place',exact:true}).click();await page.locator('#modal-title').filter({hasText:'Map verification place'}).waitFor();await page.locator('#modal-close').click();
+  await page.getByText('Map tools',{exact:true}).click();
   await page.getByRole('button',{name:'Add note pin',exact:true}).click();
   const box=await page.locator('#street-map').boundingBox();
   await page.locator('#street-map').click({position:{x:box.width*.7,y:box.height*.6}});
@@ -330,6 +334,7 @@ async function checkStreetMap(browser,origin){
   await page.getByRole('button',{name:'Open annotation Map verification note',exact:true}).waitFor();
   await page.locator('#street-map-status[data-state="ready"]').waitFor();
   failTiles=true;
+  await page.getByText('Map tools',{exact:true}).click();
   await page.getByRole('button',{name:'Retry street map',exact:true}).click();
   // WebKit can reuse decoded images for this same viewport even with routing.
   // Request an unseen zoom level to test unavailable tiles, rather than rejecting
@@ -337,6 +342,7 @@ async function checkStreetMap(browser,origin){
   await page.getByRole('button',{name:'Zoom in',exact:true}).click();
   try{await page.locator('#street-map-status[data-state="unavailable"]').waitFor({timeout:15000});}
   catch(error){console.error('STREET_MAP_FAILURE_DIAGNOSTIC',await page.locator('#street-map-status').innerText(),requested.slice(-20));await page.screenshot({path:join(screenshots,'street-map-failure-'+browser.browserType().name()+'.png')});throw error;}
+  await page.getByText('Map tools',{exact:true}).click();
   await page.getByRole('button',{name:'Offline maps',exact:true}).click();
   await page.locator('#geo-canvas').waitFor({state:'visible'});
   failTiles=false;
@@ -467,6 +473,8 @@ try {
   await checkTravelActivities(browser,origin);
   await checkExcelPreview(browser,origin);
   await checkExcelImport(browser,origin);
+  await checkWorkspaceV3(browser,origin);
+  await checkStartupBundle(browser,origin);
   await checkStreetMap(browser,origin);
   await checkThinkitTopicOrder(browser,origin);
   await browser.close();browser=null;

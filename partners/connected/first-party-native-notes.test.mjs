@@ -271,7 +271,7 @@ try{
    assert.equal(await travelHost.getByRole('button',{name:'Return to KeepIt'}).count(),0);
    assert.equal(await page.locator('.keepit-qa-toggle').isVisible(),false);
    const trip=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
-   await trip.locator('#mobile-nav [data-view="trips"]').click();
+   await trip.getByLabel('Workspace',{exact:true}).selectOption('trips');
    await trip.locator('[data-action="new-trip"]').first().click();
    await trip.locator('#modal-form').waitFor({state:'visible',timeout:15000});
    await trip.locator('#f-title').fill('W18E connected travel record '+tag);
