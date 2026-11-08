@@ -44,7 +44,7 @@
   "intendedLiveLibrary": "OneDrive / KeepIt",
   "liveLibraryConnected": false,
   "liveLibraryConnectionEnabled": true,
-  "ownerProfileBuildId": "e6827e4afd57",
+  "ownerProfileBuildId": "b2180b426508",
   "qaDataIsolation": "separate live choice, device library, note workspace and upload queue; no QA import or deletion",
   "connectionFlow": "App mounts before Microsoft/Graph reads; one connection operation; minimal callback returns to originating app; bounded read timeout with retry"
 }

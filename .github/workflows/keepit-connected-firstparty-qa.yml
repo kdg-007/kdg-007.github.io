@@ -217,7 +217,7 @@ jobs:
           CI: "true"
         run: node partners/connected/first-party-native-notes.test.mjs
       - name: Verify shared navigation across devices in Chromium and WebKit
-        if: ${{ !cancelled() && steps.browser_runtime.outcome == 'success' }}
+        if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
         shell: bash
         timeout-minutes: 6
         run: node partners/design/app-ui-v1.test.mjs

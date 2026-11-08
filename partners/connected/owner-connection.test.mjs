@@ -15,12 +15,12 @@ const server=createServer({key:readFileSync(join(temp,'key')),cert:readFileSync(
  const pathname=new URL(req.url,'https://127.0.0.1').pathname,file=resolve(root,'.'+pathname+(pathname.endsWith('/')?'index.html':''));
  try{assert.ok(file.startsWith(root+sep));assert.ok(statSync(file).isFile());res.writeHead(200,{'Content-Type':mime[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});res.end(readFileSync(file));}catch{res.writeHead(404);res.end();}
 });
-let browser;
+let browser,currentPage,currentEngine;
 try{
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));const origin='https://127.0.0.1:'+server.address().port;
  for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
   browser=await engine.launch({headless:true});const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'}),fixture=connectionFixture(origin),errors=[];
-  await context.route('**/*',fixture.route);const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+  await context.route('**/*',fixture.route);const page=await context.newPage();currentPage=page;currentEngine=engine.name();page.on('pageerror',e=>errors.push(e.message));
   const nav=[];page.on('request',request=>{if(request.isNavigationRequest()&&request.frame()===page.mainFrame())nav.push(new URL(request.url()).pathname+new URL(request.url()).search)});
   await page.goto(origin+'/partners/connected/?connected-app=liveit');
   const workspace=()=>page.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell');
@@ -29,6 +29,7 @@ try{
   await page.locator('#connected-cloud-status').filter({hasText:'OneDrive / KeepIt connected'}).waitFor({timeout:30000});
   await workspace().waitFor({state:'visible'});assert.equal(await page.locator('#onedrive-dialog[open]').count(),0);
   assert.equal(fixture.signins,1);assert.equal(fixture.driveRequests,1);
+  await page.locator('#connected-cloud-status').click();await page.locator('#onedrive-dialog[open]').waitFor();assert.equal(fixture.driveRequests,1,'Viewing the connected account must not reconnect');await page.locator('#onedrive-close').click();
   assert.deepEqual(nav.filter(p=>!p.startsWith('/consumers/')),['/partners/connected/?connected-app=liveit','/auth/callback/','/partners/connected/?connected-app=liveit']);
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('keepit-onedrive-owner-1')).rootId),'library');
   console.log('OWNER_OAUTH_CALLBACK_DIRECT_RETURN_'+engine.name().toUpperCase()+'_PASS');
@@ -53,6 +54,11 @@ try{
   release();fixture.hold=null;await page.locator('#connected-cloud-status').click();
   await page.locator('#connected-cloud-status').filter({hasText:'OneDrive / KeepIt connected'}).waitFor();
   console.log('OWNER_UNRESPONSIVE_GRAPH_READ_TIMEOUT_AND_RETRY_'+engine.name().toUpperCase()+'_PASS');
+  const beforeDisconnect=fixture.driveRequests;await page.locator('#connected-cloud-status').click();await page.locator('#onedrive-dialog[open]').waitFor();await page.locator('#onedrive-disconnect').click();await page.locator('#connected-cloud-status[data-phase="signin"]').waitFor();assert.equal(fixture.driveRequests,beforeDisconnect);await page.locator('#onedrive-close').click();await workspace().waitFor({state:'visible'});
+  console.log('OWNER_ACCOUNT_DETAILS_AND_DISCONNECT_WITHOUT_RECONNECT_'+engine.name().toUpperCase()+'_PASS');
   await context.close();await browser.close();browser=null;
  }
+}catch(error){
+ if(currentPage&&!currentPage.isClosed())console.error('OWNER_CONNECTION_DIAGNOSTIC',currentEngine,await currentPage.evaluate(()=>({path:location.pathname,state:window.keepItConnectionState,dialog:document.getElementById('onedrive-dialog')?.open,connectionMessage:document.getElementById('onedrive-message')?.textContent,appMessage:document.getElementById('message')?.textContent,library:document.getElementById('result-count')?.textContent})).catch(()=>({unavailable:true})));
+ throw error;
 }finally{await browser?.close();await new Promise(ok=>server.close(ok));rmSync(temp,{recursive:true,force:true});}
