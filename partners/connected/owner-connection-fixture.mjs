@@ -31,7 +31,9 @@ export function connectionFixture(origin){
     fixture.signins++;fixture.nonce=url.searchParams.get('nonce');fixture.clientId=url.searchParams.get('client_id');
     const callback=new URL(url.searchParams.get('redirect_uri'));assert.equal(callback.origin,origin);assert.equal(callback.pathname,'/auth/callback/');
     callback.hash=new URLSearchParams({code:'fixture-code',state:url.searchParams.get('state'),client_info:encode({uid:'fixture-user',utid:tenant})}).toString();
-    return route.fulfill({status:302,headers:{...cors,location:callback.href},body:''});
+    // WebKit's interception API cannot synthesize HTTP redirects. Model the
+    // Microsoft return with a real top-level document navigation instead.
+    return route.fulfill({status:200,headers:cors,contentType:'text/html',body:'<!doctype html><title>Microsoft sign-in return fixture</title><script>location.replace('+JSON.stringify(callback.href)+')</script>'});
    }
    if(url.pathname.endsWith('/token')){
     const now=Math.floor(Date.now()/1000),claims={aud:fixture.clientId,iss:authority+'/'+tenant+'/v2.0',iat:now,nbf:now,exp:now+3600,nonce:fixture.nonce,oid:'a1000000-0000-4000-8000-000000000003',tid:tenant,sub:'fixture-user',preferred_username:'owner@example.test',name:'Synthetic Owner',ver:'2.0'};
