@@ -21,13 +21,19 @@
   }
   function occurrenceOn(record,day){
     if(!record||record.type!=='event'||record.archived||!validDate(day)||!validDate(record.date))return null;
+    const days=Math.round((Date.parse(record.endDate||record.date)-Date.parse(record.date))/86400000);
+    const add=(date,n)=>new Date(Date.parse(date+'T12:00:00Z')+n*86400000).toISOString().slice(0,10);
+    const contains=(start,end)=>day>=start&&(day<end||day===end&&(record.allDay||record.endTime!=='00:00'||start===end));
     if(record.repeat==='yearly'){
-      if(day<record.date||day.slice(5)!==record.date.slice(5))return null;
-      // Feb-29 doesn't silently move to Feb-28 or Mar-01.
-      return {...record,date:day,occurrenceDate:day,repeat:'yearly'};
+      for(const year of [+day.slice(0,4),+day.slice(0,4)-1]){
+        const start=String(year).padStart(4,'0')+record.date.slice(4);if(!validDate(start)||start<record.date)continue;
+        const end=add(start,days);if(contains(start,end))return {...record,date:start,endDate:end,occurrenceDate:day};
+      }
+      return null;
     }
-    return record.date===day?record:null;
+    return contains(record.date,record.endDate||record.date)?record:null;
   }
+
   function listEvents(records,day,workspace){if(!['work','personal'].includes(workspace))return [];
     return (Array.isArray(records)?records:[]).filter(x=>x&&x.workspace===workspace).flatMap(x=>{const row=occurrenceOn(x,day);return row?[row]:[];});
   }

@@ -34,5 +34,7 @@ try{
  await page.locator('#connected-cloud-status').filter({hasText:'OneDrive / Documents / Travel Library connected'}).waitFor({timeout:40000});
  await workspace.waitFor({state:'visible'});assert.equal(fixture.signins,1);assert.equal(fixture.driveRequests,1);assert.deepEqual(errors,[]);
  assert.deepEqual(documents.filter(x=>!x.startsWith('/consumers/')),['/partners/connected/','/auth/callback/','/partners/connected/']);assert.ok(fixture.requests.every(r=>r.method==='GET'));
+ const live=page.frameLocator('iframe[title="LiveIt journal workspace"]');await live.locator('#calendarSyncStatus').waitFor();await live.locator('[data-action="capture"][data-type="event"]').first().click();await live.locator('#captureEndDate').waitFor();await live.locator('#captureAllDay').waitFor();await live.locator('[data-action="capture-close"]').click();
+ console.log('LIVEIT_DEPLOYED_MULTI_DAY_EDITOR_PASS');
  console.log('OWNER_DEPLOYED_COMPILED_SIGNIN_RETURN_AND_VISIBLE_WORKSPACE_PASS');console.log('OWNER_DEPLOYED_NESTED_FOLDER_SELECTION_PASS');console.log('Cloud services: synthetic GET only; owner account not used');await ctx.close();
 }finally{await browser.close();}

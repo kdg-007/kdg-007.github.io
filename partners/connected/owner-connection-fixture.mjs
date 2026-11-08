@@ -1,12 +1,12 @@
 // Synthetic OAuth and read-only OneDrive fixture. Never contacts an account.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-export function connectionFixture(origin,{nested=false}={}){
+export function connectionFixture(origin,{nested=false,writable=false}={}){
  const tenant='9188040d-6c67-4c5b-b112-36a304b66dad',authority='https://login.microsoftonline.com',base=authority+'/consumers/oauth2/v2.0';
  const libraryId='a1000000-0000-4000-8000-000000000001',commitId='a1000000-0000-4000-8000-000000000002';
  const items=new Map(),bytes=new Map();
  const add=(id,parent,name,value)=>{
-  const folder=value===undefined,data=folder?null:Buffer.from(JSON.stringify(value));
+  const folder=value===undefined,data=folder?null:Buffer.isBuffer(value)?value:Buffer.from(JSON.stringify(value));
   items.set(id,{id,name,eTag:'"fixture-'+id+'"',parentReference:{id:parent,driveId:'fixture-drive'},...(folder?{folder:{}}:{file:{mimeType:'application/json'},size:data.length,'@microsoft.graph.downloadUrl':'https://fixture.storage.live.com/download/'+id})});if(data)bytes.set(id,data);
  };
  add('root',null,'root');if(nested){add('documents','root','Documents');add('other','root','Family photos');add('unrelated','other','family.jpg',{retained:'unrelated content'});add('empty','documents','New library');}add('library',nested?'documents':'root',nested?'Travel Library':'KeepIt');add('catalog','library','_Catalog');add('files','library','Files');add('legacy','catalog','commits');add('cloud','catalog','keepit-cloud');add('commits','cloud','commits');
@@ -16,11 +16,14 @@ export function connectionFixture(origin,{nested=false}={}){
  add('head','cloud','head-'+commitId+'.json',{format:'keepit-cloud-anchor-1',libraryId});
  const body={format:'mylibrary-folder-snapshot-2',libraryId,commitId,revision:0,parent:null,info:{libraryId,createdAt:identity.createdAt,backupRevision:-1,revision:0},items:[],paths:{}};
  add('snapshot','commits',commitId+'.json',{...body,checksum:createHash('sha256').update(JSON.stringify(body)).digest('hex')});
+ let serial=0;
  const fixture={requests:[],navigations:[],nonce:null,clientId:null,hold:null,driveRequests:0,signins:0};
- const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+ const encode=value=>Buffer.isBuffer(value)?value:Buffer.from(JSON.stringify(value)).toString('base64url');
+ fixture.acceptUpload=(id,name,data)=>{if([...items.values()].some(x=>x.parentReference.id===id&&x.name===name))return {status:409,value:{}};const saved='saved-'+(++serial);add(saved,id,name,data);return {status:201,value:items.get(saved)};};
  fixture.route=async route=>{
   const req=route.request(),url=new URL(req.url()),method=req.method();
   if(url.origin===origin)return route.continue();
+  if(fixture.offline&&(url.hostname==='graph.microsoft.com'||url.hostname==='fixture.storage.live.com'))return route.abort();
   const cors={'access-control-allow-origin':origin,'access-control-allow-headers':'*','access-control-allow-methods':'GET,POST,PUT,PATCH,OPTIONS','access-control-expose-headers':'*'};
   const json=(value,status=200)=>route.fulfill({status,headers:cors,contentType:'application/json',body:JSON.stringify(value)});
   if(method==='OPTIONS')return route.fulfill({status:204,headers:cors});
@@ -42,7 +45,7 @@ export function connectionFixture(origin,{nested=false}={}){
    throw Error('Unmocked Microsoft request: '+method+' '+url.pathname);
   }
   if(url.hostname==='graph.microsoft.com'){
-   fixture.requests.push({method,path:url.pathname});assert.equal(method,'GET','Connection to existing cloud must be read-only');assert.equal(req.headers()['authorization'],'Bearer fixture-access');
+   fixture.requests.push({method,path:url.pathname});if(!writable)assert.equal(method,'GET','Connection to existing cloud must be read-only');assert.equal(req.headers()['authorization'],'Bearer fixture-access');
    if(url.pathname==='/v1.0/me/drive'){
     fixture.driveRequests++;if(fixture.hold)await fixture.hold;
     if(fixture.failDrive)return json({error:{code:'accessDenied',message:'Synthetic connection interrupted'}},403);
@@ -52,6 +55,15 @@ export function connectionFixture(origin,{nested=false}={}){
    const match=/^\/v1.0\/drives\/fixture-drive\/items\/([^/:]+)(.*)$/.exec(decodeURIComponent(url.pathname));
    if(!match)return json({},404);
    const [,id,suffix]=match;
+   if(writable&&method==='PUT'&&suffix.endsWith(':/content')){
+    assert.equal(url.searchParams.get('@microsoft.graph.conflictBehavior'),'fail');
+    if(fixture.uploadEndpoint)return route.continue({url:fixture.uploadEndpoint+'?parent='+encodeURIComponent(id)+'&name='+encodeURIComponent(suffix.slice(2,-9))});
+    const body=req.postDataBuffer();assert.ok(body,'Binary upload body unavailable; use the loopback upload endpoint');const result=fixture.acceptUpload(id,suffix.slice(2,-9),body);return json(result.value,result.status);
+   }
+   if(writable&&method==='POST'&&suffix==='/children'){
+    const value=req.postDataJSON();assert.equal(value['@microsoft.graph.conflictBehavior'],'fail');if([...items.values()].some(x=>x.parentReference.id===id&&x.name===value.name))return json({},409);const created='folder-'+(++serial);add(created,id,value.name);return json(items.get(created),201);
+   }
+   if(writable&&method==='PATCH'&&!suffix){const item=items.get(id);if(req.headers()['if-match']!==item.eTag)return json({},412);item.name=req.postDataJSON().name;item.eTag='"revision-'+(++serial)+'"';return json(item);}
    if(!suffix)return json(items.get(id)||{},items.has(id)?200:404);
    if(suffix==='/children')return json({value:[...items.values()].filter(item=>item.parentReference.id===id)});
    if(suffix.startsWith(':/')){const found=[...items.values()].find(item=>item.parentReference.id===id&&item.name===suffix.slice(2));return json(found||{},found?200:404);}

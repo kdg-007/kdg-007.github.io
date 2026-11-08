@@ -63,8 +63,18 @@
   function validateRecord(rec) {
     return rec && typeof rec.id === 'string' && workspaces.has(rec.workspace) && allowed.has(rec.type) &&
       typeof rec.body === 'string' && typeof rec.date === 'string' && Array.isArray(rec.categories) &&
-      (rec.repeat===undefined || rec.repeat==='none' || (rec.type==='event' && rec.repeat==='yearly'));
+      (rec.repeat===undefined || rec.repeat==='none' || (rec.type==='event' && rec.repeat==='yearly')) && (rec.type!=='event'||validEventRange(rec));
   }
+  function validEventRange(rec){
+    const day=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x+'T12:00:00Z'))&&new Date(x+'T12:00:00Z').toISOString().slice(0,10)===x;
+    const clock=x=>typeof x==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(x);
+    const end=rec.endDate||rec.date;if(!day(rec.date)||!day(end)||end<rec.date)return false;
+    if(rec.endTime&&!clock(rec.endTime))return false;
+    if(rec.endTime&&!rec.allDay&&end===rec.date&&rec.endTime<=(rec.time||'12:00'))return false;
+    return rec.repeat!=='yearly'||Date.parse(end)-Date.parse(rec.date)<=366*86400000;
+  }
+  function eventPayload(r){return {id:r.id,workspace:r.workspace,type:'event',body:r.body,date:r.date,time:r.time||'12:00',endDate:r.endDate||r.date,endTime:r.endTime||'',allDay:r.allDay===true,repeat:r.repeat||'none',categories:[...r.categories],archived:r.archived===true,complete:false,inbox:false,dueDate:'',remindAt:'',occurredOn:'',createdAt:r.createdAt,opId:r.opId};}
+  const eventSignature=r=>JSON.stringify(eventPayload(r));
   function assertData(data) {
     if (!data || data.schema !== 1 || !Array.isArray(data.records) || !Array.isArray(data.operations)) throw new Error('Invalid prototype store');
     if (!data.records.every(validateRecord)) throw new Error('Invalid prototype record');
@@ -85,11 +95,13 @@
       categories: Array.from(new Set((input.categories || []).filter(v => typeof v === 'string'))),
       inbox: input.type === 'note' || input.type === 'quote',
       dueDate: input.dueDate || '', remindAt: input.remindAt || '',
+      endDate:input.type==='event'?(input.endDate||date):'',endTime:input.type==='event'?(input.endTime||''):'',allDay:input.type==='event'&&input.allDay===true,
       repeat: input.type==='event'&&input.repeat==='yearly'?'yearly':'none',
       occurredOn: input.type === 'journal' ? (input.occurredOn || date) : '',
       opId: input.opId,
       createdAt: new Date().toISOString()
     });
+    if(!validateRecord(rec))throw Error('Invalid event date range.');
     data.records.unshift(rec);
     data.operations.push(input.opId);
     return rec;
@@ -98,7 +110,7 @@
     const rec = data.records.find(x => x.id === id && x.workspace === workspace);
     if (!rec) throw new Error('Record unavailable in active workspace');
     if (changes.workspace && changes.workspace !== workspace) throw new Error('Cross-workspace move forbidden');
-    const allowedFields = ['body','type','categories','dueDate','remindAt','date','time','occurredOn','complete','archived','inbox','repeat'];
+    const allowedFields = ['body','type','categories','dueDate','remindAt','date','time','occurredOn','complete','archived','inbox','repeat','endDate','endTime','allDay'];
     for (const key of allowedFields) if (Object.prototype.hasOwnProperty.call(changes,key)) rec[key] = changes[key];
     if (!validateRecord(rec)) throw new Error('Invalid update');
     return rec;
@@ -115,6 +127,6 @@
   const dayAdd = (iso, amount) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + amount); return d.toISOString().slice(0,10); };
   const monthAdd = (iso, amount) => { const [y,m] = iso.split('-').map(Number); return new Date(Date.UTC(y,m-1+amount,1)).toISOString().slice(0,10); };
   const dateLabel = iso => new Intl.DateTimeFormat('en', {weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${iso}T12:00:00Z`));
-  return { DEMO_DATE, KEY, DRAFT_PREFIX, defaultSpaces, seed, assertData, normalize, create, update, scoped, esc, dayAdd, monthAdd, dateLabel, uid };
+  return { validEventRange,eventPayload,eventSignature, DEMO_DATE, KEY, DRAFT_PREFIX, defaultSpaces, seed, assertData, normalize, create, update, scoped, esc, dayAdd, monthAdd, dateLabel, uid };
 });
 

@@ -32,6 +32,7 @@
   }
   // D1 source remains unchanged. LiveIt W1 is local-only and requires IndexedDB to save.
   let data=D.emptyData(C);
+  let calendarSyncState={phase:'offline',message:'Events saved on this device · waiting for OneDrive'};
   let projections=[]; // Trusted adapter absent: read-only projections; no writer exposed in W2.
   let storageIssue='Opening local IndexedDB…';
   let storageReady=false;
@@ -93,17 +94,17 @@
   const scopeLabels={work:'▣ WORK · OFFICE',personal:'⌂ PERSONAL · HOME'};
   const icons = {note:'✎',quote:'❞',task:'□',reminder:'◷',event:'▣',journal:'✧'};
   const spaceIcons = {Architecture:'⌂',Meetings:'☷',Planning:'◫',Finance:'◈',Family:'♡',Travel:'✈',Music:'♫',Philosophy:'◉',Investments:'↗'};
-  async function saveStore(next, {clearDraftWorkspace=null,clearDraftOpId=null,workspaceTransfer=null}={}) {
+  async function saveStore(next, {clearDraftWorkspace=null,clearDraftOpId=null,workspaceTransfer=null,calendarImport=false,skipUnchanged=false}={}) {
     if (failLocal) throw new Error('Simulated storage failure');
     if (!storageReady || !repository) throw new Error('Local database unavailable. Nothing has been saved.');
     if(externalChangeDetected || captureConflictMode) throw new Error('Another LiveIt window changed the library. Reload latest library before changing records.');
     // Any in-flight keystroke draft must settle before atomic record commit + draft deletion.
     await draftQueue;
-    await repository.save(next,data,{clearDraftWorkspace,clearDraftOpId,workspaceTransfer});
+    await repository.save(next,data,{clearDraftWorkspace,clearDraftOpId,workspaceTransfer,calendarImport});
     data=next;
     markBackupStale();
     if (clearDraftWorkspace){cachedDrafts[clearDraftWorkspace]=null;try{parkedDrafts[clearDraftWorkspace]=await repository.listParkedDrafts(clearDraftWorkspace);}catch{ /* commit succeeded; do not report a false save failure */ }}
-    storageIssue='';externalChangeDetected=false;
+    storageIssue='';externalChangeDetected=false;if(!calendarImport&&next.records.some(r=>r._calendarSync?.pending)){calendarSyncState={phase:'pending',message:'Events saved on this device · waiting to sync'};paintCalendarStatus();}if(!calendarImport)window.dispatchEvent(new Event('liveit-calendar-change'));
   }
   async function reloadLatestLibrary(){
     if(!storageReady||!repository){notify('Local database is unavailable; no reload was attempted.');return false;}
@@ -131,11 +132,12 @@
     }catch(err){storageIssue='Reload failed: '+err.message+'. Current view has been preserved.';
       notify(storageIssue);return false;}
   }
-  function enqueueMutation(change,{clearDraftWorkspace=null,clearDraftOpId=null,workspaceTransfer=null}={}) {
+  function enqueueMutation(change,{clearDraftWorkspace=null,clearDraftOpId=null,workspaceTransfer=null,calendarImport=false,skipUnchanged=false}={}) {
     const pending=mutationQueue.then(async()=>{
       const latest=JSON.parse(JSON.stringify(data));
       change(latest);
-      await saveStore(latest,{clearDraftWorkspace,clearDraftOpId,workspaceTransfer});
+      if(skipUnchanged&&JSON.stringify(latest)===JSON.stringify(data))return false;
+      await saveStore(latest,{clearDraftWorkspace,clearDraftOpId,workspaceTransfer,calendarImport});
       return true;
     });
     mutationQueue=pending.catch(()=>{}); // a rejected mutation must not block later work
@@ -199,7 +201,7 @@
   }
   function taskList() { return allScoped().filter(x=>x.type==='task'||x.type==='reminder'); }
   function taskSaving(rec){return pendingTaskMutations.has(rec.workspace+':'+rec.id);}
-  function eventsOn(iso) { return [...W12.listEvents(allScoped(),iso,ui.scope), ...D.listForDay(projections,iso,ui.scope)]; }
+  function eventsOn(iso) { return [...[...W12.listEvents(data.records,iso,'work'),...W12.listEvents(data.records,iso,'personal')], ...D.listForDay(projections,iso,ui.scope)]; }
   function activityOn(iso) { return allScoped().filter(x=>['note','quote','journal'].includes(x.type) && (x.type==='journal' ? (x.occurredOn || x.date) : x.date)===iso); }
   function dayCount(iso) { return eventsOn(iso).length + activityOn(iso).length + taskList().filter(x=>x.dueDate===iso).length; }
   function tag(name){return `<span class="category-label">${esc(name)}</span>`;}
@@ -252,10 +254,10 @@
     const label=x.source==='travelit'?'TravelIt · read-only':x.type==='event'?'Planned event':x.type==='journal'?'Recorded activity':x.type==='task'?(dueState==='scheduled'?'Due task':'Task'):x.type==='reminder'?'Reminder':'Captured '+x.type;
     const metaDate=x.type==='journal'?x.occurredOn||x.date:isTask&&dueState==='scheduled'?x.dueDate:x.date;
     const displayMeta=isTask&&dueState!=='scheduled'?(dueState==='invalid'?'Due date needs review':'No due date'):dateShort(metaDate);
-    const displayClock=x.type==='reminder'&&dueState==='scheduled'?(x.remindAt||''):x.type==='task'?'':x.time;
+    const displayClock=x.allDay?'':x.type==='reminder'&&dueState==='scheduled'?(x.remindAt||''):x.type==='task'?'':x.time;
     return `<article class="feed-card" data-record-id="${esc(x.id)}">
        <div class="feed-symbol ${esc(x.type)}" aria-hidden="true">${icons[x.type]||'✎'}</div>
-       <div class="feed-main"><div class="feed-meta"><span class="type-tag">${esc(label)}</span><span>${x.source==='travelit'&&x.allDay?esc(dateShort(x.origin.startDate))+' – '+esc(dateShort(C.dayAdd(x.origin.endDateExclusive,-1))):esc(displayMeta)}${displayClock?' · '+esc(displayClock):''}${x.repeat==='yearly'?' · Repeats yearly':''}${x.source==='travelit'?' · '+esc(x.timezone):''}</span>${x.complete?'<span class="type-tag inbox-tag">Completed</span>':''}${x.archived?'<span class="type-tag">Archived · restore from details</span>':''}</div>
+       <div class="feed-main"><div class="feed-meta"><span class="type-tag">${esc(label)}</span><span>${x.source==='travelit'&&x.allDay?esc(dateShort(x.origin.startDate))+' – '+esc(dateShort(C.dayAdd(x.origin.endDateExclusive,-1))):esc(displayMeta)}${displayClock?' · '+esc(displayClock):''}${x.endDate&&x.endDate!==x.date?' – '+esc(dateShort(x.endDate)):''}${x.endTime&&!x.allDay?' → '+esc(x.endTime):''}${x.allDay?' · All day':''}${x.type==='event'?' · '+esc(scopes[x.workspace]):''}${x.repeat==='yearly'?' · Repeats yearly':''}${x.source==='travelit'?' · '+esc(x.timezone):''}</span>${x.complete?'<span class="type-tag inbox-tag">Completed</span>':''}${x.archived?'<span class="type-tag">Archived · restore from details</span>':''}</div>
        <button type="button" class="text-link feed-title ${x.type==='quote'?'italic':''}" data-action="${x.source==='travelit'?'travel-detail':'detail'}" data-id="${esc(x.id)}" style="text-align:left;display:block">${esc(x.body)}</button>
        ${x.categories.map(tag).join('')}${description?`<div class="feed-desc">${esc(description)}</div>`:''}</div>
        ${isTask?`<label class="feed-actions"><input type="checkbox" data-action="task-toggle" data-id="${esc(x.id)}" ${x.complete?'checked':''} ${taskSaving(x)?'disabled aria-busy="true"':''} aria-label="${taskSaving(x)?'Saving task change for':x.complete?'Mark incomplete':'Complete'} ${esc(x.body)}"/>${taskSaving(x)?'<span class="task-save-status" role="status">Saving…</span>':''}</label>`:''}
@@ -415,7 +417,7 @@
     const views={today:'Today',calendar:'Calendar',inbox:'Inbox',journal:'Journal',tasks:'Tasks',archive:'Archive'};
     const subtitles={today:'A clear view of what is planned and what actually happened.',calendar:'Navigate dates without treating plans as recorded history.',inbox:'Ideas first, filing later.',journal:'Your life and work, remembered chronologically.',tasks:'Commitments with honest due dates and completion states.',archive:'Recover entries without deleting or recreating them.'};
     const head=ui.query?`<div class="date-kicker">SCOPED SEARCH · ${esc(scopes[ui.scope])}</div><h1 class="page-title">Search results</h1>`:
-      `<div class="date-kicker">${esc(scopes[ui.scope])} workspace · this device only</div><h1 class="page-title">${ui.view==='today'?esc(C.dateLabel(ui.selected)):views[ui.view]}</h1>`;
+      `<div class="date-kicker">${esc(scopes[ui.scope])} workspace · shared event calendar</div><h1 class="page-title">${ui.view==='today'?esc(C.dateLabel(ui.selected)):views[ui.view]}</h1>`;
     const nav=ui.view==='today'||ui.view==='calendar'?`<div class="day-nav"><button class="button ghost" data-action="day-step" data-offset="-1" aria-label="Previous ${ui.calendarMode==='month'&&ui.view==='calendar'?'month':'day'}">‹</button><button class="button ghost" data-action="today">Today</button><button class="button ghost" data-action="day-step" data-offset="1" aria-label="Next ${ui.calendarMode==='month'&&ui.view==='calendar'?'month':'day'}">›</button></div>`:'';
     const selectedContext=W12.dayContext(ui.selected,todayDate);
     return `<main class="main-content" id="main-content"><div class="hero"><div>${head}<p class="page-sub">${ui.query?'Only current-workspace matching items are visible.':subtitles[ui.view]}</p></div><div class="hero-actions">${nav}</div></div>
@@ -484,7 +486,7 @@
       <section class="right-section" aria-label="Application integration status"><h2 class="section-label">App connections</h2>
         <div class="notice" role="status"><strong>KeepIt · Separate note owner</strong><p>Short entries remain on this device. An approved KeepIt host is required for native notes; LiveIt cannot certify OneDrive readback.</p>
         <strong>TravelIt · Not connected</strong><p>Travel schedules will appear here only after an approved connection. No events have been published.</p></div></section>
-      <section class="right-section"><h2 class="section-label">Storage transparency</h2><div class="notice"><strong>${storageReady?'Saved locally using IndexedDB (this browser profile).':'Local database unavailable; do not close unsaved notes.'}</strong> Short entries and note links stay in this browser. Native notes use KeepIt through the toolbar above; verify each cloud save there. Calendar integration is disconnected. Browser storage can be cleared or evicted. Export a local backup regularly. ${storageIssue?`<br><strong>${esc(storageIssue)}</strong>`:''}</div></section></aside>`;
+      <section class="right-section"><h2 class="section-label">Storage transparency</h2><div class="notice"><strong>${storageReady?'Saved locally using IndexedDB (this browser profile).':'Local database unavailable; do not close unsaved notes.'}</strong> Short entries and note links stay in this browser. Native notes use KeepIt through the toolbar above; verify each cloud save there. Events sync through your selected KeepIt library; other short records remain on this device. Browser storage can be cleared or evicted. Export a local backup regularly. ${storageIssue?`<br><strong>${esc(storageIssue)}</strong>`:''}</div></section></aside>`;
   }
   function render() {
     window.dispatchEvent(new Event('liveit-owned-workspace-render'));
@@ -507,13 +509,15 @@
         <button type="button" class="utility-button mobile-search-toggle" data-action="mobile-search" aria-label="Search ${esc(scopes[ui.scope])} records" aria-expanded="${ui.mobileSearchOpen}" title="Search current workspace">⌕</button><button type="button" class="utility-button density-switch" data-action="density" aria-label="Switch dashboard density" aria-pressed="${ui.density==='compact'}" title="Switch between comfortable and compact layout">${ui.density==='compact'?'Compact':'Comfort'}</button>
       <button type="button" class="utility-button theme-toggle" data-action="theme" aria-label="Switch to ${ui.theme==='dark'?'light':'dark'} mode" title="Switch to ${ui.theme==='dark'?'light':'dark'} mode">${ui.theme==='dark'?'☼':'☾'}</button></div>
       <button class="button primary capture-top" data-action="capture">+ Capture</button></header>
-      <div class="workspace-context-banner" aria-live="polite"><span class="workspace-context-identity">${scopeLabels[ui.scope]}</span><span class="workspace-context-detail">${ui.scope==='work'?'Work entries only · Personal items hidden':'Personal entries only · Work items hidden'}</span><span class="workspace-context-local">ON THIS DEVICE · ${storageReady?'Not synced to cloud':'Storage unavailable'}</span></div>
+      <div class="workspace-context-banner" aria-live="polite"><span class="workspace-context-identity">${scopeLabels[ui.scope]}</span><span class="workspace-context-detail">${ui.scope==='work'?'Work records':'Personal records'} · Calendar shows Work + Personal</span><span class="workspace-context-local" id="calendarSyncStatus" role="status" data-phase="${calendarSyncState.phase}">${storageReady?esc(calendarSyncState.message):'Storage unavailable'}</span></div>
+      <div id="calendarSyncConflicts"></div>
       ${externalChangeDetected?`<div class="freshness-banner" role="alert"><strong>Another LiveIt window changed this library.</strong> Your open edits are not automatically merged. Preserve your draft before reloading. <button type="button" class="button secondary" data-action="reload-library">Reload latest library</button></div>`:''}
       ${ui.mobileSearchOpen?`<div class="mobile-search-panel"><label for="mobileSearchField">Search ${esc(scopes[ui.scope])} records</label><input type="search" id="mobileSearchField" autocomplete="off" placeholder="Search current workspace" value="${esc(ui.query)}"/></div>`:''}
       <div class="columns" data-left="${ui.focus?'hidden':ui.leftMode}" data-right="${ui.focus?'hidden':ui.rightMode}" data-focus="${ui.focus}" data-mobile-right="${ui.mobileRightOpen?'open':'closed'}">${sidebar()}${primary()}${rightbar()}</div>
       <button type="button" class="liveit-panel-scrim" data-action="close-panels" data-open="${ui.mobileMore||ui.mobileRightOpen}" aria-label="Close open navigation panel"></button>
       <button type="button" class="mobile-fab" data-action="capture" aria-label="Capture a thought">+</button>
       <nav class="mobile-tabs" aria-label="Mobile navigation">${[['today','⌂','Today'],['calendar','▦','Calendar'],['inbox','▤','Inbox'],['journal','✧','Journal']].map(([key,icon,label])=>`<button class="${ui.view===key&&!ui.mobileMore?'active':''}" data-action="nav" data-view="${key}"><span class="mobile-icon">${icon}</span>${label}</button>`).join('')}<button class="${ui.mobileMore?'active':''}" data-action="more"><span class="mobile-icon">☰</span>More</button></nav></div>`;
+    paintCalendarStatus();
   }
   function refreshContent() {
     const m=$('#main-content'); if (m) m.outerHTML=primary();
@@ -578,13 +582,14 @@
       <div class="capture-toolrow"><div class="capture-type"><label class="field-label" for="captureType">Capture as</label><select id="captureType" class="select-input">${types.map(t=>`<option value="${t}" ${cap.type===t?'selected':''}>${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
       <button class="button subtle" data-action="capture-more" aria-expanded="${ui.captureDetailsOpen}" aria-controls="captureOptional">${ui.captureDetailsOpen?'− Fewer options':'+ Date, space & settings'}</button></div>
       ${cap.categories.length&&!ui.captureDetailsOpen?`<p class="caption" style="margin-top:8px">Selected: ${cap.categories.map(esc).join(', ')}</p>`:''}
-      ${ui.captureDetailsOpen?`<div id="captureOptional" class="capture-optional"><div class="field-group" style="margin-top:0"><label class="field-label" for="captureScope">Save this record in</label><select id="captureScope" class="select-input" aria-label="Choose destination workspace for this record" style="max-width:210px">${["work","personal"].map(s=>`<option value="${s}" ${s===(cap.targetWorkspace||cap.workspace)?"selected":""}>${scopes[s]}</option>`).join("")}</select>${(cap.targetWorkspace||cap.workspace)!==cap.workspace?`<p class="caption" role="status" style="margin-top:8px">On Save, this ${cap.editingId?'record will move':'entry will be created'} in <strong>${esc(scopes[cap.targetWorkspace])}</strong>. The unfinished recovery draft stays available here until saved.</p>`:''}</div><div class="row-fields field-group"><div><label class="field-label" for="captureDate">${isJournal?'Occurred on':isEvent?'Event date':'Date'}</label><input class="date-input" type="date" id="captureDate" value="${esc(isJournal?cap.occurredOn||cap.date:cap.date)}" /></div>
+      ${ui.captureDetailsOpen?`<div id="captureOptional" class="capture-optional"><div class="field-group" style="margin-top:0"><label class="field-label" for="captureScope">Save this record in</label><select id="captureScope" class="select-input" aria-label="Choose destination workspace for this record" style="max-width:210px">${["work","personal"].map(s=>`<option value="${s}" ${s===(cap.targetWorkspace||cap.workspace)?"selected":""}>${scopes[s]}</option>`).join("")}</select>${(cap.targetWorkspace||cap.workspace)!==cap.workspace?`<p class="caption" role="status" style="margin-top:8px">On Save, this ${cap.editingId?'record will move':'entry will be created'} in <strong>${esc(scopes[cap.targetWorkspace])}</strong>. The unfinished recovery draft stays available here until saved.</p>`:''}</div><div class="row-fields field-group"><div><label class="field-label" for="captureDate">${isJournal?'Occurred on':isEvent?'Start date':'Date'}</label><input class="date-input" type="date" id="captureDate" value="${esc(isJournal?cap.occurredOn||cap.date:cap.date)}" /></div>
       ${isTask?`<div><label class="field-label" for="captureDue">${cap.type==='reminder'?'Due date (required)':'Due date (optional)'}</label><input class="date-input" type="date" id="captureDue" value="${esc(cap.dueDate||'')}" ${cap.type==='reminder'?'required':''}/><div class="due-quick-actions" role="group" aria-label="Quick due-date choices">${[['today','Today'],['tomorrow','Tomorrow'],['week','In 7 days'],...(cap.type==='task'?[['clear','Clear date']]:[])].map(([choice,label])=>{const expected=W12.quickDueDate(todayDate,choice,cap.type);return `<button type="button" class="due-quick-choice" data-action="due-quick" data-choice="${choice}" aria-pressed="${(cap.dueDate||'')===expected}">${label}</button>`;}).join('')}</div></div>`:'<div></div>'}</div>
-      ${(isTask||isEvent)?`<div class="field-group"><label class="field-label" for="captureTime">${isEvent?'Event time':'Reference time (optional; no device alert)'}</label><input class="date-input" type="time" id="captureTime" value="${esc(isEvent?cap.time||'12:00':cap.remindAt||'')}"/></div>`:''}
+      ${(isTask||isEvent)?`<div class="field-group"><label class="field-label" for="captureTime">${isEvent?'Event time':'Reference time (optional; no device alert)'}</label><input class="date-input" type="time" id="captureTime" value="${esc(isEvent?cap.time||'12:00':cap.remindAt||'')}" ${isEvent&&cap.allDay?'disabled':''}/></div>`:''}
+      ${isEvent?`<div class="field-group"><label class="field-label" for="captureEndDate">End date</label><input class="date-input" type="date" id="captureEndDate" min="${esc(cap.date)}" value="${esc(cap.endDate||cap.date)}"/><label style="display:flex;align-items:center;gap:10px;margin-top:12px"><input type="checkbox" id="captureAllDay" ${cap.allDay?'checked':''} style="width:20px;height:20px"/> All day</label>${cap.allDay?'':`<label class="field-label" for="captureEndTime">End time (optional)</label><input class="date-input" type="time" id="captureEndTime" value="${esc(cap.endTime||'')}"/>`}<p class="caption">Events appear on every covered date in both Work and Personal calendars.</p></div>`:''}
       ${isEvent?`<div class="field-group"><label class="field-label" for="captureRepeat">Repeat</label><select id="captureRepeat" class="select-input"><option value="none" ${(cap.repeat||'none')==='none'?'selected':''}>Does not repeat</option><option value="yearly" ${cap.repeat==='yearly'?'selected':''}>Every year (birthdays, anniversaries)</option></select><p class="caption">Leap-day events repeat only on February 29 in leap years. No device notifications are scheduled.</p></div>`:''}
       <div class="field-group"><div class="field-label">Quick Spaces (optional)</div><div class="tagbox">${(data.spaces[cap.targetWorkspace||cap.workspace]||[]).map(name=>`<button class="tag-opt ${cap.categories.includes(name)?'active':''}" type="button" data-action="toggle-category" data-category="${esc(name)}" aria-pressed="${cap.categories.includes(name)}">${esc(name)}</button>`).join('')}</div></div>`:''}
       <div class="status-line">${storageIssue?`⚠ ${esc(storageIssue)}`:'Drafts and short entries save on this device. Native-note access requires an authorized KeepIt host.'}</div>
-      <div class="dialog-actions"><button class="button subtle" data-action="capture-close">Keep draft &amp; close</button><button class="button primary" data-action="capture-save" id="saveCapture" ${!C.normalize(cap.body)?'disabled':''}>Save on this device <span class="small">⌘↵</span></button></div></div>`;
+      <div class="dialog-actions"><button class="button subtle" data-action="capture-close">Keep draft &amp; close</button><button class="button primary" data-action="capture-save" id="saveCapture" ${!C.normalize(cap.body)?'disabled':''}>${isEvent?'Save event':'Save on this device'} <span class="small">⌘↵</span></button></div></div>`;
   }
   async function startRequestedCapture() {
     if(freshCaptureInProgress || !captureIntent || !ui.capture || !composer.open)return false;
@@ -656,12 +661,14 @@
       if(cap.type==='reminder'&&!cap.dueDate)throw new Error('A reminder requires a due date; no device alerts are available yet');
       if(['task','reminder'].includes(cap.type)&&cap.remindAt&&!W12.validClock(cap.remindAt))throw new Error('Set a valid optional reference time (HH:MM)');
       if(cap.type==='event'&&!['none','yearly'].includes(cap.repeat||'none'))throw new Error('Invalid repeat setting');
+      if(cap.editingId&&ui.editing?.type==='event'){const current=data.records.find(r=>r.id===cap.editingId);if(!current||C.eventSignature(current)!==C.eventSignature(ui.editing))throw Error('Data changed in another LiveIt window. Your edit is retained for review.');}
+      if(cap.type==='event'&&!C.validEventRange(cap))throw Error('Choose an end date/time after the start. Yearly events may span up to one year.');
       const transfer=cap.editingId&&destination!==cap.workspace?{id:cap.editingId,from:cap.workspace,to:destination}:null;
       await enqueueMutation(next=>{
         if(cap.editingId){
-          const rec=C.update(next,cap.editingId,cap.workspace,{body:C.normalize(cap.body),type:cap.type,categories:cap.categories,dueDate:cap.dueDate||'',remindAt:cap.remindAt||'',date:cap.date||todayDate,time:cap.time||'12:00',occurredOn:cap.type==='journal'?cap.occurredOn||cap.date:'',repeat:cap.type==='event'?cap.repeat||'none':'none'});
+          const rec=C.update(next,cap.editingId,cap.workspace,{body:C.normalize(cap.body),type:cap.type,categories:cap.categories,dueDate:cap.dueDate||'',remindAt:cap.remindAt||'',date:cap.date||todayDate,time:cap.time||'12:00',occurredOn:cap.type==='journal'?cap.occurredOn||cap.date:'',endDate:cap.type==='event'?(cap.endDate||cap.date):'',endTime:cap.type==='event'?(cap.endTime||''):'',allDay:cap.type==='event'&&cap.allDay===true,repeat:cap.type==='event'?cap.repeat||'none':'none'});
           if(transfer)rec.workspace=destination;
-        }else C.create(next,{workspace:destination,body:cap.body,type:cap.type,categories:cap.categories,date:cap.date,time:cap.type==='event'?(cap.time||'12:00'):'12:00',dueDate:cap.type==='task'||cap.type==='reminder'?cap.dueDate:'',remindAt:cap.type==='task'||cap.type==='reminder'?cap.remindAt:'',occurredOn:cap.type==='journal'?cap.occurredOn||cap.date:'',repeat:cap.type==='event'?cap.repeat||'none':'none',opId:cap.opId});
+        }else C.create(next,{workspace:destination,body:cap.body,type:cap.type,categories:cap.categories,date:cap.date,time:cap.type==='event'?(cap.time||'12:00'):'12:00',dueDate:cap.type==='task'||cap.type==='reminder'?cap.dueDate:'',remindAt:cap.type==='task'||cap.type==='reminder'?cap.remindAt:'',occurredOn:cap.type==='journal'?cap.occurredOn||cap.date:'',endDate:cap.type==='event'?(cap.endDate||cap.date):'',endTime:cap.type==='event'?(cap.endTime||''):'',allDay:cap.type==='event'&&cap.allDay===true,repeat:cap.type==='event'?cap.repeat||'none':'none',opId:cap.opId});
       },{clearDraftWorkspace:cap.workspace,clearDraftOpId:cap.opId,workspaceTransfer:transfer});
       const didSwitch=ui.scope!==destination;
       ui.capture=null;ui.editing=null;ui.recovered=false;captureIntent=null;captureConflictMode=false;conflictRecoveryId=null;conflictCopySaved=false;
@@ -669,7 +676,7 @@
       if(didSwitch){ui.scope=destination;ui.taskKind='all';ui.taskStream='all';ui.query='';ui.category='';ui.mobileMore=false;}
       if(cap.type==='event'){ui.selected=cap.date||todayDate;ui.view='today';}
       else if(didSwitch){ui.view=cap.type==='journal'?'journal':(['task','reminder'].includes(cap.type)?'tasks':'inbox');}
-      applyAppearance();render();notify('Saved in '+scopes[destination]+(didSwitch?' · Now viewing '+scopes[destination]:'')+'. Stored on this device only.');return true;
+      applyAppearance();render();notify('Saved in '+scopes[destination]+(didSwitch?' · Now viewing '+scopes[destination]:'')+(cap.type==='event'?'. Saved on this device; event sync is queued for KeepIt.':'. Stored on this device only.'));if(cap.type==='event')window.dispatchEvent(new Event('liveit-calendar-change'));return true;
     } catch (err) {
       if(/Data changed in another LiveIt window/i.test(String(err?.message||''))){
         // Preserve a second editor's input when the conflicting window wrote
@@ -686,7 +693,7 @@
     if(!rec)return;
     ui.detail=id;
     $('#recordContent').innerHTML=`<div class="dialog-body"><div class="dialog-header"><div><div class="date-kicker">${esc(scopes[rec.workspace])} · ${esc(rec.type)}</div><h2 id="recordHeading" class="dialog-title">Record details</h2></div><button class="button icon subtle" data-action="detail-close" aria-label="Close details">×</button></div>
-      <div class="detail-text">${esc(rec.body)}</div><div class="detail-meta" style="margin-top:17px">Recorded date: ${esc(dateShort(rec.date))}${rec.type==='journal'&&rec.occurredOn?`<br>Occurred on: ${esc(dateShort(rec.occurredOn))}`:''}${rec.dueDate?`<br>Due: ${esc(dateShort(rec.dueDate))}`:''}<br>Workspace: ${esc(scopes[rec.workspace])}<br>Type: ${esc(rec.type)}</div>
+      <div class="detail-text">${esc(rec.body)}</div><div class="detail-meta" style="margin-top:17px">Recorded date: ${esc(dateShort(rec.date))}${rec.type==='journal'&&rec.occurredOn?`<br>Occurred on: ${esc(dateShort(rec.occurredOn))}`:''}${rec.dueDate?`<br>Due: ${esc(dateShort(rec.dueDate))}`:''}${rec.type==='event'?'<br>End: '+esc(dateShort(rec.endDate||rec.date))+(rec.endTime&&!rec.allDay?' '+esc(rec.endTime):'')+(rec.allDay?' · All day':''):''}<br>Workspace: ${esc(scopes[rec.workspace])}<br>Type: ${esc(rec.type)}</div>
       <div>${rec.categories.map(tag).join('')}</div>${rec.type==='event'&&rec.repeat==='yearly'?'<p class="caption">Repeats yearly from the original date. Feb 29 occurs only in leap years.</p>':''}<div class="detail-footer">${rec.archived?'':`<button class="button secondary" data-action="edit" data-id="${esc(rec.id)}">Edit</button>`}${['task','reminder'].includes(rec.type)?`<button class="button subtle" data-action="toggle-detail-task" data-id="${esc(rec.id)}" ${taskSaving(rec)?'disabled aria-busy="true"':''}>${taskSaving(rec)?'Saving…':rec.complete?'Mark incomplete':'Complete task'}</button>`:''}<button class="button subtle" data-action="archive" data-id="${esc(rec.id)}">${rec.archived?'Restore':'Archive'}</button><button class="button ghost" data-action="move-record" data-id="${esc(rec.id)}" data-destination="${rec.workspace==='work'?'personal':'work'}">Move to ${rec.workspace==='work'?'Personal':'Work'}…</button></div>
       ${['note','quote','journal'].includes(rec.type)?`<section class="keepit-manual-handoff" aria-label="Optional manual KeepIt transfer">
         <div class="keepit-manual-heading">KeepIt notes</div>
@@ -876,7 +883,9 @@
     }
     if(action==='clear-space') {ui.category='';render();return;}
     if(action==='new-space') {const response=prompt('Name a Quick Space for the current workspace:');const name=C.normalize(response||'').slice(0,40);if(!name)return;const scope=ui.scope;void (async()=>{try{await enqueueMutation(next=>{if(!W12.uniqueName(next.spaces[scope],name))throw new Error('Quick Space name already exists');next.spaces[scope].push(name);});render();notify('Quick Space saved on this device.');}catch(e){notify('Could not save Quick Space: '+e.message);}})();return;}
-    if(action==='detail') {openDetail(el.dataset.id);return;}
+    if(action==='calendar-retry'){window.dispatchEvent(new Event('liveit-calendar-change'));return;}
+    if(action==='calendar-keep-both'){void keepBothCalendar(el.dataset.id);return;}
+    if(action==='detail') {const r=data.records.find(x=>x.id===el.dataset.id&&x.type==='event');if(r&&r.workspace!==ui.scope)void changeScope(r.workspace).then(()=>{if(ui.scope===r.workspace)openDetail(el.dataset.id);});else openDetail(el.dataset.id);return;}
     if(action==='travel-detail') {openTravelDetail(el.dataset.id);return;}
     if(action==='detail-close') {details.close();ui.detail=null;return;}
     if(action==='edit') {const rec=allScoped({includeArchived:true}).find(x=>x.id===el.dataset.id);if(!rec)return;details.close();openCapture('',rec.type,{editing:rec});return;}
@@ -932,7 +941,10 @@
         &&['projects','operations'].includes(ui.taskStream))applyTaskStream(ui.capture,ui.taskStream);
       if(el.value!=='event')ui.capture.repeat='none';if(el.value==='reminder'&&!ui.capture.dueDate)ui.capture.dueDate=ui.selected;if(['event','reminder','journal'].includes(el.value)){ui.captureDetailsOpen=true;if(el.value==='journal'&&!ui.capture.occurredOn)ui.capture.occurredOn=ui.view==='today'?ui.selected:todayDate;}persistDraft();renderCapture();$('#captureType')?.focus();return;}
     if(el.id==='captureRepeat'){ui.capture.repeat=el.value;void persistDraft();return;}
-    if(el.id==='captureDate'){if(ui.capture.type==='journal')ui.capture.occurredOn=el.value;else ui.capture.date=el.value;persistDraft();return;}
+    if(el.id==='captureEndDate'){ui.capture.endDate=el.value;persistDraft();return;}
+    if(el.id==='captureEndTime'){ui.capture.endTime=el.value;persistDraft();return;}
+    if(el.id==='captureAllDay'){ui.capture.allDay=el.checked;persistDraft();renderCapture();return;}
+    if(el.id==='captureDate'){if(ui.capture.type==='journal')ui.capture.occurredOn=el.value;else {const prior=ui.capture.date;ui.capture.date=el.value;if(!ui.capture.endDate||ui.capture.endDate===prior)ui.capture.endDate=el.value;}persistDraft();return;}
     if(el.id==='captureDue'){ui.capture.dueDate=el.value;persistDraft();return;}
     if(el.id==='captureTime'){if(ui.capture.type==='event')ui.capture.time=el.value;else ui.capture.remindAt=el.value;persistDraft();return;}
   });
@@ -1352,6 +1364,68 @@
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshClock();void checkExternalChanges();}});
   window.setInterval(refreshClock,60000);
   const ready=boot();
+  const calendarPayload=r=>r.type==='event'?C.eventPayload(r):r._calendarSync?.outgoing?JSON.parse(r._calendarSync.outgoing):null;
+  function calendarConflicts(){return data.records.filter(r=>r._calendarSync?.conflict);}
+  function paintCalendarStatus(){
+    const line=$('#calendarSyncStatus');if(line){line.dataset.phase=calendarSyncState.phase;line.innerHTML=esc(calendarSyncState.message)+' <button class="text-link" data-action="calendar-retry">Sync events</button>';}
+    const label=$('.workspace-context-local');if(label&&label!==line)label.textContent=calendarSyncState.message;
+    const panel=$('#calendarSyncConflicts');if(panel)panel.innerHTML=calendarConflicts().map(r=>`<div class="notice" style="margin:8px 16px" role="alert"><strong>Event changed on another device</strong><p>On this device: ${esc(r.body)}<br>Saved in KeepIt: ${esc(r._calendarSync.conflict.record.body)}</p><button class="button secondary" data-action="calendar-keep-both" data-id="${esc(r.id)}">Keep both versions</button></div>`).join('');
+  }
+  async function keepBothCalendar(id){
+    if(composer.open||details.open){notify('Close the editor before resolving an event change.');return;}
+    const conflict=data.records.find(r=>r.id===id),transfer=conflict?._calendarSync?.conflict?.record?.workspace!==conflict?.workspace?{id,from:conflict?.workspace,to:conflict?._calendarSync?.conflict?.record?.workspace}:null;
+    try{await enqueueMutation(next=>{
+      const local=next.records.find(r=>r.id===id),remote=local?._calendarSync?.conflict;if(!remote)return;
+      if(local.type!=='event')throw Error('This entry was converted on this device. Its local text is retained; review the saved event separately.');
+      const target=local._calendarSync.target,copy={...C.eventPayload(local),id:C.uid(),body:local.body+' (copy)',opId:C.uid(),createdAt:new Date().toISOString(),_calendarSync:{target,version:0,pending:true,operationId:crypto.randomUUID()}};
+      Object.assign(local,remote.record,{_calendarSync:{target,version:remote.version,itemId:remote.itemId,digest:remote.digest,pending:false,syncedRecord:C.eventSignature(remote.record)}});
+      next.records.unshift(copy);if(!next.operations.includes(copy.opId))next.operations.push(copy.opId);
+    },{calendarImport:true,workspaceTransfer:transfer});render();window.dispatchEvent(new Event('liveit-calendar-change'));}catch(error){notify(error.message);}
+  }
+  const calendarAccess={
+    ready:()=>ready,
+    canSync:()=>!composer.open&&!details.open&&!saveInProgress&&!externalChangeDetected,
+    async bind(target){
+      const pending=mutationQueue.then(async()=>{
+        await draftQueue;if(composer.open||details.open||saveInProgress)return false;if(externalChangeDetected){this.status('error','Reload the latest LiveIt library before syncing events.');return false;}
+        if(!await repository.bindCalendarTarget(target)){this.status('wrong-library','Events belong to another KeepIt library. Reconnect that library to sync.');return false;}
+        data=(await repository.load()).data;render();return true;
+      });mutationQueue=pending.catch(()=>{});return pending;
+    },
+    pending(target){return data.records.filter(r=>r._calendarSync?.target===target&&r._calendarSync.pending&&!r._calendarSync.conflict).map(r=>{const record=calendarPayload(r);return record?{record,signature:JSON.stringify(record),receipt:{version:r._calendarSync.version||0,operationId:r._calendarSync.operationId}}:null;}).filter(Boolean);},
+    conflicts:()=>calendarConflicts().length,
+    status(phase,message){calendarSyncState={phase,message};paintCalendarStatus();},
+    async merge(remote,target){
+      if(composer.open||details.open||externalChangeDetected)return false;
+      for(const saved of remote){
+        const prior=data.records.find(r=>r.id===saved.record.id),transfer=prior&&prior.workspace!==saved.record.workspace&&!prior._calendarSync?.pending?{id:prior.id,from:prior.workspace,to:saved.record.workspace}:null;
+        await enqueueMutation(next=>{
+          let local=next.records.find(r=>r.id===saved.record.id);
+          if(local?._calendarSync?.target&&local._calendarSync.target!==target)return;
+          if(local?.type!=='event'&&local)return;
+          if(local?._calendarSync?.pending){
+            const signature=C.eventSignature(saved.record);
+            if(signature===local._calendarSync.syncedRecord){local._calendarSync.version=saved.version;local._calendarSync.itemId=saved.itemId;local._calendarSync.digest=saved.digest;}
+            else if(saved.version!==local._calendarSync.version&&signature!==C.eventSignature(local))local._calendarSync.conflict=saved;
+            return;
+          }
+          const imported={...saved.record,_calendarSync:{target,itemId:saved.itemId,version:saved.version,digest:saved.digest,pending:false,syncedRecord:C.eventSignature(saved.record)}};
+          if(local)Object.assign(local,imported);else{next.records.unshift(imported);if(!next.operations.includes(imported.opId))next.operations.push(imported.opId);}
+        },{calendarImport:true,skipUnchanged:true,workspaceTransfer:transfer});
+      }
+      render();return true;
+    },
+    async ack(id,signature,saved,target){
+      await enqueueMutation(next=>{
+        const row=next.records.find(r=>r.id===id);if(!row||row._calendarSync?.target!==target)return;
+        const matches=JSON.stringify(calendarPayload(row))===signature;
+        row._calendarSync={...row._calendarSync,version:saved.version,itemId:saved.itemId,digest:saved.digest,syncedRecord:C.eventSignature(saved.record),pending:!matches};if(matches)delete row._calendarSync.conflict;
+      },{calendarImport:true,skipUnchanged:true});paintCalendarStatus();
+    },
+    async conflict(id,saved,target){await enqueueMutation(next=>{const row=next.records.find(r=>r.id===id);if(row?._calendarSync?.target===target)row._calendarSync.conflict=saved;},{calendarImport:true,skipUnchanged:true});paintCalendarStatus();}
+  };
+  window.liveItCalendarAccess=Object.freeze(calendarAccess);
+
   window.liveItOwnedAccess=Object.freeze({ready:()=>ready,getRepository:()=>repository,getScope:()=>ui.scope,changed:()=>{markBackupStale();render();}});
   window.LiveItDemo=Object.freeze({
     waitReady:()=>ready,

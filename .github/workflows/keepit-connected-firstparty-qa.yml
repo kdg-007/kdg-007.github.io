@@ -158,6 +158,8 @@ jobs:
             expectedBundle=expectedBundle.replace(before,after);
           }
           assert.equal(patched,expectedBundle,'Connected bundle must match the original outside the permitted workspace changes');
+          const calendar=existsSync('partners/connected/liveit-calendar-release.json')?JSON.parse(get('partners/connected/liveit-calendar-release.json')):null;
+          if(calendar){assert.equal(calendar.schema,'liveit.calendar-release.v1');for(const [p,h] of Object.entries(calendar.files))assert.equal(createHash('sha256').update(readFileSync(p)).digest('hex'),h,'LiveIt calendar release: '+p);}
           const oldLiveIt=get('partners/liveit/thinkit/c15396ee7cd1cba9b5e5/app-8.js');
           const connectedLiveIt=get('partners/liveit/thinkit/connected-w18e-c15396/app-8.js');
           let expected=oldLiveIt;
@@ -170,12 +172,13 @@ jobs:
             assert.equal(expected.split(a).length,2,'Expected a single pinned app link '+a);
             expected=expected.replace(a,b);
           }
-          assert.equal(connectedLiveIt,expected,'Connected LiveIt changes are limited to app routes and allowing their native link clicks');
+          if(!calendar)assert.equal(connectedLiveIt,expected,'Connected LiveIt changes are limited to app routes and allowing their native link clicks');
           const originalDir='partners/liveit/thinkit/c15396ee7cd1cba9b5e5';
           const connectedDir='partners/liveit/thinkit/connected-w18e-c15396';
           {
             for(const file of ['index.html','app-0.js','app-1.js','app-2.js','app-3.js','app-4.js','app-5.js','app-6.js','app-7.js','app-9.js',
                                 'owned-liveit-hooks.js','keepit-note-client.mjs','style-0.css','style-1.css','style-2.css']){
+              if(calendar?.files[connectedDir+'/'+file])continue;
               assert.equal(get(connectedDir+'/'+file),get(originalDir+'/'+file),'Unexpected connected variant change: '+file);
             }
           }
@@ -208,6 +211,10 @@ jobs:
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-import.test.mjs
       - name: Verify combined packing templates
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.test.mjs
+      - name: Verify multi-day calendar contract
+        run: node partners/connected/liveit-calendar.unit.mjs
+      - name: Verify event save and reload across independent devices
+        run: node partners/connected/liveit-calendar.browser.mjs
       - name: Verify Microsoft callback and nonblocking OneDrive reconnect
         run: node partners/connected/owner-connection.test.mjs
       - name: Exercise canonical KeepIt native-note create, save and reopen

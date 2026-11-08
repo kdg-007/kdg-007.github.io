@@ -125,6 +125,15 @@ jobs:
               if app=='liveit':
                   html=html.replace('src="./app-8.js"','src="./app-8.js?v=journal-1"')
               file.write_text(html)
+          # Preserve the reviewed connected LiveIt calendar UI over the archived preview.
+          if Path('partners/connected/liveit-calendar-release.json').is_file():
+              import json,hashlib
+              calendar=json.loads(Path('partners/connected/liveit-calendar-release.json').read_text())
+              if calendar['schema']!='liveit.calendar-release.v1':raise SystemExit('Unexpected calendar release')
+              for rel,digest in calendar['files'].items():
+                  if not rel.startswith('partners/liveit/thinkit/connected-w18e-c15396/') or '..' in Path(rel).parts:raise SystemExit('Unsafe calendar asset path')
+                  if hashlib.sha256(Path(rel).read_bytes()).hexdigest()!=digest:raise SystemExit('Calendar asset changed: '+rel)
+                  target=Path('_site')/rel;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(rel,target)
           # The owner explicitly authorized the existing KeepIt directory.
           # Retain the reviewed live authentication callback after the old QA archive is restored.
           if Path('partners/connected/owner-release.json').is_file():
