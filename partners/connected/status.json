@@ -44,6 +44,6 @@
   "intendedLiveLibrary": "OneDrive / KeepIt",
   "liveLibraryConnected": false,
   "liveLibraryConnectionEnabled": true,
-  "ownerProfileBuildId": "f94293eed11c",
+  "ownerProfileBuildId": "7d42aa8e832a",
   "qaDataIsolation": "separate live choice, device library, note workspace and upload queue; no QA import or deletion"
 }
