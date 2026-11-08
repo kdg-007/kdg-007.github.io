@@ -2,7 +2,7 @@ name: Verify published owner collection
 on:
   push:
     branches: [main]
-    paths: [".github/workflows/owner-live-verification.yml"]
+    paths: [".github/workflows/owner-live-verification.yml", "partners/connected/owner-deployed.test.mjs"]
   workflow_run:
     workflows: ["KeepIt guarded device-QA website"]
     types: [completed]
