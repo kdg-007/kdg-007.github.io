@@ -45,7 +45,7 @@ try{
     await p.evaluate(async()=>{await navigator.serviceWorker.register('/owner-old-worker-test.js',{scope:'/'});await navigator.serviceWorker.ready;});await p.waitForFunction(()=>!!navigator.serviceWorker.controller);
     await p.goto(origin+'/');await p.getByRole('heading',{name:'Private QA legacy page',exact:true}).waitFor();
     await p.goto(origin+'/?entry=owner-live-v2');await p.waitForURL(u=>u.pathname==='/partners/connected/'&&u.searchParams.get('connected-app')==='liveit');
-    await p.waitForFunction(()=>new Promise(ok=>{const channel=new MessageChannel(),timeout=setTimeout(()=>{channel.port1.close();ok(false);},300);channel.port1.onmessage=e=>{clearTimeout(timeout);channel.port1.close();ok(e.data?.version==='liveit-owner-shell-entry-v2');};navigator.serviceWorker.controller?.postMessage({type:'owner-shell-version'},[channel.port2]);}),null,{timeout:20000});
+    await p.waitForFunction(()=>new Promise(ok=>{const channel=new MessageChannel(),timeout=setTimeout(()=>{channel.port1.close();ok(false);},300);channel.port1.onmessage=e=>{clearTimeout(timeout);channel.port1.close();ok(e.data?.version==='liveit-owner-shell-entry-v3');};navigator.serviceWorker.controller?.postMessage({type:'owner-shell-version'},[channel.port2]);}),null,{timeout:20000});
     await p.goto(origin+'/');await p.waitForURL(u=>u.pathname==='/partners/connected/'&&u.searchParams.get('connected-app')==='liveit');await p.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell').waitFor();assert.ok(!(await p.locator('body').innerText()).includes('Private QA legacy page'));
     console.log('OWNER_LIVE_CACHED_QA_WORKER_CUTOVER_CHROMIUM_PASS');await migration.close();
    }

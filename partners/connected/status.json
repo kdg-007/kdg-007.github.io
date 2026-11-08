@@ -1,6 +1,6 @@
 {
   "schema": "keepit.connected-hub.preview.v1",
-  "keepitRootUnchanged": true,
+  "keepitRootUnchanged": false,
   "keepitNativeNoteWriter": true,
   "origin": "https://kdg-007.github.io",
   "supportedApps": [
@@ -13,7 +13,7 @@
   "publicTestsPassed": true,
   "oneDriveReadbackVerified": false,
   "interAppOriginalDataMigration": "none",
-  "noteWriter": "KeepIt canonical compiled LocalLibrary/NoteUI",
+  "noteWriter": "KeepIt canonical NoteUI with LocalLibrary and OneDriveLibrary",
   "dataPreservation": "no automatic migration",
   "connectedNavigation": true,
   "standaloneLiveItPreserved": true,
@@ -44,6 +44,7 @@
   "intendedLiveLibrary": "OneDrive / KeepIt",
   "liveLibraryConnected": false,
   "liveLibraryConnectionEnabled": true,
-  "ownerProfileBuildId": "7d42aa8e832a",
-  "qaDataIsolation": "separate live choice, device library, note workspace and upload queue; no QA import or deletion"
+  "ownerProfileBuildId": "b2180b426508",
+  "qaDataIsolation": "separate live choice, device library, note workspace and upload queue; no QA import or deletion",
+  "connectionFlow": "App mounts before Microsoft/Graph reads; one connection operation; minimal callback returns to originating app; bounded read timeout with retry"
 }

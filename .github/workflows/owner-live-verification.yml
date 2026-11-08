@@ -1,0 +1,26 @@
+name: Verify published owner collection
+on:
+  workflow_run:
+    workflows: ["pages build and deployment"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install disposable Chromium runtime
+        run: |
+          printf '{"type":"module","private":true}\n' > package.json
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify deployed bytes and Microsoft return with synthetic services
+        run: node partners/connected/owner-deployed.test.mjs

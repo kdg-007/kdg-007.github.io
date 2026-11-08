@@ -82,6 +82,13 @@ jobs:
             assert.equal(owner.schema,'keepit.owner-live-release.v1');assert.equal(owner.target,'OneDrive / KeepIt');
             assert.equal(owner.sourceArchiveSha256,'d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a');
             for(const [path,hash] of Object.entries(owner.files)){assert.ok(!path.startsWith('/')&&!path.split('/').includes('..'));assert.equal(createHash('sha256').update(readFileSync(path)).digest('hex'),hash,'Pinned owner artifact: '+path);}
+            for(const path of Object.keys(owner.files).filter(p=>p.startsWith('assets/')&&p.endsWith('.js'))){
+              for(const match of get(path).matchAll(/["'](\.\/[^"']+\.js)["']/g)){
+                const dependency='assets/'+match[1].slice(2);
+                assert.ok(existsSync(dependency),'Compiled dependency missing from clean checkout: '+dependency);
+                assert.ok(owner.files[dependency],'Compiled dependency missing from owner proof: '+dependency);
+              }
+            }
             assert.ok(connected.includes(owner.entry));assert.ok(!connected.includes('library-app-connected-w18e.js'));
           }else assert.equal(connected,expectedConnected,'KeepIt base must remain byte-identical except approved LiveIt shell metadata');
           const manifest=JSON.parse(get('partners/connected/liveit.webmanifest'));
@@ -201,6 +208,8 @@ jobs:
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-import.test.mjs
       - name: Verify combined packing templates
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.test.mjs
+      - name: Verify Microsoft callback and nonblocking OneDrive reconnect
+        run: node partners/connected/owner-connection.test.mjs
       - name: Exercise canonical KeepIt native-note create, save and reopen
         shell: bash
         timeout-minutes: 9
@@ -208,7 +217,7 @@ jobs:
           CI: "true"
         run: node partners/connected/first-party-native-notes.test.mjs
       - name: Verify shared navigation across devices in Chromium and WebKit
-        if: ${{ !cancelled() && steps.browser_runtime.outcome == 'success' }}
+        if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
         shell: bash
         timeout-minutes: 6
         run: node partners/design/app-ui-v1.test.mjs
