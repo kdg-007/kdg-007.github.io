@@ -36,7 +36,7 @@ jobs:
           import {createHash} from 'node:crypto';
           import assert from 'node:assert/strict';
           const get=p=>readFileSync(p,'utf8');
-          const root=get('index.html'),connected=get('partners/connected/index.html');
+          const actualRoot=get('index.html'),root=existsSync('ops/ui/keepit-root-rollback.txt')?get('ops/ui/keepit-root-rollback.txt'):actualRoot,connected=get('partners/connected/index.html');
           const native=get('assets/library-app-TEDOLCCE.js');
           const patched=get('assets/library-app-connected-w18e.js');
           const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
@@ -93,8 +93,9 @@ jobs:
           assert.equal(manifest.display,'standalone');
           assert.ok(manifest.icons.some(icon=>icon.src.includes('connected-w18e-c15396/assets/icon-192.png')));
           const keepItManifest=JSON.parse(get('manifest.webmanifest'));
-          assert.equal(keepItManifest.name,'KeepIt');
+          assert.equal(keepItManifest.name,existsSync('ops/ui/owner-entry.html')?'LiveIt':'KeepIt');
           assert.equal(keepItManifest.id,'/');
+          if(existsSync('ops/ui/owner-entry.html')){assert.equal(actualRoot,get('ops/ui/owner-entry.html'));assert.ok(!actualRoot.includes('library-app-'));assert.ok(actualRoot.includes('/assets/owner-entry-v2.js'));assert.equal(keepItManifest.start_url,'/partners/connected/?connected-app=liveit');assert.equal(get('sw.js'),get('ops/ui/owner-shell-worker.js'));}
           // This extension survives the guarded Pages publisher regenerating
           // root index.html; it canonicalizes old /?connected-app= links.
           const legacy=get('keepit-responsive-qa.js');

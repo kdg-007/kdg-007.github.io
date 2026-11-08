@@ -9,8 +9,8 @@
   "cloudSignInVerified": false,
   "cloudOriginalReadbackVerified": false,
   "files": {
-    "partners/connected/index.html": "9fe60a613f42a6bcff11707b0b1557297261bcdab2852109ae088ffd32c4bf37",
-    "partners/connected/owner-auth-callback.html": "a426e18c0d4ce5f933a743868765b9750bbd83ac8c468c0a1e745e038956a97d",
+    "partners/connected/index.html": "5413d6c621972dfb3b3371d53dcd9e4a2053efcdff3187670954ce08f85d7ee7",
+    "partners/connected/owner-auth-callback.html": "7332d0ebfb7732a645c6877e69754af436858f2ca04d358f254c7eda8eaee52f",
     "assets/chunk-T64KGICL.js": "e4db95406e7620c6d057eda2d92b4bf53cbade6ad6c07110d4f954da32e2c95e",
     "assets/chunk-AAYJLHGB.js": "3935d5f4c8179cc1eb4511183fdecc024f7b3186eaaebf5fc3aed8df359b00f9",
     "assets/chunk-ONVCOZAG.js": "beba1ae3f0d54006ccb1f52f6499ff3ad3c0c7f97ab3d3c6dd91170a8e8c63e7",
@@ -57,6 +57,16 @@
     "assets/chunk-5ZHMQH23.js": "92373fe3ce0a04be57e0526b3b802ff2b7f571f265ef8bafae3df9ccbded4948",
     "assets/chunk-HG7NYSTC.js": "0cbdabd86083b84fa26820ea6cd210c56e753a47d7b9817e4e39617c3da125a7",
     "assets/chunk-ELCRCLWL.js": "4a3b97106e95b12fbf5d573855a346e2cd38af275b1fd3c2a65aade9421acc54",
-    "assets/chunk-5HHK5PJM.js": "463cb9888793a6e9987bc41ca0a0ed729aaea91050074ad8e351db3078e84bc5"
-  }
+    "assets/chunk-5HHK5PJM.js": "463cb9888793a6e9987bc41ca0a0ed729aaea91050074ad8e351db3078e84bc5",
+    "index.html": "66210adf585bf2fd06f806109fb4e17d2a2f3dc395130675d41ea96e2ed10179",
+    "manifest.webmanifest": "1070eb3e56e1f678f413977e08caf35e8a1795b9965273e1990f45f2043277a8",
+    "sw.js": "47a5d42bc006dfe66687f7443a862b707d845dd047dcb2318d74707a64b5e856",
+    "ops/ui/owner-entry.html": "66210adf585bf2fd06f806109fb4e17d2a2f3dc395130675d41ea96e2ed10179",
+    "ops/ui/owner-root.webmanifest": "1070eb3e56e1f678f413977e08caf35e8a1795b9965273e1990f45f2043277a8",
+    "ops/ui/owner-shell-worker.js": "47a5d42bc006dfe66687f7443a862b707d845dd047dcb2318d74707a64b5e856",
+    "assets/owner-entry-v2.js": "1a73d732c8af4b43b79d271fa5c8e752bd6211c7b0c54fe5b297bfbdaee0cbde",
+    "partners/connected/owner-update-v2.js": "90133cfaf9accea61bad742b84ab2a793bd0ca82a73788242b31f9e34b38feb7"
+  },
+  "normalEntry": "/",
+  "entryRelease": "owner-entry-v2"
 }
