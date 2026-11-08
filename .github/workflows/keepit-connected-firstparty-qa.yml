@@ -201,6 +201,8 @@ jobs:
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-import.test.mjs
       - name: Verify combined packing templates
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.test.mjs
+      - name: Verify Microsoft callback and nonblocking OneDrive reconnect
+        run: node partners/connected/owner-connection.test.mjs
       - name: Exercise canonical KeepIt native-note create, save and reopen
         shell: bash
         timeout-minutes: 9

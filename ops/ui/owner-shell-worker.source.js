@@ -1,4 +1,4 @@
-const CACHE='liveit-owner-shell-entry-v2';
+const CACHE='liveit-owner-shell-entry-v3';
 const INITIAL=['/','/manifest.webmanifest','/assets/owner-entry-v2.js'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);

@@ -187,3 +187,10 @@ html[data-connected-app="liveit"] .connected-shell-home{display:none}
  html[data-connected-app="keepit"] .library-top{padding-right:310px;top:0}
  html[data-connected-app="keepit"] .library-main > .connected-shell-bar{z-index:30}
 }
+
+/* Connection feedback stays in the shell while the app remains mounted. */
+#connected-cloud-status{font:500 12px/1.3 system-ui;color:var(--app-text,#e7f0f2);background:var(--app-surface,#274659);border:1px solid currentColor;border-radius:9px;max-width:260px;padding:7px 10px;text-align:left;white-space:normal}
+#connected-cloud-status[hidden]{display:none}
+#connected-cloud-status[data-phase=error]{border-color:#d99078}
+#connected-cloud-status[data-phase=connected]{border-color:#8ac8a4}
+@media(max-width:600px){#connected-cloud-status{max-width:170px;font-size:11px;padding:4px 7px}}

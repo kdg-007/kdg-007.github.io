@@ -55,6 +55,18 @@
   });
   list.append(toolsButton);
  }
+ const connection=document.createElement('button');
+ connection.type='button';connection.id='connected-cloud-status';connection.hidden=true;
+ connection.setAttribute('aria-live','polite');
+ connection.addEventListener('click',()=>document.getElementById('connect-onedrive')?.click());
+ const updateConnection=detail=>{
+  if(!detail?.message)return;
+  connection.hidden=false;connection.textContent=detail.message;
+  connection.dataset.phase=detail.phase;
+  connection.title=detail.phase==='connected'?'Open OneDrive connection':'Open OneDrive connection to sign in or retry';
+ };
+ window.addEventListener('keepit-connection-state',event=>updateConnection(event.detail));
+ updateConnection(window.keepItConnectionState);
  const cloudButton=document.createElement('button');cloudButton.type='button';cloudButton.textContent='OneDrive connection';cloudButton.id='connected-onedrive-toggle';cloudButton.addEventListener('click',()=>{list.hidden=true;opener.setAttribute('aria-expanded','false');document.getElementById('connect-onedrive')?.click();});list.append(cloudButton);
  function mountShellBar(host){
   document.title=current==='liveit'?'LiveIt — Today':modes.find(mode=>mode.id===current).label+' — LiveIt';
@@ -72,7 +84,7 @@
   const app=document.createElement('strong');
   app.className='connected-shell-current';
   app.textContent=current==='liveit'?'Today':modes.find(mode=>mode.id===current).label;
-  bar.append(home,app,nav);
+  bar.append(home,app,connection,nav);
   host.prepend(bar);
   host.dataset.connectedUi='ready';
   const finishOpening=()=>{
