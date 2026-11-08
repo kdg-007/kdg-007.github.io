@@ -37,11 +37,11 @@ try{
  await new Promise((ok,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',ok)});
  const origin='https://127.0.0.1:'+server.address().port;
  for(const engine of [chromium,webkit]){
-  browser=await engine.launch({headless:true});
+  browser=await engine.launch({headless:true,args:engine===chromium?['--ignore-certificate-errors']:[]});
   const tag=engine.name().toUpperCase();
   if(ownerProfile){
    if(engine===chromium){
-    const migration=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'allow'});const p=await migration.newPage();await p.goto(origin+'/partners/connected/status.json');
+    const migration=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'allow'});await migration.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());const p=await migration.newPage();await p.goto(origin+'/partners/connected/status.json');
     await p.evaluate(async()=>{await navigator.serviceWorker.register('/owner-old-worker-test.js',{scope:'/'});await navigator.serviceWorker.ready;});await p.waitForFunction(()=>!!navigator.serviceWorker.controller);
     await p.goto(origin+'/');await p.getByRole('heading',{name:'Private QA legacy page',exact:true}).waitFor();
     await p.goto(origin+'/?entry=owner-live-v2');await p.waitForURL(u=>u.pathname==='/partners/connected/'&&u.searchParams.get('connected-app')==='liveit');
