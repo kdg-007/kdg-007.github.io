@@ -318,7 +318,7 @@
       this.revision=meta.revision;
       return {data, revision:meta.revision, migrated:meta.migratedFromLegacy};
     }
-    async save(next,previous,{clearDraftWorkspace=null,clearDraftOpId=null,workspaceTransfer=null}={}){
+    async save(next,previous,{clearDraftWorkspace=null,clearDraftOpId=null,workspaceTransfer=null,calendarImport=false}={}){
       checked(next,this.core);checked(previous,this.core);
       if(clearDraftWorkspace && !['work','personal'].includes(clearDraftWorkspace))throw new Error('Invalid draft workspace');
       if(clearDraftWorkspace && clearDraftOpId!==null && (typeof clearDraftOpId!=='string'||!clearDraftOpId))throw new Error('Invalid draft identity');
@@ -375,7 +375,15 @@
           throw new Error('Quick Space change blocked: an unfinished draft still uses this category. Recover or refile the draft first; nothing changed.');
         }
       }
-      for (const r of updates)tx.objectStore('records').put(clone(r));
+      for (const r of updates){
+        const old=older.get(r.id),prior=old?._calendarSync;
+        if(!calendarImport&&r.type==='event'&&(old?.type!=='event'||this.core.eventSignature(old)!==this.core.eventSignature(r))){
+          r._calendarSync={...(prior||{}),target:prior?.target||current.calendarTarget||null,version:prior?.version||0,pending:true,operationId:crypto.randomUUID()};delete r._calendarSync.outgoing;delete r._calendarSync.conflict;
+        }else if(!calendarImport&&r.type!=='event'&&old?.type==='event'){
+          r._calendarSync={...(prior||{}),target:prior?.target||current.calendarTarget||null,version:prior?.version||0,pending:true,operationId:crypto.randomUUID(),outgoing:JSON.stringify({...this.core.eventPayload(old),archived:true})};
+        }
+        tx.objectStore('records').put(clone(r));
+      }
       for (const r of deletes)tx.objectStore('records').delete(r.id);
       for (const op of addedOps)tx.objectStore('operations').add({opId:op});
       // Immutable audit rows live in the same atomic transaction as accepted changes.
@@ -407,6 +415,17 @@
       this.revision++;
       return {revision:this.revision,changedRecords:updates.length+deletes.length};
     }
+    async bindCalendarTarget(target){
+      if(typeof target!=='string'||target.length>512)throw Error('Invalid calendar library.');
+      const tx=this.db.transaction(['meta','records'],'readwrite'),done=transactionDone(tx),state=await request(tx.objectStore('meta').get('state'));
+      if(state.calendarTarget&&state.calendarTarget!==target){await done;return false;}
+      if(state.calendarTarget===target){await done;return true;}
+      if(state.revision!==this.revision){tx.abort();try{await done;}catch{};throw Error('Reload LiveIt before connecting its calendar.');}
+      const rows=await request(tx.objectStore('records').getAll());
+      for(const row of rows)if(row.type==='event')tx.objectStore('records').put({...row,_calendarSync:{target,version:0,pending:true,operationId:crypto.randomUUID()}});
+      tx.objectStore('meta').put({...state,calendarTarget:target,revision:state.revision+1});await done;this.revision++;return true;
+    }
+    async calendarTarget(){const tx=this.db.transaction('meta','readonly'),done=transactionDone(tx),s=await request(tx.objectStore('meta').get('state'));await done;return s.calendarTarget||null;}
     // W5C: draft mutations and revision stamp commit in the same transaction.
     // Prevents stale backup-verification claims after edits in another window.
     async putDraft(workspace,draft){

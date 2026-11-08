@@ -44,8 +44,14 @@
   "intendedLiveLibrary": "OneDrive / KeepIt",
   "liveLibraryConnected": false,
   "liveLibraryConnectionEnabled": true,
-  "ownerProfileBuildId": "299fe25a46b2",
+  "ownerProfileBuildId": "5d492a3fc6f2",
   "qaDataIsolation": "separate live choice, device library, note workspace and upload queue; no QA import or deletion",
   "connectionFlow": "App mounts before Microsoft/Graph reads; one connection operation; minimal callback returns to originating app; bounded read timeout with retry",
-  "oneDriveFolderSelection": "Browse personal OneDrive folders and subfolders; select an existing library or an empty folder; remembered choice uses folder ID"
+  "oneDriveFolderSelection": "Browse personal OneDrive folders and subfolders; select an existing library or an empty folder; remembered choice uses folder ID",
+  "liveItCalendar": {
+    "multiDay": true,
+    "scopeVisibility": "Work + Personal events",
+    "storage": "One native KeepIt note per event; local pending receipts retained offline",
+    "crossDeviceOwnerVerified": false
+  }
 }
