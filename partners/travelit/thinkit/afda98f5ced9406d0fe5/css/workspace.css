@@ -79,3 +79,12 @@ html[data-suite-app="travelit"] .map-viewport-controls{display:inline-flex;gap:5
 html[data-suite-app="travelit"] .map-viewport-controls .button{min-height:32px;padding:5px 9px}
 html[data-suite-app="travelit"] .offline-annotation-list{margin-top:10px}
 html[data-suite-app="travelit"] .offline-map-menu .map-toolbar{display:grid;margin:0}
+
+/* Left-anchored map menus must remain inside the viewport. */
+.map-tools-menu .action-menu-items{left:0;right:auto;min-width:230px;color:var(--text)}
+.map-tools-menu .action-menu-items .button{white-space:normal;overflow-wrap:anywhere;color:var(--text)}
+html[data-suite-app="travelit"]:fullscreen{background:var(--bg)}
+html[data-suite-app="travelit"]:fullscreen .topbar,html[data-suite-app="travelit"]:fullscreen .sidebar,html[data-suite-app="travelit"]:fullscreen .app-appearance-button{display:none}
+html[data-suite-app="travelit"]:fullscreen #main{padding:10px;height:100dvh;overflow:auto}
+html[data-suite-app="travelit"]:fullscreen .street-map-frame{height:calc(100dvh - 100px)}
+html[data-suite-app="travelit"]:fullscreen #main:has(.map-editing) .street-map-frame{height:calc(100dvh - 155px)}

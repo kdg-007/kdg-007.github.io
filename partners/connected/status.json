@@ -18,10 +18,29 @@
   "connectedNavigation": true,
   "standaloneLiveItPreserved": true,
   "browserAcceptance": "Chromium and WebKit: LiveIt, TravelIt, ThinkIt create/save/reopen and 3 distinct canonical KeepIt originals",
-  "browserEvidenceUrl": "https://github.com/kdg-007/kdg-007.github.io/actions/runs/41962743518",
+  "browserEvidenceUrl": "https://github.com/kdg-007/kdg-007.github.io/actions/runs/42431196493",
   "physicalIPhoneAccepted": false,
   "physicalMacAccepted": false,
   "productionAccepted": false,
   "existingCrossOriginDataMigrated": false,
-  "publicationStatus": "staged for first-party preview publication; no production or OneDrive acceptance"
+  "publicationStatus": "Connected collection published; TravelIt core views accepted on owner MacBook. OneDrive live release preparation in progress; current KeepIt storage build remains QA-only.",
+  "asOf": "2026-11-08",
+  "travelItMacAcceptance": {
+    "reportedByOwner": true,
+    "date": "2026-11-08",
+    "accepted": [
+      "map workspace",
+      "trips",
+      "gantt",
+      "calendar",
+      "packing",
+      "budget"
+    ],
+    "followUps": [
+      "map-menu clipping",
+      "map fullscreen"
+    ]
+  },
+  "intendedLiveLibrary": "OneDrive / KeepIt",
+  "liveLibraryConnected": false
 }

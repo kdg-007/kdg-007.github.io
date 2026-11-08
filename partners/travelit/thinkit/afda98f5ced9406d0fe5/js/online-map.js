@@ -4,7 +4,7 @@ const coordinates=p=>Number.isFinite(p?.lat)&&Number.isFinite(p?.lng)&&Math.abs(
 export function draftControlsMarkup(draft,action){return draft?`<div class="map-editing" role="status"><strong>${{pin:'Place a note pin',line:'Sketch a route',area:'Outline an area'}[draft.kind]}</strong> · ${draft.points.length} point(s). ${action('Save annotation','finish-map')}${action('Undo point','undo-map')}${action('Cancel','cancel-map')}</div>`:'';}
 export function onlineMapMarkup({places,annotations,draft,action}){
  const count=places.filter(coordinates).length;
- return `<div class="map-command-bar"><strong>Map</strong><details class="action-menu"><summary>Map tools</summary><div class="action-menu-items">${action('Fit saved places','street-map-fit')}${action('Philippines','street-map-ph')}${action('Add note pin','start-map:pin')}${action('Sketch route','start-map:line')}${action('Outline area','start-map:area')}${action('Retry street map','street-map-retry')}${action('Offline maps','map-mode:offline')}</div></details><span>${count} pins · ${annotations.length} annotations</span></div><div id="map-editing-host">${draftControlsMarkup(draft,action)}</div><div class="street-map-frame"><div id="street-map" role="region" aria-label="Interactive street map with saved places" tabindex="0"></div></div><div class="street-map-status" id="street-map-status" role="status" aria-live="polite" data-state="loading">Loading street map…</div>`;
+ return `<div class="map-command-bar"><strong>Map</strong><details class="action-menu map-tools-menu"><summary>Map tools</summary><div class="action-menu-items">${action('Fit saved places','street-map-fit')}${action('Philippines','street-map-ph')}${action('Add note pin','start-map:pin')}${action('Sketch route','start-map:line')}${action('Outline area','start-map:area')}${action('Retry street map','street-map-retry')}${action('Offline maps','map-mode:offline')}</div></details><button type="button" class="button" data-action="map-fullscreen" aria-pressed="false">Full screen</button><span>${count} pins · ${annotations.length} annotations</span></div><div id="map-editing-host">${draftControlsMarkup(draft,action)}</div><div class="street-map-frame"><div id="street-map" role="region" aria-label="Interactive street map with saved places" tabindex="0"></div></div><div class="street-map-status" id="street-map-status" role="status" aria-live="polite" data-state="loading">Loading street map…</div>`;
 }
 export function mountOnlineMap({container,status,places,annotations,draft,viewport,onViewport,onPlace,onAnnotation,onPoint}){
  let currentDraft=draft;const draftShapes=[];
@@ -51,7 +51,8 @@ export function mountOnlineMap({container,status,places,annotations,draft,viewpo
  map.on('click',event=>{if(currentDraft)onPoint({lat:event.latlng.lat,lng:event.latlng.lng});});updateDraft(draft);
  const remember=()=>{const center=map.getCenter();onViewport({lat:center.lat,lng:center.lng,zoom:map.getZoom()});};
  map.on('moveend',remember);remember();
- const dispose=()=>{remember();disposed=true;clearTimeout(timer);map.remove();};
+ const resizeObserver=new ResizeObserver(()=>{if(!disposed)map.invalidateSize({pan:false});});resizeObserver.observe(container);
+ const dispose=()=>{remember();disposed=true;resizeObserver.disconnect();clearTimeout(timer);map.remove();};
  dispose.updateDraft=updateDraft;dispose.control=command=>{if(command==='street-map-fit'){if(allPoints.length)map.fitBounds(L.latLngBounds(allPoints.map(p=>[p.lat,p.lng])),{padding:[40,40],maxZoom:13});else map.fitBounds([[4.5,116],[21,127]]);}else if(command==='street-map-ph')map.setView([12.7,122],5);else if(command==='street-map-retry'){loaded=0;failed=0;layer.redraw();armTimeout();}};
  return dispose;
 }

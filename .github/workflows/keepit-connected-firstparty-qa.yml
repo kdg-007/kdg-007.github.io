@@ -39,14 +39,14 @@ jobs:
           const native=get('assets/library-app-TEDOLCCE.js');
           const patched=get('assets/library-app-connected-w18e.js');
           const a='<script type="module" src="/assets/library-app-TEDOLCCE.js"></script>';
-          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=workspace-3"></script>';
+          const b='<script type="module" src="/assets/library-app-connected-w18e.js?v=workspace-4"></script>';
           const from='h.src="/partners/liveit/thinkit/1a26c53e24e1b903260b/index.html"';
           const to='h.src="/partners/liveit/thinkit/connected-w18e-c15396/index.html?v=workspace-2"';
           assert.equal(root.split(a).length,2);
           assert.equal(native.split(from).length,2);
           const navigationCSS='<link rel="stylesheet" href="/partners/connected/connected-nav.css?v=workspace-2">';
           const navigationJS='<script src="/partners/connected/connected-nav.js?v=workspace-2" defer></script>';
-          const startupJS='<script src="/partners/connected/connected-boot.js?v=workspace-3" defer></script>';
+          const startupJS='<script src="/partners/connected/connected-boot.js?v=workspace-4" defer></script>';
           const installChanges=[
             ['<meta name="theme-color" content="#FFFFFF">','<meta name="theme-color" content="#142331">'],
             ['<meta name="description" content="Keep anything. Find everything.">',
@@ -112,9 +112,11 @@ jobs:
           assert.ok(navigationStyle.includes('visibility:hidden'));
           assert.ok(navigationStyle.includes('#connected-apps-list button#connected-note-tools-toggle'));
           const connectedWorkspaceChanges=[
+            ['h.title="TravelIt trip planning workspace",h.src=',
+             'h.title="TravelIt trip planning workspace",h.allowFullscreen=!0,h.src='],
             [from,to],
             ['h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html"',
-             'h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=workspace-3"'],
+             'h.src="/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=workspace-4"'],
             ['d.src="/thinkit/36f8901ec722db162bcf/index.html"',
              'd.src="/thinkit/36f8901ec722db162bcf/index.html?v=topic-order-1"'],
             ['function Io(){if(!(!Ve||go||!de||!f||f.readOnly)){',
