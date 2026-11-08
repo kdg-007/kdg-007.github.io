@@ -19,6 +19,7 @@ export function connectionFixture(origin,{nested=false,writable=false}={}){
  let serial=0;
  const fixture={requests:[],navigations:[],nonce:null,clientId:null,hold:null,driveRequests:0,signins:0};
  const encode=value=>Buffer.isBuffer(value)?value:Buffer.from(JSON.stringify(value)).toString('base64url');
+ fixture.acceptUpload=(id,name,data)=>{if([...items.values()].some(x=>x.parentReference.id===id&&x.name===name))return {status:409,value:{}};const saved='saved-'+(++serial);add(saved,id,name,data);return {status:201,value:items.get(saved)};};
  fixture.route=async route=>{
   const req=route.request(),url=new URL(req.url()),method=req.method();
   if(url.origin===origin)return route.continue();
@@ -55,8 +56,9 @@ export function connectionFixture(origin,{nested=false,writable=false}={}){
    if(!match)return json({},404);
    const [,id,suffix]=match;
    if(writable&&method==='PUT'&&suffix.endsWith(':/content')){
-    assert.equal(url.searchParams.get('@microsoft.graph.conflictBehavior'),'fail');const name=suffix.slice(2,-9);if([...items.values()].some(x=>x.parentReference.id===id&&x.name===name))return json({},409);
-    const saved='saved-'+(++serial);add(saved,id,name,req.postDataBuffer()||Buffer.alloc(0));return json(items.get(saved),201);
+    assert.equal(url.searchParams.get('@microsoft.graph.conflictBehavior'),'fail');
+    if(fixture.uploadEndpoint)return route.continue({url:fixture.uploadEndpoint+'?parent='+encodeURIComponent(id)+'&name='+encodeURIComponent(suffix.slice(2,-9))});
+    const body=req.postDataBuffer();assert.ok(body,'Binary upload body unavailable; use the loopback upload endpoint');const result=fixture.acceptUpload(id,suffix.slice(2,-9),body);return json(result.value,result.status);
    }
    if(writable&&method==='POST'&&suffix==='/children'){
     const value=req.postDataJSON();assert.equal(value['@microsoft.graph.conflictBehavior'],'fail');if([...items.values()].some(x=>x.parentReference.id===id&&x.name===value.name))return json({},409);const created='folder-'+(++serial);add(created,id,value.name);return json(items.get(created),201);
