@@ -5,14 +5,15 @@
 // route migration here in the stable extension loaded by that generated page.
 const appIds=['liveit','keepit','thinkit','travelit'];
 const requested=new URLSearchParams(location.search).getAll('connected-app');
-if(location.pathname==='/'&&requested.length===1&&appIds.includes(requested[0])){
+if(location.pathname==='/'||location.pathname==='/index.html'){
  const destination=new URL('/partners/connected/',location.origin);
  destination.search=location.search;
+ if(requested.length!==1||!appIds.includes(requested[0]))destination.searchParams.set('connected-app',new URLSearchParams(location.search).get('connect-onedrive')==='1'?'keepit':'liveit');
  destination.hash=location.hash;
  location.replace(destination.pathname+destination.search+destination.hash);
  return;
 }
-// Root KeepIt remains the separate notes/files workspace by default.
+// Every normal root entry now opens the owner collection.
 document.addEventListener('click',event=>{
  if(location.pathname!=='/')return;
  const original=event.target?.closest?.('#thinkit-launch');

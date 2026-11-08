@@ -21,6 +21,7 @@ const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=u
 const server=createServer({key:readFileSync(key),cert:readFileSync(cert)},(req,res)=>{
  let pathname;try{pathname=decodeURIComponent(new URL(req.url,'https://127.0.0.1').pathname);}
  catch{res.writeHead(400);res.end();return;}
+ if(pathname==='/owner-old-worker-test.js'){res.writeHead(200,{'Content-Type':'text/javascript','Service-Worker-Allowed':'/','Cache-Control':'no-store'});res.end("self.addEventListener('install',e=>e.waitUntil(self.skipWaiting()));self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.mode==='navigate'&&u.pathname==='/'&&!u.search)e.respondWith(Promise.resolve(new Response('<h1>Private QA legacy page</h1>',{headers:{'Content-Type':'text/html'}})));});");return;}
  const file=resolve(root,'.'+(pathname.endsWith('/')?pathname+'index.html':pathname));
  if(!file.startsWith(root+sep)){res.writeHead(403);res.end();return;}
  try{
@@ -39,7 +40,21 @@ try{
   browser=await engine.launch({headless:true});
   const tag=engine.name().toUpperCase();
   if(ownerProfile){
+   if(engine===chromium){
+    const migration=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'allow'});const p=await migration.newPage();await p.goto(origin+'/partners/connected/status.json');
+    await p.evaluate(async()=>{await navigator.serviceWorker.register('/owner-old-worker-test.js',{scope:'/'});await navigator.serviceWorker.ready;});await p.waitForFunction(()=>!!navigator.serviceWorker.controller);
+    await p.goto(origin+'/');await p.getByRole('heading',{name:'Private QA legacy page',exact:true}).waitFor();
+    await p.goto(origin+'/?entry=owner-live-v2');await p.waitForURL(u=>u.pathname==='/partners/connected/'&&u.searchParams.get('connected-app')==='liveit');
+    await p.waitForFunction(()=>new Promise(ok=>{const channel=new MessageChannel(),timeout=setTimeout(()=>{channel.port1.close();ok(false);},300);channel.port1.onmessage=e=>{clearTimeout(timeout);channel.port1.close();ok(e.data?.version==='liveit-owner-shell-entry-v2');};navigator.serviceWorker.controller?.postMessage({type:'owner-shell-version'},[channel.port2]);}),null,{timeout:20000});
+    await p.goto(origin+'/');await p.waitForURL(u=>u.pathname==='/partners/connected/'&&u.searchParams.get('connected-app')==='liveit');await p.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell').waitFor();assert.ok(!(await p.locator('body').innerText()).includes('Private QA legacy page'));
+    console.log('OWNER_LIVE_CACHED_QA_WORKER_CUTOVER_CHROMIUM_PASS');await migration.close();
+   }
    const clean=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'});await clean.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());const p=await clean.newPage();
+   for(const [oldPath,app] of [['/','liveit'],['/index.html','liveit'],['/?connected-app=keepit','keepit'],['/index.html?connected-app=travelit','travelit'],['/?connect-onedrive=1','keepit']]){
+    await p.goto(origin+oldPath);await p.waitForURL(u=>u.pathname==='/partners/connected/'&&u.searchParams.get('connected-app')===app);await p.locator('#connected-apps-toggle').waitFor();
+    if(oldPath.includes('connect-onedrive')){await p.locator('#onedrive-dialog[open]').waitFor();assert.ok(!(await p.locator('#onedrive-dialog').innerText()).includes('Private QA'));}
+   }
+   console.log('OWNER_LIVE_ROOT_INDEX_AND_INSTALLED_ENTRY_'+tag+'_PASS');
    await p.goto(origin+'/partners/connected/status.json');
    await p.evaluate(()=>new Promise((ok,no)=>{localStorage.setItem('keepit-onedrive-1',JSON.stringify({homeId:'qa-account',driveId:'qa-drive',rootId:'qa-root',path:'KeepIt-TK02-QA-2026-10-30'}));localStorage.setItem('keepit-storage-mode-1','onedrive');const r=indexedDB.open('mylibrary-device-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('items',{keyPath:'id'});r.onerror=()=>no(r.error);r.onsuccess=()=>{const db=r.result,t=db.transaction('items','readwrite');t.objectStore('items').put({id:'qa-sentinel',title:'QA SENTINEL'});t.oncomplete=()=>{db.close();ok();};};}));
    await p.goto(origin+'/partners/connected/?connected-app=keepit');await p.locator('#all-count').filter({hasText:/^0$/}).waitFor();assert.equal(await p.getByText('QA SENTINEL',{exact:true}).count(),0);

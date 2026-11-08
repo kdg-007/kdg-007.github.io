@@ -136,6 +136,11 @@ jobs:
                   if rel.startswith('/') or '..' in Path(rel).parts or not Path(rel).is_file() or hashlib.sha256(Path(rel).read_bytes()).hexdigest()!=digest:
                       raise SystemExit('Owner artifact mismatch: '+rel)
               shutil.copyfile('partners/connected/owner-auth-callback.html','_site/auth/callback/index.html')
+              shutil.copyfile('ops/ui/owner-entry.html','_site/index.html')
+              shutil.copyfile('ops/ui/owner-root.webmanifest','_site/manifest.webmanifest')
+              shutil.copyfile('ops/ui/owner-shell-worker.js','_site/sw.js')
+              (Path('_site/assets')).mkdir(exist_ok=True)
+              shutil.copyfile('assets/owner-entry-v2.js','_site/assets/owner-entry-v2.js')
           print('Shared LiveIt-compatible interface tokens pinned to all generated previews')
           PY
       - name: Reject source, secrets, and non-QA builds
