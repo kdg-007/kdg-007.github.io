@@ -55,6 +55,7 @@
   });
   list.append(toolsButton);
  }
+ const cloudButton=document.createElement('button');cloudButton.type='button';cloudButton.textContent='OneDrive connection';cloudButton.id='connected-onedrive-toggle';cloudButton.addEventListener('click',()=>{list.hidden=true;opener.setAttribute('aria-expanded','false');document.getElementById('connect-onedrive')?.click();});list.append(cloudButton);
  function mountShellBar(host){
   document.title=current==='liveit'?'LiveIt — Today':modes.find(mode=>mode.id===current).label+' — LiveIt';
   const bar=document.createElement('div');

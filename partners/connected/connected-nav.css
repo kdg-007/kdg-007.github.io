@@ -65,13 +65,13 @@ section[aria-label="LiveIt connected workspace"] > .connected-note-tools[open]{
  .connected-note-tools[open] > header{margin-top:8px}
 }
 
-#connected-apps-list button#connected-note-tools-toggle{
+#connected-apps-list button:is(#connected-note-tools-toggle,#connected-onedrive-toggle){
  display:block;width:100%;text-align:left;padding:12px;border:0;border-top:1px solid #3e596b;
  background:transparent;color:#e8f5f4;border-radius:7px;font:inherit;font-weight:750;
  cursor:pointer;min-height:44px
 }
-#connected-apps-list button#connected-note-tools-toggle:hover{background:#274254}
-#connected-apps-list button#connected-note-tools-toggle:focus-visible{outline:3px solid #69d6ca;outline-offset:2px}
+#connected-apps-list button:is(#connected-note-tools-toggle,#connected-onedrive-toggle):hover{background:#274254}
+#connected-apps-list button:is(#connected-note-tools-toggle,#connected-onedrive-toggle):focus-visible{outline:3px solid #69d6ca;outline-offset:2px}
 
 /* v2 — LiveIt-first shared application chrome.
    Applied only to the connected QA entry; root KeepIt is never restyled.

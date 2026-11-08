@@ -32,7 +32,8 @@ jobs:
         shell: bash
         run: |
           node --input-type=module <<'JS'
-          import {readFileSync} from 'node:fs';
+          import {readFileSync,existsSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
           import assert from 'node:assert/strict';
           const get=p=>readFileSync(p,'utf8');
           const root=get('index.html'),connected=get('partners/connected/index.html');
@@ -76,7 +77,13 @@ jobs:
             .replace('src="/assets/appearance-init-09598643a711.js"','defer src="/assets/appearance-init-09598643a711.js"')
             .replace('src="/partners/design/app-appearance.js?v=journal-1"','defer src="/partners/design/app-appearance.js?v=journal-1"')
             .replaceAll('<link rel="stylesheet"','<link rel="stylesheet" media="print" data-connected-style');
-          assert.equal(connected,expectedConnected,'KeepIt base must remain byte-identical except approved LiveIt shell metadata');
+          if(existsSync('partners/connected/owner-release.json')){
+            const owner=JSON.parse(get('partners/connected/owner-release.json'));
+            assert.equal(owner.schema,'keepit.owner-live-release.v1');assert.equal(owner.target,'OneDrive / KeepIt');
+            assert.equal(owner.sourceArchiveSha256,'d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a');
+            for(const [path,hash] of Object.entries(owner.files)){assert.ok(!path.startsWith('/')&&!path.split('/').includes('..'));assert.equal(createHash('sha256').update(readFileSync(path)).digest('hex'),hash,'Pinned owner artifact: '+path);}
+            assert.ok(connected.includes(owner.entry));assert.ok(!connected.includes('library-app-connected-w18e.js'));
+          }else assert.equal(connected,expectedConnected,'KeepIt base must remain byte-identical except approved LiveIt shell metadata');
           const manifest=JSON.parse(get('partners/connected/liveit.webmanifest'));
           assert.equal(manifest.id,'/partners/connected/?connected-app=liveit');
           assert.equal(manifest.start_url,'/partners/connected/?connected-app=liveit');
@@ -110,7 +117,7 @@ jobs:
           assert.ok(navigationStyle.includes('#connected-apps-nav'));
           assert.ok(navigationStyle.includes('section[aria-label="LiveIt connected workspace"] > .connected-note-tools'));
           assert.ok(navigationStyle.includes('visibility:hidden'));
-          assert.ok(navigationStyle.includes('#connected-apps-list button#connected-note-tools-toggle'));
+          assert.ok(navigationStyle.includes('#connected-apps-list button:is(#connected-note-tools-toggle,#connected-onedrive-toggle)'));
           const connectedWorkspaceChanges=[
             ['h.title="TravelIt trip planning workspace",h.src=',
              'h.title="TravelIt trip planning workspace",h.allowFullscreen=!0,h.src='],

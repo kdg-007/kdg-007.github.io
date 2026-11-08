@@ -125,6 +125,17 @@ jobs:
               if app=='liveit':
                   html=html.replace('src="./app-8.js"','src="./app-8.js?v=journal-1"')
               file.write_text(html)
+          # The owner explicitly authorized the existing KeepIt directory.
+          # Retain the reviewed live authentication callback after the old QA archive is restored.
+          if Path('partners/connected/owner-release.json').is_file():
+              import hashlib,json
+              owner=json.loads(Path('partners/connected/owner-release.json').read_text())
+              if owner.get('schema')!='keepit.owner-live-release.v1' or owner.get('target')!='OneDrive / KeepIt':
+                  raise SystemExit('Unrecognized owner-library profile')
+              for rel,digest in owner['files'].items():
+                  if rel.startswith('/') or '..' in Path(rel).parts or not Path(rel).is_file() or hashlib.sha256(Path(rel).read_bytes()).hexdigest()!=digest:
+                      raise SystemExit('Owner artifact mismatch: '+rel)
+              shutil.copyfile('partners/connected/owner-auth-callback.html','_site/auth/callback/index.html')
           print('Shared LiveIt-compatible interface tokens pinned to all generated previews')
           PY
       - name: Reject source, secrets, and non-QA builds

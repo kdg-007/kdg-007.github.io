@@ -2,12 +2,13 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'node:https';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync,readFileSync,rmSync,statSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,statSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve,join,extname,sep} from 'node:path';
 import {createRequire} from 'node:module';
 const require=createRequire(resolve(process.cwd(),'package.json'));
 const {chromium,webkit}=require('playwright');
+const ownerProfile=existsSync('partners/connected/owner-release.json');
 const root=resolve('.'),temp=mkdtempSync(join(tmpdir(),'keepit-connected-'));
 const key=join(temp,'key.pem'),cert=join(temp,'cert.pem');
 execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,
@@ -37,6 +38,16 @@ try{
  for(const engine of [chromium,webkit]){
   browser=await engine.launch({headless:true});
   const tag=engine.name().toUpperCase();
+  if(ownerProfile){
+   const clean=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'});await clean.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());const p=await clean.newPage();
+   await p.goto(origin+'/partners/connected/status.json');
+   await p.evaluate(()=>new Promise((ok,no)=>{localStorage.setItem('keepit-onedrive-1',JSON.stringify({homeId:'qa-account',driveId:'qa-drive',rootId:'qa-root',path:'KeepIt-TK02-QA-2026-10-30'}));localStorage.setItem('keepit-storage-mode-1','onedrive');const r=indexedDB.open('mylibrary-device-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('items',{keyPath:'id'});r.onerror=()=>no(r.error);r.onsuccess=()=>{const db=r.result,t=db.transaction('items','readwrite');t.objectStore('items').put({id:'qa-sentinel',title:'QA SENTINEL'});t.oncomplete=()=>{db.close();ok();};};}));
+   await p.goto(origin+'/partners/connected/?connected-app=keepit');await p.locator('#all-count').filter({hasText:/^0$/}).waitFor();assert.equal(await p.getByText('QA SENTINEL',{exact:true}).count(),0);
+   assert.equal(await p.evaluate(()=>localStorage.getItem('keepit-storage-mode-owner-1')),null);assert.equal(await p.evaluate(()=>localStorage.getItem('keepit-storage-mode-1')),'onedrive');
+   const retained=await p.evaluate(()=>new Promise(ok=>{const r=indexedDB.open('mylibrary-device-v1');r.onsuccess=()=>{const db=r.result,q=db.transaction('items').objectStore('items').getAll();q.onsuccess=()=>{db.close();ok(q.result);};};}));assert.equal(retained.length,1);assert.equal(retained[0].id,'qa-sentinel');
+   await p.locator('.library-main').waitFor({state:'visible'});await p.locator('#connected-apps-toggle').click();await p.locator('#connected-onedrive-toggle').click();await p.locator('#onedrive-dialog[open]').waitFor();await p.locator('#onedrive-signin').waitFor({state:'visible'});assert.equal(await p.locator('#onedrive-create-qa').count(),0);assert.ok((await p.locator('#onedrive-dialog').innerText()).includes('existing OneDrive / KeepIt'));
+   console.log('OWNER_LIVE_QA_DATA_EXCLUDED_AND_SIGNIN_AVAILABLE_'+tag+'_PASS');await clean.close();
+  }
   const desktop=await browser.newContext({ignoreHTTPSErrors:true,
    viewport:{width:1440,height:900},serviceWorkers:'block'});
   try{
@@ -59,9 +70,8 @@ try{
    await tools.getByRole('button',{name:'Refresh LiveIt records'}).click();
    await tools.locator('select option').first().waitFor({state:'attached',timeout:10000});
    await tools.getByRole('button',{name:'Open native note'}).click();
-   await tools.getByText('Connect a writable KeepIt library before opening a native note.',{exact:true})
-    .waitFor({state:'visible',timeout:10000});
-   assert.equal(await page.locator('dialog.note-dialog[open]').count(),0);
+   if(ownerProfile){await page.locator('dialog.note-dialog[open]').waitFor();assert.equal(await page.locator('dialog.note-dialog[open]').count(),1);}
+   else {await tools.getByText('Connect a writable KeepIt library before opening a native note.',{exact:true}).waitFor({state:'visible',timeout:10000});assert.equal(await page.locator('dialog.note-dialog[open]').count(),0);}
    console.log('LIVEIT_DESKTOP_WITHOUT_KEEPIT_LIBRARY_'+tag+'_PASS');
   }finally{await desktop.close();}
 
@@ -79,7 +89,7 @@ try{
   // The original Blob is a KEEPIT-NOTE-1 envelope containing a JSON document header.
   const nativeDiskEvidence=async text=>page.evaluate(async expected=>{
    return await new Promise((resolve,reject)=>{
-    const request=indexedDB.open('mylibrary-device-v1');
+    const request=indexedDB.open('keepit-owner-device-v1');
     request.onupgradeneeded=()=>{request.transaction?.abort();reject(Error('No existing note database'));};
     request.onerror=()=>reject(request.error||Error('Database not readable'));
     request.onsuccess=()=>{
@@ -443,7 +453,7 @@ try{
    // All three distinct consumer notes must exist as committed originals in
    // KeepIt's ONE canonical local library, not just in separate app links.
    const inventory=await page.evaluate(()=>new Promise((resolve,reject)=>{
-     const open=indexedDB.open('mylibrary-device-v1');
+     const open=indexedDB.open('keepit-owner-device-v1');
      open.onupgradeneeded=()=>{open.transaction?.abort();reject(Error('Expected existing KeepIt library; refused to create one'))};
      open.onerror=()=>reject(open.error||Error('Cannot read KeepIt local library'));
      open.onsuccess=()=>{
@@ -485,7 +495,7 @@ try{
    await reopened.waitForLoadState('load');
    await reopened.locator('#result-count').waitFor({state:'visible',timeout:35000});
    const after=await reopened.evaluate(()=>new Promise((resolve,reject)=>{
-     const open=indexedDB.open('mylibrary-device-v1');
+     const open=indexedDB.open('keepit-owner-device-v1');
      open.onupgradeneeded=()=>{open.transaction?.abort();reject(Error('Cold reopen cannot find the original KeepIt library'));};
      open.onerror=()=>reject(open.error||Error('Cold reopen database read failed'));
      open.onsuccess=()=>{
