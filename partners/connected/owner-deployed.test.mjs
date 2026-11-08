@@ -24,14 +24,15 @@ for(let attempt=0;attempt<6;attempt++){
 if(fileError)throw fileError;
 const require=createRequire(resolve(process.cwd(),'package.json')),{chromium}=require('playwright'),browser=await chromium.launch({headless:true});
 try{
- const ctx=await browser.newContext({serviceWorkers:'block'}),fixture=connectionFixture(origin),page=await ctx.newPage(),errors=[],documents=[];
+ const ctx=await browser.newContext({serviceWorkers:'block'}),fixture=connectionFixture(origin,{nested:true}),page=await ctx.newPage(),errors=[],documents=[];
  await ctx.route('**/*',fixture.route);page.on('pageerror',e=>errors.push(e.message));
  page.on('request',r=>{if(r.isNavigationRequest()&&r.frame()===page.mainFrame())documents.push(new URL(r.url()).pathname);});
  await page.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1&v=connection-3',{waitUntil:'domcontentloaded'});
  const workspace=page.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell');await workspace.waitFor({state:'visible',timeout:40000});
  await page.locator('#onedrive-dialog[open]').waitFor();await page.locator('#onedrive-signin').click();
- await page.locator('#connected-cloud-status').filter({hasText:'OneDrive / KeepIt connected'}).waitFor({timeout:40000});
+ await page.locator('#onedrive-folders button').filter({hasText:'Documents'}).click();await page.locator('#onedrive-folders button').filter({hasText:'Travel Library'}).click();await page.locator('#onedrive-use').click();
+ await page.locator('#connected-cloud-status').filter({hasText:'OneDrive / Documents / Travel Library connected'}).waitFor({timeout:40000});
  await workspace.waitFor({state:'visible'});assert.equal(fixture.signins,1);assert.equal(fixture.driveRequests,1);assert.deepEqual(errors,[]);
  assert.deepEqual(documents.filter(x=>!x.startsWith('/consumers/')),['/partners/connected/','/auth/callback/','/partners/connected/']);assert.ok(fixture.requests.every(r=>r.method==='GET'));
- console.log('OWNER_DEPLOYED_COMPILED_SIGNIN_RETURN_AND_VISIBLE_WORKSPACE_PASS');console.log('Cloud services: synthetic GET only; owner account not used');await ctx.close();
+ console.log('OWNER_DEPLOYED_COMPILED_SIGNIN_RETURN_AND_VISIBLE_WORKSPACE_PASS');console.log('OWNER_DEPLOYED_NESTED_FOLDER_SELECTION_PASS');console.log('Cloud services: synthetic GET only; owner account not used');await ctx.close();
 }finally{await browser.close();}
