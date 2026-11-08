@@ -288,7 +288,7 @@ function loadAtlasViewport(pack){
  }).catch(error=>{if(request!==state.atlasRequest)return;state.atlasLoading=null;state.atlasView={key,features:[],tooMany:false,tooDense:false,estimated:null,count:0,faults:[error.message||'Unable to open local atlas']};if(state.view==='map')render();});
 }
 function renderMap(){
- if(state.mapMode==='online')return onlineMapMarkup({places:state.places,annotations:state.annotations,draft:state.mapDraft,action})+`<div class="action-line">${action('Retry street map','street-map-retry')}</div>`;
+ if(state.mapMode==='online')return onlineMapMarkup({places:state.places,annotations:state.annotations,draft:state.mapDraft,action});
  const active=activePack(),isAtlas=!!active?.regionAtlas;
  if(isAtlas)loadAtlasViewport(active);
  const view=isAtlas&&state.atlasView?.key===atlasKey(active)?state.atlasView:null;

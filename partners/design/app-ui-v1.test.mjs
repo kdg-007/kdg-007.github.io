@@ -432,7 +432,7 @@ async function checkThinkitTopicOrder(browser,origin){
  }
 }
 
-let browser;
+let browser;const featureFailures=[];
 try {
  await new Promise((ok,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',ok);});
  const origin='https://127.0.0.1:'+server.address().port;
@@ -473,12 +473,12 @@ try {
   await checkTravelActivities(browser,origin);
   await checkExcelPreview(browser,origin);
   await checkExcelImport(browser,origin);
-  await checkWorkspaceV3(browser,origin);
-  await checkStartupBundle(browser,origin);
-  await checkStreetMap(browser,origin);
-  await checkThinkitTopicOrder(browser,origin);
+  for(const [label,check] of [['workspace',checkWorkspaceV3],['startup',checkStartupBundle],['map',checkStreetMap],['ThinkIt order',checkThinkitTopicOrder]]){
+   try{await check(browser,origin);}catch(error){featureFailures.push(engine.name()+' '+label+': '+error.message);console.error('FEATURE_FAILURE',engine.name(),label,error?.stack||String(error));}
+  }
   await browser.close();browser=null;
  }
+ if(featureFailures.length)throw Error(featureFailures.join('\n'));
  console.log('SHARED_APP_UI_V1_PRESENTATION_SMOKE_PASS');
 }catch(e){console.error(e?.stack||String(e));process.exitCode=1;}
 finally{await browser?.close();await new Promise(ok=>server.close(ok));rmSync(tmp,{recursive:true,force:true});}
