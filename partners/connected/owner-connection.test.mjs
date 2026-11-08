@@ -56,7 +56,25 @@ try{
   console.log('OWNER_UNRESPONSIVE_GRAPH_READ_TIMEOUT_AND_RETRY_'+engine.name().toUpperCase()+'_PASS');
   const beforeDisconnect=fixture.driveRequests;await page.locator('#connected-cloud-status').click();await page.locator('#onedrive-dialog[open]').waitFor();await page.locator('#onedrive-disconnect').click();await page.locator('#connected-cloud-status[data-phase="signin"]').waitFor();assert.equal(fixture.driveRequests,beforeDisconnect);await page.locator('#onedrive-close').click();await workspace().waitFor({state:'visible'});
   console.log('OWNER_ACCOUNT_DETAILS_AND_DISCONNECT_WITHOUT_RECONNECT_'+engine.name().toUpperCase()+'_PASS');
-  await context.close();await browser.close();browser=null;
+  await context.close();
+  const picker=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:393,height:852},isMobile:true,hasTouch:true}),nested=connectionFixture(origin,{nested:true});
+  await picker.route('**/*',nested.route);const phone=await picker.newPage();currentPage=phone;
+  await phone.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1');await phone.locator('#onedrive-dialog[open]').waitFor();await phone.locator('#onedrive-signin').click();
+  await phone.locator('#onedrive-folders button').filter({hasText:'Documents'}).waitFor();assert.equal(await phone.locator('#onedrive-use').isDisabled(),true);
+  assert.equal(await phone.locator('#connected-cloud-status').innerText(),'Choose your OneDrive folder');
+  assert.ok(nested.requests.every(r=>r.method==='GET'),'Browsing never initializes or writes a library');
+  await phone.locator('#onedrive-folders button').filter({hasText:'Family photos'}).click();await phone.locator('#onedrive-path').filter({hasText:'Family photos'}).waitFor();
+  await phone.locator('#onedrive-use').click();await phone.locator('#onedrive-message').filter({hasText:'This folder contains files but is not a KeepIt library'}).waitFor();assert.ok(nested.requests.every(r=>r.method==='GET'));
+  await phone.locator('#onedrive-up').click();await phone.locator('#onedrive-folders button').filter({hasText:'Documents'}).click();
+  await phone.locator('#onedrive-folders button').filter({hasText:'Travel Library'}).click();await phone.locator('#onedrive-path').filter({hasText:'Documents / Travel Library'}).waitFor();
+  await phone.waitForFunction(()=>!document.getElementById('onedrive-use').disabled);await phone.locator('#onedrive-use').click();
+  await phone.locator('#connected-cloud-status').filter({hasText:'OneDrive / Documents / Travel Library connected'}).waitFor();
+  assert.equal(await phone.evaluate(()=>JSON.parse(localStorage.getItem('keepit-onedrive-owner-1')).path),'Documents / Travel Library');
+  assert.ok(nested.requests.every(r=>r.method==='GET'),'Opening an existing nested library never changes cloud files');
+  await phone.reload();await phone.locator('#connected-cloud-status').filter({hasText:'Documents / Travel Library connected'}).waitFor();assert.equal(await phone.locator('#onedrive-dialog[open]').count(),0);
+  await phone.locator('#connected-cloud-status').click();await phone.locator('#onedrive-change-folder').click();await phone.locator('#onedrive-folders button').filter({hasText:'Documents'}).waitFor();
+  console.log('OWNER_MOBILE_NESTED_RENAMED_FOLDER_PICKER_SELECTION_REOPEN_'+engine.name().toUpperCase()+'_PASS');
+  await picker.close();await browser.close();browser=null;
  }
 }catch(error){
  if(currentPage&&!currentPage.isClosed())console.error('OWNER_CONNECTION_DIAGNOSTIC',currentEngine,await currentPage.evaluate(()=>({path:location.pathname,state:window.keepItConnectionState,dialog:document.getElementById('onedrive-dialog')?.open,connectionMessage:document.getElementById('onedrive-message')?.textContent,appMessage:document.getElementById('message')?.textContent,library:document.getElementById('result-count')?.textContent})).catch(()=>({unavailable:true})));

@@ -1,7 +1,7 @@
 // Synthetic OAuth and read-only OneDrive fixture. Never contacts an account.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-export function connectionFixture(origin){
+export function connectionFixture(origin,{nested=false}={}){
  const tenant='9188040d-6c67-4c5b-b112-36a304b66dad',authority='https://login.microsoftonline.com',base=authority+'/consumers/oauth2/v2.0';
  const libraryId='a1000000-0000-4000-8000-000000000001',commitId='a1000000-0000-4000-8000-000000000002';
  const items=new Map(),bytes=new Map();
@@ -9,7 +9,7 @@ export function connectionFixture(origin){
   const folder=value===undefined,data=folder?null:Buffer.from(JSON.stringify(value));
   items.set(id,{id,name,eTag:'"fixture-'+id+'"',parentReference:{id:parent,driveId:'fixture-drive'},...(folder?{folder:{}}:{file:{mimeType:'application/json'},size:data.length,'@microsoft.graph.downloadUrl':'https://fixture.storage.live.com/download/'+id})});if(data)bytes.set(id,data);
  };
- add('root',null,'root');add('library','root','KeepIt');add('catalog','library','_Catalog');add('files','library','Files');add('legacy','catalog','commits');add('cloud','catalog','keepit-cloud');add('commits','cloud','commits');
+ add('root',null,'root');if(nested){add('documents','root','Documents');add('other','root','Family photos');add('unrelated','other','family.jpg',{retained:'unrelated content'});add('empty','documents','New library');}add('library',nested?'documents':'root',nested?'Travel Library':'KeepIt');add('catalog','library','_Catalog');add('files','library','Files');add('legacy','catalog','commits');add('cloud','catalog','keepit-cloud');add('commits','cloud','commits');
  const identity={format:'mylibrary-folder-1',libraryId,createdAt:'2026-11-01T00:00:00.000Z'};
  add('identity','catalog','library.json',identity);
  add('index','catalog','keepit-cloud.json',{format:'keepit-cloud-index-1',libraryId,driveId:'fixture-drive',rootId:'library',filesId:'files',cloudId:'cloud',commitsId:'commits',headId:'head',legacyCommitId:null,createdAt:identity.createdAt});
