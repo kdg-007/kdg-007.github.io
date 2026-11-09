@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**', 'ops/ui/**', 'partners/connected/liveit-calendar-release.json', 'partners/travelit/thinkit/afda98f5ced9406d0fe5/**', '.github/workflows/keepit-pages.yml']
+    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**', 'ops/ui/**', 'partners/connected/liveit-calendar-release.json', 'partners/travelit/thinkit/afda98f5ced9406d0fe5/**', 'thinkit/**', '.github/workflows/keepit-pages.yml']
 
 permissions:
   contents: write
@@ -79,7 +79,9 @@ jobs:
           import shutil
           for rel in [
               'thinkit/assets/thinkit-2.js',
+              'thinkit/assets/thinkit-0.css',
               'thinkit/36f8901ec722db162bcf/assets/thinkit-2.js',
+              'thinkit/36f8901ec722db162bcf/assets/thinkit-0.css',
               'partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app.js',
               'partners/travelit/thinkit/afda98f5ced9406d0fe5/css/style.css',
           ]:
