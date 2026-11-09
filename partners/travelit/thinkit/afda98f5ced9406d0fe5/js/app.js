@@ -3,7 +3,7 @@ import {auditWorkspace,storageReadbackProbe} from './local-health.js';
 import {verifyOfflineShell} from './offline-shell.js';
 import {createWorkspaceCoordinator} from './workspace-coordination.js';
 import {VEHICLE_TYPES,EXPENSE_CATEGORIES,normalizeVehicle,normalizeExpense,tripCostSummary,travelFeasibility} from './trip-costs.js';
-import {openDatabase,allData,guardedSaveRecord,guardedSaveRecords,guardedDeleteRecord,importExcelBatch,undoExcelImport,getWorkspaceMetadata,restore,recoveryInfo,undoRestore,listMapPacks,putMapPack,deleteMapPack,listAtlasRegions,putAtlasRegion,getAtlasTiles,deleteAtlasRegion,getSetting,setActiveMapPack} from './db.js?v=excel-import-1';
+import {openDatabase,allData,guardedSaveRecord,guardedSaveRecords,guardedDeleteRecord,guardedDeleteTrip,importExcelBatch,undoExcelImport,getWorkspaceMetadata,restore,recoveryInfo,undoRestore,listMapPacks,putMapPack,deleteMapPack,listAtlasRegions,putAtlasRegion,getAtlasTiles,deleteAtlasRegion,getSetting,setActiveMapPack} from './db.js?v=excel-import-1';
 import {PACKING_TEMPLATES,prepareTemplateImport,prepareTemplateSet,TEMPLATE_GROUPS} from './packing-templates.js';
 import {persistPackingToggle} from './packing-interaction.js';
 import {normalizeAnnotation,exactCoordinatesFromLink,assessOfflineTrip,mapBounds} from './map-tools.js';
@@ -318,7 +318,7 @@ async function checkStorage(){try{const persisted=await navigator.storage?.persi
 function menu(label,contents){return `<details class="action-menu"><summary>${esc(label)}</summary><div class="action-menu-items">${contents}</div></details>`;}
 function renderTrips(){
  const t=selected();const selector=state.trips.length?`<label class="trip-select-label">Trip <select id="trip-select" aria-label="Selected trip">${state.trips.map(v=>`<option value="${esc(v.id)}" ${v.id===t?.id?'selected':''}>${esc(v.title)}</option>`).join('')}</select></label>`:'<h2>Your journeys</h2>';
- const heading=`<div class="trip-command-bar">${selector}<div class="row wrap">${action('Import Excel','preview-excel')}${action('+ New trip','new-trip')}${t?menu('Trip actions',action('Edit trip','edit-trip')+action('Download trip brief','brief-trip')+(t.importReceipt?`<p>Excel: ${esc(t.importReceipt.filename)} · ${t.importReceipt.activityCount} activities. Schedule and activity details.</p>${action('Undo import','undo-excel-import')}`:'')):''}</div></div>`;
+ const heading=`<div class="trip-command-bar">${selector}<div class="row wrap">${action('Import Excel','preview-excel')}${action('+ New trip','new-trip')}${t?menu('Trip actions',action('Edit trip','edit-trip')+action('Download trip brief','brief-trip')+(t.importReceipt?`<p>Excel: ${esc(t.importReceipt.filename)} · ${t.importReceipt.activityCount} activities. Schedule and activity details.</p>${action('Undo import','undo-excel-import')}`:'')+action('Delete trip','delete-trip','button button-small button-danger')):''}</div></div>`;
  if(!t)return heading+`<p class="empty-inline">Create a trip or import an Excel itinerary to begin.</p>`;
  return heading+`<section class="trip-workspace"><div class="trip-title-row"><div><h2>${esc(t.title)}</h2><p class="subtext">${dateShort(t.startDate)} – ${dateShort(t.endDate)} · ${esc(t.timezone)}</p></div>${action('Activities table','add-stop','button button-primary button-small')}</div><div class="view-tabs">${[['itinerary','Itinerary'],['calendar','Calendar'],['packing','Packing'],['prepare','Prepare'],['costs','Budget'],['info','Trip info']].map(([tab,label])=>`<button data-trip-tab="${tab}" class="${state.tripTab===tab?'active':''}">${label}</button>`).join('')}</div>${state.tripTab==='itinerary'?renderItinerary(t):state.tripTab==='calendar'?renderTripCalendar(t):state.tripTab==='packing'?renderPacking(true):state.tripTab==='costs'?renderCosts(t):state.tripTab==='prepare'?renderPreparation(t):`<div class="card"><p>${esc(t.notes||'No trip notes yet.')}</p><p class="subtext">Native rich notes use KeepIt notes in the Apps menu.</p></div>`}</section>`;
 }
@@ -586,6 +586,13 @@ async function handler(target){const actionName=target.dataset.action;if(!action
   const saved=state.trips.find(t=>t.id===batch.trip.id);if(!saved||state.stops.filter(s=>s.tripId===saved.id).length!==batch.trip.importReceipt.activityCount)throw Error('Import committed; reload TravelIt to verify it. Do not reimport.');
   state.selectedTrip=saved.id;state.chosenDay=saved.startDate;state.tripTab='itinerary';state.view='trips';render();toast('Imported '+saved.importReceipt.activityCount+' activities as a new trip.');
  }});return;
+ }
+ if(actionName==='delete-trip'){
+  const trip=selected();if(!trip)return;
+  const guard={expectedEpoch:state.workspaceEpoch,expectedWorkspaceRevision:state.workspaceRevision,expectedTripRevision:state.recordRevisions['trip:'+trip.id]};
+  if(!confirm(`Delete “${trip.title}” from this device? This also removes its itinerary, packing, expenses, map annotations and note links.`))return;
+  await writeLocally(()=>guardedDeleteTrip(state.db,trip.id,guard));
+  budgetDrafts.delete(trip.id);state.chosenDay='';state.calendarMonth='';state.tripTab='itinerary';render();toast('Trip deleted from this device.');return;
  }
  if(actionName==='undo-excel-import'){
   const trip=selected();if(!trip?.importReceipt)return;
