@@ -127,6 +127,7 @@ async function checkLauncher(browser,origin,layout){
     await exit.tap();
     await editor.locator('#diMenuBar').waitFor({state:'visible'});
     assert.equal(await editor.locator('#docName').inputValue(),'Mobile focus test');
+    await editor.locator('#saveStatus[data-state="saved"]').filter({hasText:'Saved on this device'}).waitFor({state:'attached'});
     await editor.locator('body').evaluate(()=>localStorage.setItem('diagramit_v093_ui',JSON.stringify({focus:true})));
     await page.reload({waitUntil:'domcontentloaded'});
     await editor.locator('#diStartResume').tap();
