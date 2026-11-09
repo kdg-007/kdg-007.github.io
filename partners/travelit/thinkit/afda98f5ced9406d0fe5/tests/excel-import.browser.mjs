@@ -23,7 +23,7 @@ export async function checkExcelImport(browser,origin){
   await page.getByRole('button',{name:'Import as a new trip',exact:true}).click();assert.match(await page.locator('#excel-import-error').innerText(),/Confirm/);assert.deepEqual(await snapshot(page),baseline);
   await page.locator('#excel-import-accept').check();await page.getByRole('button',{name:'Import as a new trip',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});
   const imported=await snapshot(page),trip=imported.records.find(r=>r.type==='trip'&&r.id!=='existing'),stops=imported.records.filter(r=>r.type==='stop'),places=imported.records.filter(r=>r.type==='place');
-  assert.equal(stops.length,48);assert.equal(places.length,2);assert.equal(imported.outbox.length,51);assert.deepEqual(imported.records.find(r=>r.id==='existing'),baseline.records[0]);for(const name of ['mapPacks','atlasRegions','atlasTiles','recovery'])assert.deepEqual(imported[name],baseline[name]);
+  assert.equal(stops.length,48);assert.equal(places.length,0);assert.equal(imported.outbox.length,49);assert.deepEqual(imported.records.find(r=>r.id==='existing'),baseline.records[0]);for(const name of ['mapPacks','atlasRegions','atlasTiles','recovery'])assert.deepEqual(imported[name],baseline[name]);
   await page.reload();await page.getByLabel('Selected trip',{exact:true}).selectOption(trip.id);assert.equal(await page.locator('.activity-summary-table tbody tr').count(),8);
   // No-op table save and a real Details edit must retain all source fields.
   await page.locator('.activity-summary-table tbody tr').first().getByRole('button',{name:'Details'}).click();assert.match(await page.locator('.excel-source-details').innerText(),/Excel source/);await page.locator('#f-title').fill('Edited imported activity');await page.locator('#modal-form button[type="submit"]').click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});
@@ -57,6 +57,19 @@ export async function checkExcelImport(browser,origin){
    const {createBackup}=await import(path+'js/backup.js?v=excel-import-1'),backup=await createBackup(after);current=await m.getWorkspaceMetadata(db);await m.restore(db,backup,{expectedWorkspaceRevision:current.revision});const restored=JSON.stringify(await m.allData(db))===JSON.stringify(after);current=await m.getWorkspaceMetadata(db);await m.undoRestore(db,{expectedWorkspaceRevision:current.revision});const recovered=JSON.stringify(await m.allData(db))===JSON.stringify(after);db.close();return {rollback,intact,sameRevision,duplicate,stale,undone,shared,restored,recovered};
   },path);assert.deepEqual(dbTests,{rollback:true,intact:true,sameRevision:true,duplicate:true,stale:true,undone:true,shared:true,restored:true,recovered:true});
   await page.reload();await page.getByLabel('Selected trip',{exact:true}).selectOption(trip.id);await page.screenshot({path:'appearance-qa/travelit-excel-import-'+browser.browserType().name()+'.png'});
+  // Older imports can retain linked trip places without listing them as discoveries.
+  await page.evaluate(async({path,source})=>{
+   const dbmod=await import(path+'js/db.js?v=excel-import-1'),db=await dbmod.openDatabase();
+   const {epoch}=await dbmod.getWorkspaceMetadata(db);
+   await dbmod.guardedSaveRecords(db,'place',[
+    {id:'legacy-trip-place',name:'Legacy itinerary map link',category:'Other',stage:'Planned',lat:null,lng:null,updatedAt:source.baseline.date,importSource:source},
+    {id:'explore-note',name:'Independent Explore note',category:'Note',stage:'Idea',lat:null,lng:null,updatedAt:source.baseline.date}
+   ],{expectedEpoch:epoch});
+   db.close();
+  },{path,source:stops[0].data.importSource});
+  await page.goto(origin+path+'index.html?view=explore');
+  await page.locator('.place-card').filter({hasText:'Independent Explore note'}).waitFor();
+  assert.equal(await page.locator('.place-card').count(),1);
   console.log('TRAVELIT_EXCEL_ATOMIC_IMPORT_UNDO_UPGRADE_'+browser.browserType().name().toUpperCase()+'_PASS');
  }finally{await context.close();rmSync(temp,{recursive:true,force:true});}
 }

@@ -1,5 +1,5 @@
 /** Local file review. One explicit action hands a validated batch to the guarded repository. */
-import {buildExcelBatch} from './excel-save.js?v=excel-import-1';
+import {buildExcelBatch} from './excel-save.js?v=trip-scope-1';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const link=(label,url)=>url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`:'';
 function resultMarkup(plan){
@@ -45,13 +45,11 @@ export function showExcelPreview({openModal,closeModal,setCleanup,onImport,setBu
     if(data.error)return fail(data.error);
     if(data.status){status.textContent=data.status;return;}
     if(data.plan){
-     stop();const plan=data.plan;result.innerHTML=`<div id="excel-import-controls" class="card"><div class="form-grid"><div class="field"><label for="excel-trip-title">New trip name</label><input id="excel-trip-title" maxlength="150" value="${esc(plan.trip.title)}"></div><div class="field"><label for="excel-trip-timezone">Time zone</label><input id="excel-trip-timezone" value="Asia/Manila"></div></div><div id="excel-import-mappings"></div><p id="excel-destination-count"></p><label><input id="excel-import-accept" type="checkbox"> Import schedule and place details only. Costs, bookings and review sheets are excluded; predecessor links will not reschedule activities.</label><div class="action-line"><button id="excel-import-save" type="button" class="button button-primary" ${plan.statistics.errorCount?'disabled':''}>Import as a new trip</button></div><p id="excel-import-error" role="alert"></p></div>`+resultMarkup(plan);
+     stop();const plan=data.plan;result.innerHTML=`<div id="excel-import-controls" class="card"><div class="form-grid"><div class="field"><label for="excel-trip-title">New trip name</label><input id="excel-trip-title" maxlength="150" value="${esc(plan.trip.title)}"></div><div class="field"><label for="excel-trip-timezone">Time zone</label><input id="excel-trip-timezone" value="Asia/Manila"></div></div><div id="excel-import-mappings"></div><label><input id="excel-import-accept" type="checkbox"> Import the schedule and its map links into this trip only. Costs, bookings and review sheets are excluded; predecessor links will not reschedule activities.</label><div class="action-line"><button id="excel-import-save" type="button" class="button button-primary" ${plan.statistics.errorCount?'disabled':''}>Import as a new trip</button></div><p id="excel-import-error" role="alert"></p></div>`+resultMarkup(plan);
      status.textContent=`Preview ready — ${plan.statistics.activityCount} activities. Nothing saved.`;
      const mappings=root.querySelector('#excel-import-mappings'),known=['transport','travel','meal','tour','activity','prep/admin','free','hotel','other'];
      const unknown=[...new Set(plan.activities.map(a=>a.sourceType))].filter(t=>!known.includes(t.toLowerCase()));
      for(const type of unknown){const label=document.createElement('label');label.textContent=type+' → ';const select=document.createElement('select');select.dataset.sourceType=type;for(const kind of ['','Activity','Travel','Meal','Hotel','Other']){const option=document.createElement('option');option.value=kind;option.textContent=kind||'Choose type';select.append(option);}label.append(select);mappings.append(label);}
-     const placeCount=new Set(plan.activities.map(a=>a.detail?.mapUrl).filter(Boolean)).size;
-     root.querySelector('#excel-destination-count').textContent=`${placeCount} new destination links will be created, grouped by identical map URL within this import. Existing saved places will not be merged. Locations remain unverified until you pin them.`;
      let preparedBatch=null,preparedKey=null;
      root.querySelector('#excel-import-save').addEventListener('click',async()=>{
       const error=root.querySelector('#excel-import-error');error.textContent='';
