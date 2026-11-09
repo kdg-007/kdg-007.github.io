@@ -3,7 +3,7 @@ import {normalizeKeepItAssociation,logicalAssociationKey} from './keepit-associa
 import {normalizeVehicle,normalizeExpense,normalizeLeg} from './trip-costs.js';
 import {DISCOVERY_STAGES} from './travel-planning.js';
 export const SCHEMA_VERSION = 6;
-export const PLACE_CATEGORIES = ['Destination','Restaurant','Hotel','Beach','Attraction','Other'];
+export const PLACE_CATEGORIES = ['Destination','Restaurant','Hotel','Beach','Attraction','Activity','Note','Other'];
 export const STOP_KINDS = ['Activity','Travel','Meal','Hotel','Other'];
 export const PACK_CATEGORIES = ['Essentials','Clothing','Personal care','Electronics','Family','Other'];
 export const VALID_TYPES = ['place','trip','stop','packing','annotation','vehicle','expense','keepitAssociation'];
