@@ -70,6 +70,41 @@ export async function checkExcelImport(browser,origin){
   await page.goto(origin+path+'index.html?view=explore');
   await page.locator('.place-card').filter({hasText:'Independent Explore note'}).waitFor();
   assert.equal(await page.locator('.place-card').count(),1);
+  await page.evaluate(async({path,trip,stopId})=>{
+   const m=await import(path+'js/db.js?v=excel-import-1'),db=await m.openDatabase();
+   const {epoch,revision}=await m.getWorkspaceMetadata(db),updatedAt=new Date().toISOString();
+   const owned={tripId:trip.id,updatedAt},guard={expectedEpoch:epoch};
+   const link={id:crypto.randomUUID(),appId:'travelit',workspaceId:'fixture',entityType:'stop',entityId:stopId,purpose:'rich-note',reference:{itemId:crypto.randomUUID(),provider:'keepit',version:1,revision:0,scope:'sha256:'+'a'.repeat(64)},updatedAt};
+   await m.guardedSaveRecord(db,'packing',{...owned,id:'trip-packing',label:'Trip packing',quantity:1},guard);
+   await m.guardedSaveRecord(db,'expense',{...owned,id:'trip-cost',label:'Trip cost',plannedPhp:500},guard);
+   await m.guardedSaveRecord(db,'annotation',{...owned,id:'trip-pin',kind:'pin',label:'Trip pin',points:[{lat:15,lng:121}]},guard);
+   await m.guardedSaveRecord(db,'keepitAssociation',link,guard);
+   const before=JSON.stringify(await m.allData(db));
+   let stale=false;
+   try{await m.guardedDeleteTrip(db,trip.id,{expectedEpoch:epoch,expectedWorkspaceRevision:revision,expectedTripRevision:1});}catch(error){stale=error.code==='STALE_LOCAL_WORKSPACE';}
+   if(!stale||JSON.stringify(await m.allData(db))!==before)throw Error('Stale trip deletion changed records.');
+   db.close();
+  },{path,trip:trip.data,stopId:stops[0].id});
+  await page.goto(origin+path+'index.html?view=trips');
+  await page.getByLabel('Selected trip',{exact:true}).selectOption(trip.id);
+  const deleteTrip=async accept=>{
+   await page.getByText('Trip actions',{exact:true}).click();
+   page.once('dialog',dialog=>accept?dialog.accept():dialog.dismiss());
+   await page.getByRole('button',{name:'Delete trip',exact:true}).click();
+  };
+  const beforeDelete=await snapshot(page);
+  await deleteTrip(false);assert.deepEqual(await snapshot(page),beforeDelete);
+  await deleteTrip(true);
+  await page.locator('#toast').filter({hasText:'Trip deleted from this device.'}).waitFor();
+  const afterDelete=await snapshot(page),ownedKeys=new Set([trip.key,...beforeDelete.records.filter(r=>r.data.tripId===trip.id||r.type==='keepitAssociation').map(r=>r.key)]);
+  assert.deepEqual(afterDelete.records,beforeDelete.records.filter(r=>!ownedKeys.has(r.key)));
+  assert.equal(await page.getByLabel('Selected trip',{exact:true}).inputValue(),'existing');
+  await deleteTrip(true);
+  await page.getByText('Create a trip or import an Excel itinerary to begin.').waitFor();
+  await page.reload();
+  await page.getByText('Create a trip or import an Excel itinerary to begin.').waitFor();
+  assert.deepEqual((await snapshot(page)).records.map(r=>r.type),['place','place']);
+  console.log('TRAVELIT_SCOPED_TRIP_DELETE_'+browser.browserType().name().toUpperCase()+'_PASS');
   console.log('TRAVELIT_EXCEL_ATOMIC_IMPORT_UNDO_UPGRADE_'+browser.browserType().name().toUpperCase()+'_PASS');
  }finally{await context.close();rmSync(temp,{recursive:true,force:true});}
 }

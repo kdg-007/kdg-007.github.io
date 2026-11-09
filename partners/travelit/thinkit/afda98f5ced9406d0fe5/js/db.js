@@ -106,6 +106,34 @@ export async function guardedSaveRecord(db,type,data,opts={}){
 export async function guardedDeleteRecord(db,type,id,opts={}){
  return guardedMutation(db,[{type,id,verb:'delete'}],opts);
 }
+export async function guardedDeleteTrip(db,id,{expectedEpoch,expectedWorkspaceRevision,expectedTripRevision}){
+ if(!Number.isSafeInteger(expectedWorkspaceRevision)||!Number.isSafeInteger(expectedTripRevision))throw new StaleWorkspaceError('Refresh TravelIt before deleting the trip.');
+ const tx=db.transaction('records','readonly'),settled=done(tx);
+ const records=await request(tx.objectStore('records').getAll());
+ await settled;
+ const trip=records.find(row=>row.key===`trip:${id}`);
+ if(!trip)throw new StaleWorkspaceError('This trip has already been removed. Refresh TravelIt to see the latest trips.');
+
+ const owned=records.filter(row=>['stop','packing','expense','annotation'].includes(row.type)&&row.data.tripId===id);
+ const deletedKeys=new Set([trip.key,...owned.map(row=>row.key)]);
+ const links=records.filter(row=>row.type==='keepitAssociation');
+ const ownedLinks=links.filter(row=>deletedKeys.has(`${row.data.entityType}:${row.data.entityId}`));
+ const receipt=trip.data.importReceipt;
+ const importedPlaces=[];
+ if(receipt?.placeCount){
+  const batchKeys=new Set(receipt.createdKeys);
+  const sharedPlaces=new Set(records.filter(row=>row.type==='stop'&&row.data.tripId!==id).map(row=>row.data.placeId));
+  for(const link of links)if(link.data.entityType==='place')sharedPlaces.add(link.data.entityId);
+  // Older Excel imports generated place records. Keep edited places and any still referenced elsewhere.
+  importedPlaces.push(...records.filter(row=>row.type==='place'&&batchKeys.has(row.key)&&row.data.importSource?.batchId===receipt.batchId&&revisionFor(row)===1&&!sharedPlaces.has(row.id)));
+ }
+ const rows=[trip,...owned,...ownedLinks,...importedPlaces];
+ return guardedMutation(db,rows.map(({type,id})=>({type,id,verb:'delete'})),{
+  expectedEpoch,expectedWorkspaceRevision,
+  expectedRevisionByKey:{...Object.fromEntries(rows.map(row=>[row.key,revisionFor(row)])),[trip.key]:expectedTripRevision},
+  expectedPresenceByKey:Object.fromEntries(rows.map(row=>[row.key,true]))
+ });
+}
 export async function guardedSaveRecords(db,type,items,opts={}){
  return guardedMutation(db,items.map(data=>({type,id:data.id,data,verb:'upsert'})),opts);
 }
