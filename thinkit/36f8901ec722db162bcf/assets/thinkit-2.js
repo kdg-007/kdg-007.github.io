@@ -2142,6 +2142,31 @@ function diInitShell(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',diInitShell);else diInitShell();
 
+// Connected KeepIt app files use the same validated editable project and local journal.
+async function captureKeepItProject({opening=false}={}){
+ if(!projectIsReady||!doc||!['indexeddb','localstorage'].includes(storageMode))throw Error('ThinkIt local storage is still opening.');
+ if(editing||activeModal)throw Error('Finish the open ThinkIt edit before opening or syncing a file.');
+ const empty=!$('diStartScreen').hidden&&!diHasSavedProject;
+ if(empty&&!opening)return null;
+ if(!empty&&lastSaved!==JSON.stringify(doc)&&await persist({manual:true})!==true)throw Error('ThinkIt could not save the project on this device.');
+ const payload=JSON.stringify(doc);
+ return {title:doc.name,identity:doc.id,token:payload,payload,empty};
+}
+window.keepItAppFiles=Object.freeze({capture:captureKeepItProject,async open(payload,expected){
+ const incoming=validateDocument(JSON.parse(payload));incoming.version=3;
+ await saveQueue;
+ if(editing||activeModal||JSON.stringify(doc)!==expected||diSaveConflict)throw Error('The local ThinkIt project changed. Review it before switching files.');
+ const serial=JSON.stringify(incoming);
+ if(storageMode==='indexeddb')await dbWrite(serial,{manual:true});
+ else if(storageMode==='localstorage')await diFallbackWrite(serial);
+ else throw Error('ThinkIt local storage is unavailable.');
+ doc=incoming;lastSaved=serial;diHasSavedProject=true;diTabProjectId='';diLoadTabState();page=getPage();
+ selected.clear();edgeSelected=null;selectedAnnotation=null;preview=null;history={undo:[],redo:[]};bubbleActivePageId=null;
+ if(diPrefs.focus)diToggleFocus();
+ render();if(page.mode!=='bubble')fitView({initial:true});diHideStart();setSaveState('saved','Saved on this device');
+ return captureKeepItProject();
+}});
+
 // Explicit project transfer requests from the exact bundled KeepIt parent.
 window.addEventListener('message',async event=>{
  if(window.parent===window||event.source!==window.parent||event.origin!==location.origin||event.data?.channel!=='thinkit-native-note-v1'||!['get-project','restore-project'].includes(event.data.type)||typeof event.data.requestId!=='string')return;

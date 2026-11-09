@@ -1,7 +1,7 @@
 {
   "schema": "keepit.owner-live-release.v1",
   "buildId": "5d492a3fc6f2",
-  "entry": "/assets/library-app-dd8de0b16c39.js",
+  "entry": "/assets/library-app-5f3d95146d5b.js",
   "target": "OneDrive / KeepIt",
   "sourceArchiveSha256": "d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a",
   "privateSourceBase": "f9b7a3fc5473df6b6ef06542ec3f9f4a0953984f",
@@ -9,7 +9,7 @@
   "cloudSignInVerified": false,
   "cloudOriginalReadbackVerified": false,
   "files": {
-    "partners/connected/index.html": "99fcac15020e86abc2d9791270aa3b26c683a46e4dd67207a8011742286d4ad5",
+    "partners/connected/index.html": "5ee7a2d051ed8cffc48e69d2eca56b5d3891af25c551dcd0264e6c983aaf0a0e",
     "partners/connected/owner-auth-callback.html": "0b54950fe912aa992dafa5c15f79fb020c5a50df96939ef20ceae032844c5e8e",
     "assets/chunk-SGTLM5CQ.js": "d8b3360139a617b3c6d7a53ec96230177ff6869b520a578c5bbea7f5529804f9",
     "assets/chunk-OCVSKV2K.js": "3c9c5a3b3bc62715dbb1b83374d6f05946101c62bd32a6922a4f6157e17bb442",
@@ -35,7 +35,7 @@
     "assets/chunk-DXLMZ3FV.js": "30a21d95fd13287ee9da11f178d3ac7f8220407d6b75fb3d7a070b2eeff61b88",
     "assets/chunk-GZVOYAVV.js": "8e236cc05ee1c3b61e854e75406690714111ae4e5f8fbf169d237adbf4d6a6fe",
     "assets/chunk-7UTHIQYN.js": "2a4fc99d5cdafd855121c866a80a0aaddb3e7c1d4e2dc17710e27bb2f6cc41c4",
-    "assets/library-app-dd8de0b16c39.js": "dd8de0b16c39c5b592db549e2fecc3378af52a37f0b502a376f49cdc60f2ffc9",
+    "assets/library-app-5f3d95146d5b.js": "5f3d95146d5bcf4567c561f18278830954ec91541b3e78fbd842493f51e3ed27",
     "assets/viewer-controls-VMQYLPAJ.js": "9a32d134b7765f71cb071e3c84b8d2cad178146b8171579a8c499c34ca1a9ef5",
     "assets/chunk-N6CLEFXZ.js": "4ccf1011468d3605a2dbce59affe01d6b27ca990dee088fb81a9349dba866704",
     "assets/office-frame.css": "658e519ebf54b7bca63eeec9e5a21b778c2a5075581f5527d41e71c461d3027e",
@@ -105,13 +105,15 @@
     "auth/callback/index.html": "0b54950fe912aa992dafa5c15f79fb020c5a50df96939ef20ceae032844c5e8e",
     "assets/owner-entry-v2.js": "1a73d732c8af4b43b79d271fa5c8e752bd6211c7b0c54fe5b297bfbdaee0cbde",
     "partners/connected/owner-update-v2.js": "71fb63967758d5ec8857e98c0a68909d33944413801380e8762a6c4e0e4857f3",
-    "partners/connected/liveit-calendar-release.json": "e9530b03e8c29a4e2e2eb810f293ea4b98bd31f2cabbd74cb4be4e91473360e4",
-    "partners/liveit/thinkit/connected-w18e-c15396/index.html": "85680ccbdfc2664f1cb28e2a818d265d070c576f13364d7d9ff98aab9009846e",
+    "partners/connected/liveit-calendar-release.json": "a6f51743d3093bea2805d97637a24b2a4ef3fa8bfe4912ee85290ef1c5931956",
+    "partners/liveit/thinkit/connected-w18e-c15396/index.html": "71b6c5c465cd326893f54820efc14a55dbfb13386b8ced206de5a31f54c03f6a",
     "partners/liveit/thinkit/connected-w18e-c15396/app-0.js": "1316f0431df2c340c57f71c228845eae86c4df1870ba88de991ffdd246cb3963",
     "partners/liveit/thinkit/connected-w18e-c15396/app-1.js": "32a7fd15fbe301c7863dcb090442c6fdb7ead194adb0b42f0b7606d5effbcf36",
     "partners/liveit/thinkit/connected-w18e-c15396/app-3.js": "9b39ba4f0e86c0ee682768b5cc3481e13c6c0a581df5f76524c1949a64f3534a",
-    "partners/liveit/thinkit/connected-w18e-c15396/app-8.js": "d373ae5cdc47493d6984ac6ef6bc4ca9fd18c83ca68dd7524170f1744e5a76c6",
-    "partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs": "0d83bbc265cc62e8fd776c0481b7198b4a8ba5445204b60b85c1b47b8b1b9958"
+    "partners/liveit/thinkit/connected-w18e-c15396/app-8.js": "327b13d3439508d34c68f663bbc702c2fec48a8957d6905f05dd614aa92a9bcb",
+    "partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs": "0d83bbc265cc62e8fd776c0481b7198b4a8ba5445204b60b85c1b47b8b1b9958",
+    "partners/connected/app-repository-store.mjs": "f569838835082bfd8d6b41a7236b2071cea5a8543c65e67df93a922cbb84f7a1",
+    "partners/connected/app-repository-sync.mjs": "d845631b26143c52897b4703a9678912bd881f51ef1e2948288d0fb4e3f1899b"
   },
   "normalEntry": "/",
   "entryRelease": "owner-connection-v3"

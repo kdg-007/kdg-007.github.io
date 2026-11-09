@@ -632,5 +632,47 @@ async function init(){try{const startupView=new URL(location.href).searchParams.
   }catch(err){$('#main').innerHTML=`<div class="alert red"><strong>TravelIt could not open local storage.</strong><p>${esc(err.message)}</p><p>Do not clear browser data before recovering any existing content.</p></div>`;console.error(err);}}
 document.addEventListener('fullscreenchange',updateFullscreenButton);
 const keepItReady=init();
+async function captureKeepItTrips(){
+ await keepItReady;
+ if(!state.db||versionObsolete)throw Error('TravelIt local storage is unavailable.');
+ if(!$('#modal-backdrop').classList.contains('hidden')||[...budgetDrafts.values()].some(draft=>draft.dirty))throw Error('Save or close the current TravelIt edit first.');
+ const {epoch,revision}=await getWorkspaceMetadata(state.db),{records}=await allData(state.db);
+ const snapshot=await createBackup({records,outbox:[]},'2000-01-01T00:00:00.000Z');
+ return {title:'TravelIt workspace',identity:epoch||'travelit-initial',token:{epoch,revision},payload:JSON.stringify(snapshot),empty:records.length===0};
+}
+async function keepItMapList(){
+ await keepItReady;
+ if(!state.db||versionObsolete)throw Error('TravelIt local storage is unavailable.');
+ return [...await listMapPacks(state.db),...await listAtlasRegions(state.db)];
+}
+window.keepItAppFiles=Object.freeze({capture:captureKeepItTrips,
+ async listMaps(){return (await keepItMapList()).map(({id,name})=>({id,name}));},
+ async captureMap(id){
+  const map=(await keepItMapList()).find(item=>item.id===id);
+  if(!map)throw Error('The map was removed from this device.');
+  if(!map.regionAtlas)return JSON.stringify({schema:'travelit-map-file-v1',pack:await portableMapExport(map)});
+  const atlas=await inspectInstalledAtlas(map,descriptors=>getAtlasTiles(state.db,map.id,descriptors),{exportPayload:true});
+  return JSON.stringify({schema:'travelit-map-file-v1',atlas:atlas.payload});
+ },
+ async installMap(payload){
+  const content=JSON.parse(payload),maps=await keepItMapList();
+  if(content.schema!=='travelit-map-file-v1')throw Error('Invalid TravelIt offline map.');
+  const {mapRevision}=await getWorkspaceMetadata(state.db);
+  const prepared=content.atlas&&await prepareRegionAtlas(content.atlas);
+  const pack=prepared?.manifest||await portableMapImport(content.pack);
+  const existing=maps.find(map=>map.contentSha256===pack.contentSha256);
+  if(existing)await setActiveMapPack(state.db,existing.id,{expectedMapRevision:mapRevision});
+  else if(prepared)await putAtlasRegion(state.db,pack,prepared.tiles,{expectedMapRevision:mapRevision,activate:pack.id,rejectExisting:true});
+  else{pack.id=crypto.randomUUID();pack.importedAt=new Date().toISOString();await putMapPack(state.db,pack,{expectedMapRevision:mapRevision,activate:pack.id,rejectExisting:true});}
+  state.mapMode='offline';await setNav('map');workspaceChannel?.announce('map-edit');
+ },
+ async open(payload,expected){
+ const current=await captureKeepItTrips();
+ if(!expected||current.token.epoch!==expected.epoch||current.token.revision!==expected.revision)throw Error('The local TravelIt workspace changed. Review it before switching files.');
+ await writeLocally(()=>restore(state.db,JSON.parse(payload),{expectedWorkspaceRevision:expected.revision}));
+ state.selectedTrip=null;state.chosenDay='';await refresh();render();
+ return captureKeepItTrips();
+}});
+
 import {ownedTravelItHooks} from './owned-keepit-hooks.js';
 window.travelItOwnedHooks=ownedTravelItHooks({ready:keepItReady,getDB:()=>state.db,refresh});

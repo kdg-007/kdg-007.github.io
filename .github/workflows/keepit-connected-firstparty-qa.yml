@@ -213,6 +213,8 @@ jobs:
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.test.mjs
       - name: Verify multi-day calendar contract
         run: node partners/connected/liveit-calendar.unit.mjs
+      - name: Verify app folders, immutable revisions and conflict readback
+        run: node partners/connected/app-repository-store.test.mjs
       - name: Verify event save and reload across independent devices
         run: node partners/connected/liveit-calendar.browser.mjs
       - name: Verify Microsoft callback and nonblocking OneDrive reconnect
