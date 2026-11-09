@@ -21,6 +21,15 @@ try{
  for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
   browser=await engine.launch({headless:true});const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'}),fixture=connectionFixture(origin),errors=[];
   await context.route('**/*',fixture.route);const page=await context.newPage();currentPage=page;currentEngine=engine.name();page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(origin+'/partners/connected/?connected-app=keepit');
+  await page.waitForFunction(()=>typeof document.getElementById('settings-onedrive').onclick==='function');
+  await page.locator('#sidebar-settings').click();
+  await page.locator('#settings-dialog[open] #settings-onedrive').click();
+  await page.locator('#onedrive-dialog[open] #onedrive-signin').waitFor();
+  assert.equal(await page.locator('#settings-dialog[open]').count(),0);
+  assert.equal(fixture.signins,0,'Opening connection settings must wait for the Microsoft sign-in click');
+  await page.locator('#onedrive-close').click();
+  console.log('OWNER_KEEPIT_SETTINGS_ONEDRIVE_HANDOFF_'+engine.name().toUpperCase()+'_PASS');
   const nav=[];page.on('request',request=>{if(request.isNavigationRequest()&&request.frame()===page.mainFrame())nav.push(new URL(request.url()).pathname+new URL(request.url()).search)});
   await page.goto(origin+'/partners/connected/?connected-app=liveit');
   const workspace=()=>page.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell');
