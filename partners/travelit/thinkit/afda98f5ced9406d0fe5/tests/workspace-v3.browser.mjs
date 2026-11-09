@@ -35,7 +35,7 @@ export async function checkStartupBundle(browser,origin){
    await context.route('**/*',async route=>{
     const url=new URL(route.request().url());if(url.hostname!=='127.0.0.1')return route.abort();
     if(url.pathname.startsWith(path)&&url.pathname.endsWith('.js')){requests.push(url.pathname);await new Promise(ok=>setTimeout(ok,150));}
-    if(mode==='source'&&url.pathname===path+'index.html')return route.fulfill({status:200,contentType:'text/html',body:readFileSync('partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html','utf8').replace('app-fast.js?v=workspace-4','app.js?v=workspace-4')});
+    if(mode==='source'&&url.pathname===path+'index.html')return route.fulfill({status:200,contentType:'text/html',body:readFileSync('partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html','utf8').replace('app-fast.js?', 'app.js?')});
     return route.continue();
    });
    const page=await context.newPage(),start=Date.now();await page.goto(origin+path+'index.html');await page.locator('html[data-travelit-ready=true]').waitFor();results.push({mode,ms:Date.now()-start,jsRequests:requests.length});
