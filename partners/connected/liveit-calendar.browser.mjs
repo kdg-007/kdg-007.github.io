@@ -74,6 +74,59 @@ try{
   await b.page.waitForFunction(()=>{const r=document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records;return r.some(x=>x.body==='Offline alternative (copy)'&&!x._calendarSync.pending)&&r.some(x=>x.body==='Newer saved version');});
   console.log('LIVEIT_CONCURRENT_EVENT_EDITS_KEEP_BOTH_'+engine.name().toUpperCase()+'_PASS');
   assert.deepEqual(a.errors,[]);assert.deepEqual(b.errors,[]);console.log('LIVEIT_MULTI_DAY_BOTH_CALENDARS_TWO_DEVICES_OFFLINE_KEEPIT_READBACK_'+engine.name().toUpperCase()+'_PASS');
+  async function appFiles(page,name){
+   await page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});
+   await page.locator('#connected-apps-toggle').click();
+   await page.locator('#connected-apps-list').getByRole('button',{name:`${name} files`,exact:true}).click();
+   return page.getByRole('dialog',{name:`${name} files in KeepIt`});
+  }
+  async function saveAppFile(page,name){
+   const files=await appFiles(page,name);
+   await files.getByRole('status').filter({hasText:/folder is empty|Choose a file in KeepIt/}).waitFor();
+   await files.getByRole('button',{name:'Save current work as new file'}).click();
+   await files.getByRole('status').filter({hasText:`Saved and verified in KeepIt / ${name}`}).waitFor();
+   await files.getByRole('button',{name:'Close',exact:true}).click();
+  }
+  async function openAppFile(page,name,title){
+   const files=await appFiles(page,name);
+   const accept=dialog=>dialog.accept();page.on('dialog',accept);
+   try{await files.getByRole('button',{name:title,exact:true}).click();await files.waitFor({state:'hidden'});}
+   finally{page.off('dialog',accept);}
+  }
+  await a.page.setViewportSize({width:1100,height:852});
+  await a.frame.locator('[data-action="nav"][data-view="tasks"]:visible').first().click();
+  await a.frame.locator('[data-action="capture"][data-type="task"]').first().click();
+  await a.frame.locator('#captureBody').fill('App folder task');await a.frame.locator('#saveCapture').click();
+  await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
+  await saveAppFile(a.page,'LiveIt');await openAppFile(b.page,'LiveIt','liveit workspace');
+  await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='App folder task'));
+  assert.ok(await b.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.type==='event')));
+
+  const connectedPath=app=>origin+'/partners/connected/?connected-app='+app;
+  await a.page.goto(connectedPath('thinkit'));await b.page.goto(connectedPath('thinkit'));
+  const think=a.page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]');
+  await think.locator('#diStartCreate').click();await think.locator('[data-project-mode="mind"]').click();
+  await think.locator('#projectStartName').fill('App folder project');await think.locator('#modalRoot .modal-footer').getByRole('button',{name:'Create blank project',exact:true}).click();
+  await saveAppFile(a.page,'ThinkIt');
+  const lastRevision=await a.page.evaluate(()=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:thinkit')).revision);
+  await a.context.setOffline(true);await think.locator('#docName').fill('Edited offline');await think.locator('#docName').press('Tab');
+  await think.locator('#saveStatus[data-state="saved"]').filter({hasText:'Saved on this device'}).waitFor({state:'attached'});
+  await a.context.setOffline(false);
+  await a.page.waitForFunction(previous=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:thinkit')).revision!==previous,lastRevision,{timeout:35000});
+  await openAppFile(b.page,'ThinkIt','app folder project');
+  assert.equal(await b.page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]').locator('#docName').inputValue(),'Edited offline');
+
+  await a.page.goto(connectedPath('travelit'));await b.page.goto(connectedPath('travelit'));
+  const travel=a.page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
+  await travel.locator('#view-select').selectOption('trips');await travel.locator('[data-action="new-trip"]').click();
+  await travel.locator('#f-title').fill('App folder trip');await travel.locator('#modal-form button[type="submit"]').click();
+  await travel.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await saveAppFile(a.page,'TravelIt');await openAppFile(b.page,'TravelIt','travelit workspace');
+  const otherTravel=b.page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
+  await otherTravel.locator('#view-select').selectOption('trips');
+  await otherTravel.getByRole('heading',{name:'App folder trip',exact:true}).waitFor();
+  assert.deepEqual(a.errors,[]);assert.deepEqual(b.errors,[]);
+  console.log('KEEPIT_DEDICATED_APP_FILES_TWO_DEVICES_'+engine.name().toUpperCase()+'_PASS');
   for(const context of contexts)await context.close();await browser.close();browser=null;
  }
 }finally{await browser?.close();await new Promise(ok=>server.close(ok));rmSync(temp,{recursive:true,force:true});}

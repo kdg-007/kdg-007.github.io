@@ -1427,6 +1427,38 @@
   };
   window.liveItCalendarAccess=Object.freeze(calendarAccess);
 
+  async function captureKeepItLiveIt(){
+    await ready;
+    if(!repository||!storageReady||composer.open||details.open||$('#restoreReviewDialog')?.open)throw Error('Finish the current LiveIt edit before opening or syncing a file.');
+    const {stores}=await repository.exportContents(), meta=stores.meta[0];
+    const records=stores.records.filter(record=>record.type!=='event');
+    const notes=stores.note_associations.filter(association=>association.entityType!=='event');
+    const noteIds=new Set(notes.map(association=>association.id));
+    const noteOps=stores.note_association_ops.filter(operation=>noteIds.has(operation.associationId));
+    const payload=JSON.stringify({schema:'liveit-app-file-v1',records,spaces:stores.spaces,notes,noteOps});
+    return {title:'LiveIt workspace',identity:JSON.stringify([meta.initializedAt,meta.resetAt]),token:meta.revision,payload,empty:records.length===0};
+  }
+  window.keepItAppFiles=Object.freeze({capture:captureKeepItLiveIt,async open(payload,expected){
+    const incoming=JSON.parse(payload);
+    if(incoming.schema!=='liveit-app-file-v1'||!Array.isArray(incoming.records)||incoming.records.some(record=>record.type==='event')||!Array.isArray(incoming.notes)||incoming.notes.some(association=>association.entityType==='event')||!Array.isArray(incoming.noteOps))throw Error('Invalid LiveIt workspace file.');
+    const local=await captureKeepItLiveIt();
+    if(local.token!==expected)throw Error('The local LiveIt workspace changed. Review it before switching files.');
+    const snapshot=await repository.exportContents(),stores=snapshot.stores;
+    if(stores.meta[0].revision!==expected||repository.revision!==expected)throw Error('The local LiveIt workspace changed. Review it before switching files.');
+    const calendar=stores.records.filter(record=>record.type==='event');
+    const calendarNotes=stores.note_associations.filter(association=>association.entityType==='event');
+    const calendarNoteIds=new Set(calendarNotes.map(association=>association.id));
+    stores.records=[...calendar,...incoming.records];stores.spaces=incoming.spaces;
+    stores.note_associations=[...calendarNotes,...incoming.notes];
+    stores.note_association_ops=[...stores.note_association_ops.filter(operation=>calendarNoteIds.has(operation.associationId)),...incoming.noteOps];
+    stores.operations=[...new Set([...stores.operations.map(operation=>operation.opId),...incoming.records.map(record=>record.opId)])].map(opId=>({opId}));
+    await repository.restoreContents(snapshot,{allowReplace:true});
+    storeVerification(null);
+    const restored=await repository.loadConsistentSnapshot();data=restored.data;
+    for(const scope of ['work','personal']){cachedDrafts[scope]=restored.drafts[scope];parkedDrafts[scope]=restored.parked[scope];}
+    render();return captureKeepItLiveIt();
+  }});
+
   window.liveItOwnedAccess=Object.freeze({ready:()=>ready,getRepository:()=>repository,getScope:()=>ui.scope,changed:()=>{markBackupStale();render();}});
   window.LiveItDemo=Object.freeze({
     waitReady:()=>ready,
