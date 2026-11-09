@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**', 'ops/ui/**', '.github/workflows/keepit-pages.yml']
+    paths: ['index.html', 'build-info.json', 'auth/**', 'assets/**', 'sw.js', 'manifest.webmanifest', 'delivery/**', 'ops/ui/**', 'partners/connected/liveit-calendar-release.json', '.github/workflows/keepit-pages.yml']
 
 permissions:
   contents: write
