@@ -26,17 +26,38 @@ try{
    console.log('CALENDAR_DEVICE_OPEN');
    await page.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1');await page.locator('#onedrive-dialog[open]').waitFor();await page.locator('#onedrive-signin').click();await page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');await frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:20000}).catch(async error=>{console.error('INITIAL_CALENDAR_STATE',await frame.locator('#calendarSyncStatus').innerText(),errors);throw error;});console.log('CALENDAR_DEVICE_READY');return {context,page,frame,errors,network};}
   const a=await device();
-  await a.frame.locator('[data-action="capture"][data-type="event"]').first().click();await a.frame.locator('#captureBody').fill('ASEAN Summit');await a.frame.locator('#captureDate').fill('2026-11-16');await a.frame.locator('#captureEndDate').fill('2026-11-20');await a.frame.locator('#captureAllDay').check();await a.frame.locator('#saveCapture').click();await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
+  const month=await a.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.getTodayDate().slice(0,7));
+  const eventStart=`${month}-16`,eventMiddle=`${month}-18`,eventEnd=`${month}-20`;
+  await a.frame.locator('[data-action="capture"][data-type="event"]').first().click();await a.frame.locator('#captureBody').fill('ASEAN Summit');await a.frame.locator('#captureDate').fill(eventStart);await a.frame.locator('#captureEndDate').fill(eventEnd);await a.frame.locator('#captureAllDay').check();await a.frame.locator('#saveCapture').click();await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
   await a.frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:30000}).catch(async error=>{console.error('CALENDAR_SAVE_FAILURE',engine.name(),await a.frame.locator('#calendarSyncStatus').innerText(),a.errors,JSON.stringify(fixture.requests.slice(-15)),await a.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records));throw error;});console.log('AFTER_SAVE',await a.frame.locator('#calendarSyncStatus').innerText());
   await a.page.waitForFunction(()=>{const f=document.querySelector('iframe[title="LiveIt journal workspace"]');return f.contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit'&&r._calendarSync?.pending===false);});
   console.log('FIRST_DEVICE_EVENT_SAVED');const b=await device();await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit'));
   const received=await b.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.find(r=>r.body==='ASEAN Summit'));
-  assert.equal(received.endDate,'2026-11-20');assert.equal(received.allDay,true);
+  assert.equal(received.endDate,eventEnd);assert.equal(received.allDay,true);
   // The other workspace has the same date range, without duplicate records.
   await b.frame.locator('[data-action="scope"][data-scope="personal"]').first().click();await b.frame.locator('[data-action="nav"][data-view="calendar"]:visible').first().click();
+  const weekdays=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  for(const width of [393,1440]){
+   await b.page.setViewportSize({width,height:852});
+   const {headers,days}=await b.frame.locator('.calendar-grid').evaluate(grid=>{
+    const position=cell=>{const {left,top}=cell.getBoundingClientRect();return {left,top};};
+    return {
+     headers:[...grid.querySelectorAll('.calendar-wd')].map(cell=>({label:cell.textContent,...position(cell)})),
+     days:[...grid.querySelectorAll('.calendar-cell')].map(cell=>({date:cell.dataset.date,...position(cell)}))
+    };
+   });
+   assert.deepEqual(headers.map(header=>header.label),weekdays);
+   assert.equal(new Set(headers.map(header=>header.top)).size,1,'Weekday labels share one row');
+   assert.equal(days.length,42);
+   for(const day of days){
+    const weekday=(new Date(day.date+'T12:00:00Z').getUTCDay()+6)%7;
+    assert.ok(day.top>headers[weekday].top&&day.left===headers[weekday].left,`${day.date} sits below ${weekdays[weekday]} at ${width}px`);
+   }
+  }
+  await b.page.setViewportSize({width:393,height:852});
   // Inspect occurrence semantics directly, then navigate to an interior date through the real calendar.
-  assert.equal(await b.page.evaluate(()=>{const w=document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow,r=w.LiveItDemo.state().records.find(r=>r.body==='ASEAN Summit');return w.LiveItW12.occurrenceOn(r,'2026-11-18')?.id===r.id;}),true);
-  await b.frame.locator('[data-action="calendar-day"][data-date="2026-11-18"]').click();
+  assert.equal(await b.page.evaluate(date=>{const w=document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow,r=w.LiveItDemo.state().records.find(r=>r.body==='ASEAN Summit');return w.LiveItW12.occurrenceOn(r,date)?.id===r.id;},eventMiddle),true);
+  await b.frame.locator(`[data-action="calendar-day"][data-date="${eventMiddle}"]`).click();
   await b.frame.locator('[data-action="scope"][data-scope="work"]').first().click();assert.equal(await b.frame.locator('[data-record-id="'+received.id+'"] .feed-title').count()>0||await b.frame.locator('.calendar-mark').filter({hasText:'ASEAN Summit'}).count()>0,true);
   // Offline edit remains pending; reconnect sends it to the same cloud note.
   b.network.offline=true;await b.context.setOffline(true);

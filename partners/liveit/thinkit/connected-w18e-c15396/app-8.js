@@ -353,7 +353,8 @@
     const tabs=['day','week','month'].map(s=>`<button data-action="calendar-mode" data-mode="${s}" class="${mode===s?'active':''}" aria-pressed="${mode===s}">${s[0].toUpperCase()+s.slice(1)}</button>`).join('');
     return `<div class="row-between" style="flex-wrap:wrap"><div class="calendar-view-controls">${tabs}</div><button class="button secondary" data-action="capture" data-type="event">+ Add event</button></div>
       ${mode==='day'?today():`<div class="${mode==='week'?'calendar-week':'calendar-grid'}" style="margin-top:17px">
-      ${dates.map((d,i)=>`${mode==='month'&&i<7?`<div class="calendar-wd">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}</div>`:''}${calendarCell(d)}`).join('')}</div>
+      ${mode==='month'?['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=>`<div class="calendar-wd">${day}</div>`).join(''):''}
+      ${dates.map(calendarCell).join('')}</div>
       <h2 class="section-heading">${esc(C.dateLabel(ui.selected))}</h2>${[...eventsOn(ui.selected),...activityOn(ui.selected)].map(x=>feedCard(x)).join('')||'<p class="muted small">No entries on this date.</p>'}`}`;
   }
   function inbox() {
