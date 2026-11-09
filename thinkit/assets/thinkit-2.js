@@ -1735,7 +1735,7 @@ function openNodeMenu(id,x,y){const n=byId(id);if(!n)return;const items=[['Edit 
 const DI_MENUS=['File','Edit','Insert','View','Format','Help'];
 const DI_PREF_KEY='diagramit_v093_ui';
 let diPrefs={toolsVisible:true,activeTab:'Insert',focus:false,grid:true,snap:true,ruler:false};
-try{diPrefs={...diPrefs,...JSON.parse(localStorage.getItem(DI_PREF_KEY)||'{}')}}catch{}
+try{diPrefs={...diPrefs,...JSON.parse(localStorage.getItem(DI_PREF_KEY)||'{}'),focus:false}}catch{}
 let diMenuOpen='',diBubbleState={pane:'program',selection:'none',theme:'formal',showAreas:false};
 let diFrameCounter=0,diClipboard=null;
 const diCommands={};
@@ -1795,8 +1795,21 @@ function diFullscreen(){
  if(document.fullscreenElement){document.exitFullscreen?.().catch(e=>toast(e.message));return}
  document.documentElement.requestFullscreen?.().catch(e=>toast('Fullscreen is not available: '+e.message));
 }
-function diToggleFocus(){diPrefs.focus=!diPrefs.focus;document.body.classList.toggle('di-focus',diPrefs.focus);if(!diPrefs.focus)requestAnimationFrame(()=>{if(!diIsBubble())renderCanvas()});diSavePrefs();diSyncShell()}
-function diSavePrefs(){try{localStorage.setItem(DI_PREF_KEY,JSON.stringify(diPrefs))}catch{}}
+function diToggleFocus(){
+ diPrefs.focus=!diPrefs.focus;
+ document.body.classList.toggle('di-focus',diPrefs.focus);
+ diSyncShell();
+ if(diPrefs.focus)$('diFocusExit').focus({preventScroll:true});
+ else{
+  $('diFocusToggle').focus({preventScroll:true});
+  requestAnimationFrame(()=>{if(!diIsBubble())renderCanvas()});
+ }
+}
+async function diExitCanvasMode(){
+ if(diPrefs.focus)diToggleFocus();
+ if(document.fullscreenElement)try{await document.exitFullscreen();}catch(error){toast(error.message);}
+}
+function diSavePrefs(){const {focus,...preferences}=diPrefs;try{localStorage.setItem(DI_PREF_KEY,JSON.stringify(preferences))}catch{}}
 function diToggleRibbon(){diPrefs.toolsVisible=!diPrefs.toolsVisible;document.body.classList.toggle('di-tools-hidden',!diPrefs.toolsVisible);diSavePrefs();diSyncShell()}
 function diGridToggle(){if(diIsBubble()){toast('Bubble diagrams use a conceptual dotted drafting grid. Custom grid controls are in development.');return;}showGrid=!showGrid;pref('grid',showGrid);render();diSyncShell()}
 function diRulerToggle(){diPrefs.ruler=!diPrefs.ruler;diSavePrefs();toast(diPrefs.ruler?'Conceptual rulers enabled (not calibrated dimensions).':'Rulers disabled.');diRenderRuler()}
@@ -2004,7 +2017,7 @@ function diRenderRibbon(){
  $('diActiveMode').textContent=({flow:'Flowchart',org:'Org Chart',mind:'Mind Map',bubble:'Bubble Diagram'}[mode]||mode)+' ▾';
  $('diRibbonToggle').textContent=diPrefs.toolsVisible?'Hide tools ⌃':'Show tools ⌄';$('diRibbonToggle').setAttribute('aria-expanded',String(diPrefs.toolsVisible));
 }
-function diSyncShell(){if(!page)return;document.body.classList.toggle('di-no-tabs',diNoTabs());diRenderRibbon();$('diFocusToggle').setAttribute('aria-pressed',String(diPrefs.focus));}
+function diSyncShell(){document.body.classList.toggle('di-fullscreen',Boolean(document.fullscreenElement));if(!page)return;document.body.classList.toggle('di-no-tabs',diNoTabs());diRenderRibbon();$('diFocusToggle').setAttribute('aria-pressed',String(diPrefs.focus));}
 // P2: an explicit, discoverable on-canvas first action for a collapsed mobile
 // shape palette. No native note schema, state or selection contract changes.
 function diUpdateMobileStarter(){
@@ -2079,7 +2092,7 @@ function diInitShell(){
  const tabs=$('diMenuTabs');for(const n of DI_MENUS){const b=document.createElement('button');b.type='button';b.className='di-menu-tab';b.dataset.tab=n;b.setAttribute('role','menuitem');b.setAttribute('aria-haspopup','menu');b.setAttribute('aria-expanded','false');b.textContent=n;b.onclick=()=>diOpenMenu(n);tabs.append(b)}
  $('diMenuPopup').onclick=e=>{const b=e.target.closest('[data-dcmd]');if(b&&!b.disabled)diRun(b.dataset.dcmd)};
  $('diRibbonContent').onclick=e=>{const b=e.target.closest('[data-dcmd]');if(b&&!b.disabled)diRun(b.dataset.dcmd)};
- $('diRibbonToggle').onclick=diToggleRibbon;$('diFocusToggle').onclick=diToggleFocus;$('diFocusExit').onclick=diToggleFocus;
+ $('diRibbonToggle').onclick=diToggleRibbon;$('diFocusToggle').onclick=diToggleFocus;$('diFocusExit').onclick=diExitCanvasMode;
  $('diInspectorToggle').onclick=()=>diPanel('inspector');$('diActiveMode').onclick=diMode;
  document.addEventListener('pointerdown',e=>{if(diMenuOpen&&!e.target.closest('#diMenuBar'))diCloseMenu()},true);
  document.addEventListener('keydown',e=>{

@@ -113,6 +113,29 @@ async function checkLauncher(browser,origin,layout){
    if(workspace.id==='keepit'){
     await page.waitForFunction(()=>document.querySelector('#result-count')?.textContent?.includes('items'),null,{timeout:15000});
    }
+   if(workspace.id==='thinkit'&&layout.name==='iphone'){
+    const editor=page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]');
+    await editor.locator('#diStartCreate').tap();
+    await editor.locator('[data-project-mode="mind"]').tap();
+    await editor.locator('#projectStartName').fill('Mobile focus test');
+    await editor.locator('#modalRoot .modal-footer').getByRole('button',{name:'Create blank project',exact:true}).tap();
+    await editor.locator('#diFocusToggle').tap();
+    await editor.locator('#diMenuBar').waitFor({state:'hidden'});
+    const exit=editor.getByRole('button',{name:'Back to editor',exact:true});
+    const touchTarget=await exit.boundingBox();
+    assert.ok(touchTarget&&touchTarget.x>=0&&touchTarget.y>=0&&touchTarget.x+touchTarget.width<=layout.width&&touchTarget.y+touchTarget.height<=layout.height&&touchTarget.height>=44);
+    await exit.tap();
+    await editor.locator('#diMenuBar').waitFor({state:'visible'});
+    assert.equal(await editor.locator('#docName').inputValue(),'Mobile focus test');
+    await editor.locator('#saveStatus[data-state="saved"]').filter({hasText:'Saved on this device'}).waitFor({state:'attached'});
+    await editor.locator('body').evaluate(()=>localStorage.setItem('diagramit_v093_ui',JSON.stringify({focus:true})));
+    await page.reload({waitUntil:'domcontentloaded'});
+    await editor.locator('#diStartResume').tap();
+    await editor.locator('#diMenuBar').waitFor({state:'visible'});
+    assert.equal(await exit.isVisible(),false);
+    assert.equal(await editor.locator('#docName').inputValue(),'Mobile focus test');
+    console.log('THINKIT_MOBILE_CANVAS_EXIT_'+browser.browserType().name().toUpperCase()+'_PASS');
+   }
    assert.equal(await page.locator('html').getAttribute('data-app-scheme'),'journal');
    if(layout.name==='macbook'&&browser.browserType().name()==='chromium'){
     await page.screenshot({path:join(screenshots,workspace.id+'-journal.png')});
