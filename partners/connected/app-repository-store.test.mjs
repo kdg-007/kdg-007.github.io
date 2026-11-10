@@ -4,10 +4,13 @@ import {createAppRepository,newFileKey} from './app-repository-store.mjs';
 const tree = new Map([['keepit',[]]]);
 const child = async (parent,name) => tree.get(parent)?.find(item=>item.name===name)||null;
 let writeBarrier=null;
-const fs={child,async children(id){return [...tree.get(id)];},async folder(parent,name){
- const prior=await child(parent,name);if(prior)return prior;
- const id=parent+'/'+name,item={id,name,folder:{}};tree.set(id,[]);tree.get(parent).push(item);return item;
+const writable=new Set(['keepit']);
+const fs={child,allow(id){writable.add(id);},async children(id){return [...tree.get(id)];},async folder(parent,name){
+ assert.ok(writable.has(parent),'parent directory has a session write grant');
+ const prior=await child(parent,name);if(prior){fs.allow(prior.id);return prior;}
+ const id=parent+'/'+name,item={id,name,folder:{}};tree.set(id,[]);tree.get(parent).push(item);fs.allow(id);return item;
 },async create(parent,name,blob){
+ assert.ok(writable.has(parent),'revision directory has a session write grant');
  if(writeBarrier)await writeBarrier();
  const prior=await child(parent,name);if(prior)return prior;
  const item={id:parent+'/'+name,name,file:{},blob};tree.get(parent).push(item);return item;
@@ -23,10 +26,14 @@ assert.deepEqual((await think.list()).map(file=>file.key),[key]);
 assert.deepEqual(await travel.list(),[]);assert.deepEqual(await live.list(),[]);
 assert.equal((await think.open(key,first.envelope.revision)).payload,seed.payload);
 assert.equal((await think.save(seed)).envelope.revision,first.envelope.revision,'A retry must reuse its verified revision');
+writable.clear();writable.add('keepit');
+const reconnected=await think.save({...seed,parent:first.envelope.revision,payload:'edit after reconnect'});
+assert.equal(reconnected.conflict,false);
+assert.equal(reconnected.envelope.payload,'edit after reconnect');
 let arrivals=0,release;
 const gate=new Promise(resolve=>{release=resolve;});
 writeBarrier=()=>{if(++arrivals===2)release();return gate;};
-const edit={...seed,parent:first.envelope.revision};
+const edit={...seed,parent:reconnected.envelope.revision};
 const versions=await Promise.all([think.save({...edit,payload:'phone edit'}),think.save({...edit,payload:'Mac edit'})]);
 writeBarrier=null;
 const heads=await think.heads(key);assert.equal(heads.length,2);

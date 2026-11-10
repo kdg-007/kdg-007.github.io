@@ -95,7 +95,7 @@ export async function checkExcelImport(browser,origin){
   const beforeDelete=await snapshot(page);
   await deleteTrip(false);assert.deepEqual(await snapshot(page),beforeDelete);
   await deleteTrip(true);
-  await page.locator('#toast').filter({hasText:'Trip deleted from this device.'}).waitFor();
+  await page.locator('#toast').filter({hasText:'Trip deleted.'}).waitFor();
   const afterDelete=await snapshot(page),ownedKeys=new Set([trip.key,...beforeDelete.records.filter(r=>r.data.tripId===trip.id||r.type==='keepitAssociation').map(r=>r.key)]);
   assert.deepEqual(afterDelete.records,beforeDelete.records.filter(r=>!ownedKeys.has(r.key)));
   assert.equal(await page.getByLabel('Selected trip',{exact:true}).inputValue(),'existing');

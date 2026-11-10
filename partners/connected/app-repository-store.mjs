@@ -67,6 +67,12 @@ export function createAppRepository({app, library, isCurrent}) {
    const directory=await fileFolder(key);
    return (await getHeads(directory)).map(({id,item})=>({id,modified:item.lastModifiedDateTime||''}));
   },
+  async openSingle(key){
+   const heads=await getHeads(await fileFolder(key));
+   if(heads.length!==1)return {state:'review'};
+   const version=await read(key,heads[0]);
+   return version.kind==='workspace'?{state:'ready',version}:{state:'review'};
+  },
   async open(key,revision){
    const directory=await fileFolder(key);
    const heads=await getHeads(directory);
@@ -90,6 +96,9 @@ export function createAppRepository({app, library, isCurrent}) {
    if(same)return {envelope:await read(key,same),conflict:heads.length>1};
    if(parent==='root'?heads.length!==0:heads.length!==1||heads[0].id!==parent)return {conflict:true};
    assertCurrent();
+   // A fresh OneDrive session has no write grant for folders it only read.
+   // fileFolder() resolved this exact child through the selected app root.
+   fs.allow(directory.id);
    await fs.create(directory.id,name,blob);
    assertCurrent();
    const item=await fs.child(directory.id,name);
@@ -99,4 +108,17 @@ export function createAppRepository({app, library, isCurrent}) {
    return {envelope:verified,conflict:current.length!==1||current[0].id!==revision};
   }
  });
+}
+
+// A stable first workspace identity also keeps simultaneous first saves
+// within the same revision history, where forks can be reviewed explicitly.
+export function travelWorkspaceKey(scope) {
+ if(!/^[0-9a-f]{64}$/.test(scope))throw Error('Invalid KeepIt folder identity.');
+ return scope.slice(0,8)+'-'+scope.slice(8,12)+'-5'+scope.slice(13,16)+'-8'+scope.slice(17,20)+'-'+scope.slice(20,32)+'--travelit-workspace';
+}
+export async function findTravelWorkspace(repo,key){
+ const keys=key?[key]:(await repo.list()).map(row=>row.key).filter(key=>key.endsWith('--travelit-workspace'));
+ if(!keys.length)return {state:'absent'};
+ if(keys.length!==1)return {state:'review'};
+ return repo.openSingle(keys[0]);
 }
