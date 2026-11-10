@@ -227,6 +227,8 @@ jobs:
         env:
           CI: "true"
         run: node partners/connected/first-party-native-notes.test.mjs
+      - name: Verify ThinkIt Business Model Canvas in Chromium and WebKit
+        run: node partners/design/thinkit-business-model.browser.mjs
       - name: Verify shared navigation across devices in Chromium and WebKit
         if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
         shell: bash
