@@ -22,7 +22,7 @@ import {reviewTripPreparation} from './trip-preparation.js';
 import {buildOnTheRoadQueue} from './on-the-road.js';
 import {pickTodayTrip,tripClock,nextTodayStop} from './today-schedule.js';
 import {DISCOVERY_STAGES,findDuplicatePlace,dateSpan,nextTripDay,tripDayPosition,nearbyTripDays,itineraryOrder,reorderFlexibleStops,tripCalendar,discoveryCounts} from './travel-planning.js';
-import {SCHEMA_VERSION,PLACE_CATEGORIES,STOP_KINDS,PACK_CATEGORIES,cleanText,normalizePlace,normalizeTrip,normalizeStop,normalizePacking,wazeUrl,tripDateAt,conflicts,validateBackup} from './domain.js?v=excel-import-1';
+import {SCHEMA_VERSION,PLACE_CATEGORIES,STOP_KINDS,PACK_CATEGORIES,cleanText,normalizePlace,normalizeTrip,normalizeStop,normalizePacking,wazeUrl,tripDateAt,conflicts,validateBackup,tripDocumentReferences} from './domain.js?v=excel-import-1';
 const $=s=>document.querySelector(s);
 let modalCleanup=null,modalBusy=false;
 let modalDirty=false,modalReturnFocus=null,modalBaseRevisions={},modalBasePresence={},modalBaseEpoch=null,modalBaseMapRevision=0,workspaceChannel=null,externalRefreshTimer=null,localOperationDepth=0,versionObsolete=false;
@@ -316,11 +316,96 @@ async function checkOfflineShell(showResult=false){
 }
 async function checkStorage(){try{const persisted=await navigator.storage?.persisted?.();const estimate=await navigator.storage?.estimate?.();const size=estimate?.usage!==undefined?` · ${(estimate.usage/1024/1024).toFixed(1)} MiB used`:'';state.storageState=(persisted?'Browser reports persistent storage':'Persistence not granted')+size;}catch{state.storageState='Browser storage estimate unavailable';}if(state.view==='more')render();}
 function menu(label,contents){return `<details class="action-menu"><summary>${esc(label)}</summary><div class="action-menu-items">${contents}</div></details>`;}
+const keepItLibraryUrl='/partners/connected/?connected-app=keepit';
+function renderTripDocuments(trip){
+ const documents=trip.keepItDocuments||[];
+ const listed=documents.map(document=>{
+  const attrs=`data-document-key="${esc(tripDocumentReferences.key(document))}"`;
+  return `<li class="trip-document"><div><strong>${esc(document.title)}</strong><div class="subtext">KeepIt ${document.kind==='note'?'note':'file'}</div></div>
+   <div class="row wrap">
+    ${action('Open in KeepIt','open-trip-document','button button-small',attrs+' aria-label="Open '+esc(document.title)+' in KeepIt"')}
+    ${document.kind==='file'?action('Download for offline use','download-trip-document','button button-small',attrs+' aria-label="Download '+esc(document.title)+' for offline use"'):''}
+    ${action('Remove link','unlink-trip-document','button button-small button-ghost',attrs+' aria-label="Remove link to '+esc(document.title)+'"')}
+   </div></li>`;
+ }).join('');
+ return `<section class="card trip-documents" aria-label="Trip documents">
+  <div class="row-between wrap"><h3>Trip documents</h3>
+  ${action('+ Link from KeepIt','link-trip-document','button button-primary button-small',documents.length>=tripDocumentReferences.limit?'disabled':'')}</div>
+  <p class="subtext">Keep passports, itineraries, bookings, brochures and guides in KeepIt. Add links here for this trip.</p>
+  ${documents.length?`<ul class="trip-document-list">${listed}</ul>`:'<p class="empty-inline">This trip has no linked files or notes yet.</p>'}
+  <p class="subtext">For offline use, download the files you need to your device while connected. Open KeepIt notes there to print or export a copy.</p>
+  <a class="button button-small" href="${keepItLibraryUrl}" target="_blank" rel="noopener noreferrer">Add files in KeepIt ↗</a>
+  <p id="trip-document-status" class="subtext" role="status"></p>
+ </section>`;
+}
+function tripDocumentBridge(){
+ const bridge=window.travelItKeepItLinks;
+ if(!bridge)throw Error('Open TravelIt from LiveIt’s Apps menu to use KeepIt links.');
+ return bridge;
+}
+function pickTripDocument(trip){
+ if(!trip)throw Error('Select a trip first.');
+ const documents=trip.keepItDocuments||[];
+ if(documents.length>=tripDocumentReferences.limit)throw Error('Remove a link before adding another file or note.');
+ const linked=new Set(documents.map(tripDocumentReferences.key));
+ let available=[];
+ openModal('Link from KeepIt',`<p class="subtext">Choose an existing file or note to link to <strong>${esc(trip.title)}</strong>.</p>
+  ${field('documentSearch','Search by title or filename','','search','autocomplete="off" maxlength="160"')}
+  <div class="field"><label for="keepit-document-choice">File or note</label>
+  <select id="keepit-document-choice" name="documentKey" required disabled></select></div>
+  <p class="subtext" id="keepit-document-results" role="status">Opening KeepIt library…</p>`,async input=>{
+  const reference=available.find(item=>tripDocumentReferences.key(item)===input.documentKey);
+  if(!reference)throw Error('Choose an available file or note.');
+  const keepItDocuments=tripDocumentReferences.normalize([...documents,reference]);
+  await commit('trip',normalizeTrip({...trip,keepItDocuments}));
+  toast('KeepIt link saved to this trip.');
+ },'Link to trip');
+ const form=$('#modal-form'),search=form.querySelector('#f-documentSearch'),choice=form.querySelector('#keepit-document-choice');
+ const status=form.querySelector('#keepit-document-results'),save=form.querySelector('[type="submit"]');
+ save.disabled=true;
+ function paint(){
+  const query=search.value.trim().toLocaleLowerCase();
+  const matches=available.filter(item=>[item.title,item.filename].some(text=>text.toLocaleLowerCase().includes(query)));
+  choice.replaceChildren(new Option('Select a file or note',''),...matches.slice(0,40).map(item=>{
+   const label=item.title+' · '+item.kind+(item.filename&&item.filename!==item.title?' · '+item.filename:'');
+   return new Option(label,tripDocumentReferences.key(item));
+  }));
+  choice.disabled=!matches.length;save.disabled=true;
+  status.textContent=matches.length>40?'Showing 40 results. Search to narrow the list.':matches.length?'':'No matching unlinked files or notes.';
+ }
+ search.addEventListener('input',paint);
+ choice.addEventListener('change',()=>{save.disabled=!choice.value;});
+ void (async()=>{
+  try{const items=await tripDocumentBridge().list();if(!form.isConnected)return;
+   available=items.filter(item=>!linked.has(tripDocumentReferences.key(item)));paint();}
+  catch(error){if(form.isConnected)status.textContent=error.message;}
+ })();
+}
+async function useTripDocument(target,actionName){
+ const trip=selected(),documents=trip?.keepItDocuments||[];
+ const document=documents.find(item=>tripDocumentReferences.key(item)===target.dataset.documentKey);
+ if(!document)throw Error('This trip link is no longer available.');
+ target.disabled=true;
+ try{
+  if(actionName==='unlink-trip-document'){
+   await commit('trip',normalizeTrip({...trip,keepItDocuments:documents.filter(item=>item!==document)}));
+   toast('Link removed from this trip.');return;
+  }
+  const status=$('#trip-document-status'),download=actionName==='download-trip-document';
+  status.textContent=download?'Getting the original from KeepIt…':'Opening in KeepIt…';
+  try{
+   const bridge=tripDocumentBridge();
+   if(download)await bridge.download(document);
+   else await bridge.open(document);
+   status.textContent=download?'Download sent to your browser. Save the copy on this device for offline use.':'';
+  }catch(error){status.textContent=error.message;}
+ }finally{target.disabled=false;}
+}
 function renderTrips(){
  const t=selected();const selector=state.trips.length?`<label class="trip-select-label">Trip <select id="trip-select" aria-label="Selected trip">${state.trips.map(v=>`<option value="${esc(v.id)}" ${v.id===t?.id?'selected':''}>${esc(v.title)}</option>`).join('')}</select></label>`:'<h2>Your journeys</h2>';
  const heading=`<div class="trip-command-bar">${selector}<div class="row wrap">${action('Import Excel','preview-excel')}${action('+ New trip','new-trip')}${t?menu('Trip actions',action('Edit trip','edit-trip')+action('Download trip brief','brief-trip')+(t.importReceipt?`<p>Excel: ${esc(t.importReceipt.filename)} · ${t.importReceipt.activityCount} activities. Schedule and activity details.</p>${action('Undo import','undo-excel-import')}`:'')+action('Delete trip','delete-trip','button button-small button-danger')):''}</div></div>`;
  if(!t)return heading+`<p class="empty-inline">Create a trip or import an Excel itinerary to begin.</p>`;
- return heading+`<section class="trip-workspace"><div class="trip-title-row"><div><h2>${esc(t.title)}</h2><p class="subtext">${dateShort(t.startDate)} – ${dateShort(t.endDate)} · ${esc(t.timezone)}</p></div>${action('Activities table','add-stop','button button-primary button-small')}</div><div class="view-tabs">${[['itinerary','Itinerary'],['calendar','Calendar'],['packing','Packing'],['prepare','Prepare'],['costs','Budget'],['info','Trip info']].map(([tab,label])=>`<button data-trip-tab="${tab}" class="${state.tripTab===tab?'active':''}">${label}</button>`).join('')}</div>${state.tripTab==='itinerary'?renderItinerary(t):state.tripTab==='calendar'?renderTripCalendar(t):state.tripTab==='packing'?renderPacking(true):state.tripTab==='costs'?renderCosts(t):state.tripTab==='prepare'?renderPreparation(t):`<div class="card"><p>${esc(t.notes||'No trip notes yet.')}</p><p class="subtext">Native rich notes use KeepIt notes in the Apps menu.</p></div>`}</section>`;
+ return heading+`<section class="trip-workspace"><div class="trip-title-row"><div><h2>${esc(t.title)}</h2><p class="subtext">${dateShort(t.startDate)} – ${dateShort(t.endDate)} · ${esc(t.timezone)}</p></div>${action('Activities table','add-stop','button button-primary button-small')}</div><div class="view-tabs">${[['itinerary','Itinerary'],['calendar','Calendar'],['packing','Packing'],['prepare','Prepare'],['costs','Budget'],['documents','Documents'],['info','Trip info']].map(([tab,label])=>`<button data-trip-tab="${tab}" class="${state.tripTab===tab?'active':''}">${label}</button>`).join('')}</div>${state.tripTab==='itinerary'?renderItinerary(t):state.tripTab==='calendar'?renderTripCalendar(t):state.tripTab==='packing'?renderPacking(true):state.tripTab==='costs'?renderCosts(t):state.tripTab==='prepare'?renderPreparation(t):state.tripTab==='documents'?renderTripDocuments(t):`<div class="card"><p>${esc(t.notes||'No trip notes yet.')}</p><p class="subtext">Native rich notes use KeepIt notes in the Apps menu.</p></div>`}</section>`;
 }
 function renderItinerary(t){
  if(!state.chosenDay||state.chosenDay<t.startDate||state.chosenDay>t.endDate)state.chosenDay=t.startDate;
@@ -372,9 +457,9 @@ function renderPreparation(t,{compact=false}={}){
  const report=reviewTripPreparation({trip:t,stops:state.stops,places:state.places,packing:state.packing,expenses:state.expenses,vehicle:state.vehicles.find(v=>v.id===t.vehicleId)||null,shellReport:state.shellReport,mapPacks:state.mapPacks,storageHealth:state.storageHealth});
  const scope=compact?report.items.filter(i=>['schedule','pins','packing','offline-map','documents'].includes(i.id)):report.items;
  const counter=`<div class="readiness-counts" aria-label="Preparation status"><span><strong>${report.counts.ok}</strong> recorded checks</span><span><strong>${report.counts.attention}</strong> need attention</span><span><strong>${report.counts.unverified}</strong> not verified</span></div>`;
- return `<section class="preparation" aria-label="Trip preparation"><div class="row-between wrap"><div><h3>${compact?'Before you go':'Trip preparation review'}</h3><p class="subtext">${esc(t.title)} · Based on locally saved data, not bookings or live services</p></div>${compact?action('View all checks','today-open-prepare','button button-small'):''}</div>${!compact?counter:''}<div class="preparation-items">${scope.map(item=>`<div class="preparation-item"><span class="prep-indicator prep-${item.status}" aria-hidden="true">${item.status==='ok'?'✓':item.status==='attention'?'!':'?'}</span><div class="prep-body"><strong>${esc(item.label)}</strong><div class="subtext">${esc(item.detail)}</div></div>${item.action?action('Review','prep-jump:'+item.action,'button button-small') : ''}</div>`).join('')}</div><p class="tiny muted">These are advisory checks, not a travel-safety certificate. Trip documents, routing, Waze offline access and external backups are never assumed verified.</p></section>`;
+ return `<section class="preparation" aria-label="Trip preparation"><div class="row-between wrap"><div><h3>${compact?'Before you go':'Trip preparation review'}</h3><p class="subtext">${esc(t.title)} · Based on locally saved data, not bookings or live services</p></div>${compact?action('View all checks','today-open-prepare','button button-small'):''}</div>${!compact?counter:''}<div class="preparation-items">${scope.map(item=>`<div class="preparation-item"><span class="prep-indicator prep-${item.status}" aria-hidden="true">${item.status==='ok'?'✓':item.status==='attention'?'!':'?'}</span><div class="prep-body"><strong>${esc(item.label)}</strong><div class="subtext">${esc(item.detail)}</div></div>${item.action?action(item.action==='documents'?'Open documents':'Review','prep-jump:'+item.action,'button button-small',`data-trip-id="${esc(t.id)}"`) : ''}</div>`).join('')}</div><p class="tiny muted">These are advisory checks, not a travel-safety certificate. Trip documents, routing, Waze offline access and external backups are never assumed verified.</p></section>`;
 }
-function renderMore(){return `${section('Library & settings','Your data stays in this local TravelIt workspace')}<div class="grid2"><div class="card"><h3>Local backup and recovery</h3><p class="subtext">Export TravelIt domain records, including any external KeepIt reference links, and local-only change history as JSON. This does not export the actual KeepIt notes, embedded assets, or verified sync receipts. Do not include sensitive documents: this backup is <strong>not encrypted</strong>.</p><div class="action-line">${action('Export backup','export-backup','button button-primary button-small')}${action('Restore backup','import-backup')}</div>${state.recovery?`<div class="alert blue" style="margin-top:12px"><strong>Previous workspace available</strong><p class="subtext">Snapshot created ${esc(state.recovery.savedAt)} · ${state.recovery.records} records</p><div class="action-line">${action('Undo last restore','undo-restore','button button-small')}</div></div>`:''}<div class="divider"></div><p class="tiny muted">Never clear browser data, uninstall the PWA, or switch devices without exporting and verifying a backup. Browser storage is not guaranteed permanent.</p></div><div class="card"><h3>Local data diagnostics</h3><div class="divider"></div><h4>Offline startup check</h4><p class="subtext">Verify that every application-shell file is actually cached. A registered service worker alone does not prove offline availability.</p><div class="action-line">${action('Verify offline shell','verify-offline-shell','button button-primary button-small')}</div>${state.shellReport?`<div role="status" class="alert ${state.shellReport.ready?'blue':'red'}" style="margin-top:10px"><b>${state.shellReport.ready?'Cached for this browser':'Offline shell not verified'}</b><p>${esc(state.shellReport.cached)}/${esc(state.shellReport.total)} required files cached · ${esc(state.shellReport.reason)}</p>${state.shellReport.missing.length?`<p class="tiny">Missing: ${esc(state.shellReport.missing.slice(0,5).join(', '))}${state.shellReport.missing.length>5?' …':''}</p>`:''}</div>`:'<p class="subtext">Not checked yet. This app does not claim offline readiness merely because it has a service worker.</p>'}<div class="divider"></div><p class="subtext">Checks this browser's database for successful temporary write/readback and scans existing records for broken references. This does not prove data survives device clearing or confirm cloud sync.</p><div class="action-line">${action('Run local diagnostic','run-local-diagnostic','button button-primary button-small')}</div>${state.storageHealth?`<div class="alert ${state.storageHealth.ok?'blue':'red'}" style="margin-top:10px">${esc(state.storageHealth.message)}</div>`:''}${state.localAudit?`<p class="subtext" style="margin-top:10px">${state.localAudit.recordCount} records · ${state.localAudit.errors} error(s) · ${state.localAudit.warnings} warning(s) · ${state.localAudit.commandCount} local-only changes</p>${state.localAudit.issues.length?`<ul class="offline-warnings">${state.localAudit.issues.slice(0,15).map(i=>`<li>${esc(i.code)}: ${esc(i.detail)} (${esc(i.entity)})</li>`).join('')}</ul>${state.localAudit.issues.length>15?'<p>Additional issues omitted from this view.</p>':''}`:'<p class="subtext">No relationship problems detected in the scanned records.</p>'}`:''}<p class="tiny muted">Backups are still required. A successful probe proves only immediate write/readback on this device.</p></div><div class="card"><h3>Integration status</h3><div class="row-between" style="margin-top:13px"><span>KeepIt Notes and document assets</span><span class="tag yellow">Use KeepIt toolbar</span></div><p class="tiny muted">${state.keepitAssociations.length} saved native-note reference(s), if any, are external dependencies—not backed-up note content. Open native notes using the KeepIt toolbar above.</p><div class="row-between" style="margin-top:13px"><span>LiveIt calendar</span><span class="tag yellow">Not connected</span></div><div class="row-between" style="margin-top:13px"><span>Offline GeoJSON reference maps</span><span class="tag ${activePack()?'':'yellow'}">${activePack()?'Imported locally':'No map loaded'}</span></div><div class="divider"></div><p class="subtext">${state.outbox.length} local change command(s) retained, not synchronized. Do not interpret this count as pending successful cloud delivery.</p></div><div class="card"><h3>Photo library</h3><div class="photo-placeholder" aria-hidden="true">▧</div><p class="subtext">The full travel-photo gallery will link to KeepIt media after the approved read-only bridge is verified. No personal images are imported into this local foundation.</p></div><div class="card"><h3>Travel documents</h3><div class="alert red" style="margin:13px 0"><b>Do not import passports, IDs, or tickets here.</b> Protected KeepIt previews, encryption at rest, and device authentication are required before this feature can be enabled.</div><p class="subtext">The document-wallet contract is in the specification package; this build contains no insecure substitute.</p></div>${renderVehicles()}</div>`;}
+function renderMore(){return `${section('Library & settings','Your data stays in this local TravelIt workspace')}<div class="grid2"><div class="card"><h3>Local backup and recovery</h3><p class="subtext">Export TravelIt domain records, including KeepIt link titles and references, and local-only change history as JSON. KeepIt originals stay in their library. Do not include sensitive documents: this backup is <strong>not encrypted</strong>.</p><div class="action-line">${action('Export backup','export-backup','button button-primary button-small')}${action('Restore backup','import-backup')}</div>${state.recovery?`<div class="alert blue" style="margin-top:12px"><strong>Previous workspace available</strong><p class="subtext">Snapshot created ${esc(state.recovery.savedAt)} · ${state.recovery.records} records</p><div class="action-line">${action('Undo last restore','undo-restore','button button-small')}</div></div>`:''}<div class="divider"></div><p class="tiny muted">Never clear browser data, uninstall the PWA, or switch devices without exporting and verifying a backup. Browser storage is not guaranteed permanent.</p></div><div class="card"><h3>Local data diagnostics</h3><div class="divider"></div><h4>Offline startup check</h4><p class="subtext">Verify that every application-shell file is actually cached. A registered service worker alone does not prove offline availability.</p><div class="action-line">${action('Verify offline shell','verify-offline-shell','button button-primary button-small')}</div>${state.shellReport?`<div role="status" class="alert ${state.shellReport.ready?'blue':'red'}" style="margin-top:10px"><b>${state.shellReport.ready?'Cached for this browser':'Offline shell not verified'}</b><p>${esc(state.shellReport.cached)}/${esc(state.shellReport.total)} required files cached · ${esc(state.shellReport.reason)}</p>${state.shellReport.missing.length?`<p class="tiny">Missing: ${esc(state.shellReport.missing.slice(0,5).join(', '))}${state.shellReport.missing.length>5?' …':''}</p>`:''}</div>`:'<p class="subtext">Not checked yet. This app does not claim offline readiness merely because it has a service worker.</p>'}<div class="divider"></div><p class="subtext">Checks this browser's database for successful temporary write/readback and scans existing records for broken references. This does not prove data survives device clearing or confirm cloud sync.</p><div class="action-line">${action('Run local diagnostic','run-local-diagnostic','button button-primary button-small')}</div>${state.storageHealth?`<div class="alert ${state.storageHealth.ok?'blue':'red'}" style="margin-top:10px">${esc(state.storageHealth.message)}</div>`:''}${state.localAudit?`<p class="subtext" style="margin-top:10px">${state.localAudit.recordCount} records · ${state.localAudit.errors} error(s) · ${state.localAudit.warnings} warning(s) · ${state.localAudit.commandCount} local-only changes</p>${state.localAudit.issues.length?`<ul class="offline-warnings">${state.localAudit.issues.slice(0,15).map(i=>`<li>${esc(i.code)}: ${esc(i.detail)} (${esc(i.entity)})</li>`).join('')}</ul>${state.localAudit.issues.length>15?'<p>Additional issues omitted from this view.</p>':''}`:'<p class="subtext">No relationship problems detected in the scanned records.</p>'}`:''}<p class="tiny muted">Backups are still required. A successful probe proves only immediate write/readback on this device.</p></div><div class="card"><h3>Integration status</h3><div class="row-between" style="margin-top:13px"><span>KeepIt Notes and document assets</span><span class="tag">Trips → Documents</span></div><p class="tiny muted">${state.keepitAssociations.length} saved native-note reference(s), if any, are external dependencies—not backed-up note content. Open native notes using the KeepIt toolbar above.</p><div class="row-between" style="margin-top:13px"><span>LiveIt calendar</span><span class="tag yellow">Not connected</span></div><div class="row-between" style="margin-top:13px"><span>Offline GeoJSON reference maps</span><span class="tag ${activePack()?'':'yellow'}">${activePack()?'Imported locally':'No map loaded'}</span></div><div class="divider"></div><p class="subtext">${state.outbox.length} local change command(s) retained, not synchronized. Do not interpret this count as pending successful cloud delivery.</p></div><div class="card"><h3>Photo library</h3><div class="photo-placeholder" aria-hidden="true">▧</div><p class="subtext">The full travel-photo gallery will link to KeepIt media after the approved read-only bridge is verified. No personal images are imported into this local foundation.</p></div><div class="card"><h3>Travel documents</h3><p class="subtext">Add originals in KeepIt, then choose Trips → Documents in TravelIt to link them to the relevant trip.</p><a class="button button-small" href="${keepItLibraryUrl}" target="_blank" rel="noopener noreferrer">Open KeepIt ↗</a></div>${renderVehicles()}</div>`;}
 function render(){document.documentElement.dataset.workspaceView=state.view;$('#view-select').value=state.view;disposeStreetMap?.();disposeStreetMap=null;renderNav();$('#page-heading').textContent=({explore:'Explore',map:'Map',trips:'My Trips',today:'Today',packing:'Packing',more:'My Library'})[state.view]||'Explore';colorStatus();$('#main').innerHTML=state.view==='explore'?renderExplore():state.view==='map'?renderMap():state.view==='trips'?renderTrips():state.view==='today'?renderToday():state.view==='packing'?renderPacking():renderMore()+renderOfflineReadiness();
  if(state.view==='map'&&state.mapMode==='online')disposeStreetMap=mountOnlineMap({
   container:$('#street-map'),status:$('#street-map-status'),places:state.places,annotations:state.annotations,draft:state.mapDraft,viewport:state.streetViewport,
@@ -578,6 +663,12 @@ function currentMapBounds(){
  return (pack?.regionAtlas||pack?.dataProfile==='osm-street-reference-v1')?streetReferenceBounds(pack.bounds):mapBounds(all);
 }
 async function handler(target){const actionName=target.dataset.action;if(!actionName)return;try{
+ if(actionName==='link-trip-document'){pickTripDocument(selected());return;}
+ if(['open-trip-document','download-trip-document','unlink-trip-document'].includes(actionName)){await useTripDocument(target,actionName);return;}
+ if(actionName==='prep-jump:documents'){
+  const trip=tripById(target.dataset.tripId);if(!trip)throw Error('This trip is no longer available.');
+  state.selectedTrip=trip.id;state.tripTab='documents';await setNav('trips');return;
+ }
  if(actionName==='preview-excel'){
  const guard={expectedEpoch:state.workspaceEpoch,expectedWorkspaceRevision:state.workspaceRevision};
  const {showExcelPreview}=await import('./excel-preview.js?v=trip-scope-1');

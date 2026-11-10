@@ -6,3 +6,18 @@ assert.equal(new Set(result.items.map(i=>i.label.toLowerCase())).size,result.ite
 for(const group of Object.values(TEMPLATE_GROUPS))for(const name of Object.values(group))assert.ok(PACKING_TEMPLATES[name]?.length);
 assert.throws(()=>prepareTemplateSet([],trip,existing,'',()=>''));assert.throws(()=>prepareTemplateSet(['Unknown'],trip,existing,'',()=>''));
 console.log('TRAVELIT_COMBINED_PACKING_PRESERVATION_PASS');
+
+import {normalizeTrip,validateBackup,SCHEMA_VERSION} from '../js/domain.js';
+import {createBackup,verifyBackup} from '../js/backup.js';
+const original=normalizeTrip({id:'trip',title:'Test trip',startDate:'2026-12-01',endDate:'2026-12-02'});
+const file={scope:'sha256:'+'a'.repeat(64),itemId:'01234567-89ab-4def-8123-0123456789ab',kind:'file',title:'Synthetic confirmation'};
+const note={...file,itemId:'11234567-89ab-4def-8123-0123456789ab',kind:'note',title:'Synthetic trip note'};
+const linked=normalizeTrip({...original,keepItDocuments:[file,note]});
+assert.deepEqual(normalizeTrip({...linked,title:'Renamed trip'}).keepItDocuments,[file,note]);
+assert.equal(Object.hasOwn(normalizeTrip({...linked,keepItDocuments:[]}),'keepItDocuments'),false);
+assert.throws(()=>normalizeTrip({...linked,keepItDocuments:[file,file]}),/Duplicate/);
+const data=data=>({format:'travelit-local-backup',schemaVersion:SCHEMA_VERSION,records:[{type:'trip',id:'trip',key:'trip:trip',data}],outbox:[]});
+assert.throws(()=>validateBackup(data({...linked,keepItDocuments:[{...file,content:'Original must stay in KeepIt'}]})),/Backup record is invalid/);
+const {backup}=await verifyBackup(await createBackup(data(linked)));
+assert.deepEqual(backup.records[0].data.keepItDocuments,[file,note]);
+console.log('TRAVELIT_KEEPIT_TRIP_REFERENCES_BACKUP_AND_VALIDATION_PASS');

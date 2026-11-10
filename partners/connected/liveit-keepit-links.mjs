@@ -3,18 +3,23 @@ import {CALENDAR_SOURCE, CALENDAR_TAG} from '../liveit/thinkit/connected-w18e-c1
 import '../liveit/thinkit/connected-w18e-c15396/keepit-reference.js?v=1';
 
 const {isItemId, normalize} = globalThis.LiveItKeepItReferences;
-const liveItPath = '/partners/liveit/thinkit/connected-w18e-c15396/index.html';
+const apps = Object.freeze({
+  liveit: {name:'LiveIt', path:'/partners/liveit/thinkit/connected-w18e-c15396/index.html', property:'liveItKeepItLinks'},
+  travelit: {name:'TravelIt', path:'/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html', property:'travelItKeepItLinks'}
+});
 const isVisible = item => item && !item.trashedAt && isItemId(item.id) &&
   !(item.source === CALENDAR_SOURCE &&
     item.tags?.includes(CALENDAR_TAG));
 
-export function mountLiveItKeepItLinks({frame, getLibrary, getTarget, openItem, isNote}) {
+export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getTarget, openItem, isNote, downloadFile}) {
+  if (!Object.hasOwn(apps,app)) throw Error('Unsupported KeepIt link consumer.');
+  const target = apps[app];
   function install() {
     const child = frame.contentWindow;
     const document = frame.contentDocument;
-    if (!document || child.location.pathname !== liveItPath) return;
+    if (!document || child.location.pathname !== target.path) return;
     async function connection() {
-      if (!frame.isConnected || frame.contentDocument !== document) throw Error('Reopen LiveIt to use KeepIt links.');
+      if (!frame.isConnected || frame.contentDocument !== document) throw Error('Reopen '+target.name+' to use KeepIt links.');
       const library = getLibrary();
       if (!library) throw Error('Open your KeepIt library to browse or open linked items.');
       const assertCurrent = () => {
@@ -25,9 +30,21 @@ export function mountLiveItKeepItLinks({frame, getLibrary, getTarget, openItem, 
       assertCurrent();
       return {library, scope, assertCurrent};
     }
-    child.liveItKeepItLinks = Object.freeze({
+    async function resolve(reference) {
+      const [link] = normalize([reference]);
+      const {library, scope, assertCurrent} = await connection();
+      if (link.scope !== scope) throw Error('Open the original KeepIt library to use this link.');
+      const item = await library.getItem(link.itemId);
+      assertCurrent();
+      if (!isVisible(item)) throw Error('This item is unavailable in KeepIt. It may have been removed or moved to Trash.');
+      return {item, library, assertCurrent};
+    }
+    child[target.property] = Object.freeze({
       async list() {
         const {library, scope, assertCurrent} = await connection();
+        // Travel documents may have just been added in a separate KeepIt tab.
+        if (app === 'travelit' && library.isFolder) await library.reload();
+        assertCurrent();
         const items = await library.list();
         assertCurrent();
         return items.filter(isVisible).map(item => ({
@@ -37,15 +54,20 @@ export function mountLiveItKeepItLinks({frame, getLibrary, getTarget, openItem, 
         })).sort((a,b) => a.title.localeCompare(b.title));
       },
       async open(reference) {
-        const [link] = normalize([reference]);
-        const {library, scope, assertCurrent} = await connection();
-        if (link.scope !== scope) throw Error('Open the original KeepIt library to use this link.');
-        const item = await library.getItem(link.itemId);
-        assertCurrent();
-        if (!isVisible(item)) throw Error('This item is unavailable in KeepIt. It may have been removed or moved to Trash.');
+        const {item, library} = await resolve(reference);
         await openItem(item.id, library);
-      }
+      },
+      ...(downloadFile ? {async download(reference) {
+        const {item, library, assertCurrent} = await resolve(reference);
+        if (isNote(item)) throw Error('Open this note in KeepIt to print or export it.');
+        const original = await library.original(item.id);
+        assertCurrent();
+        if (!(original instanceof Blob)) throw Error('KeepIt could not read the original file.');
+        downloadFile(original, item.originalName || item.title || 'KeepIt file');
+      }} : {})
     });
   }
   frame.addEventListener('load', install);
 }
+
+export const mountLiveItKeepItLinks = mountKeepItItemLinks;

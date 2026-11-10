@@ -1,7 +1,7 @@
 {
   "schema": "keepit.owner-live-release.v1",
   "buildId": "5d492a3fc6f2",
-  "entry": "/assets/library-app-b1c4897cfb7f.js",
+  "entry": "/assets/library-app-aec4dde00dd9.js",
   "target": "OneDrive / KeepIt",
   "sourceArchiveSha256": "d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a",
   "privateSourceBase": "f9b7a3fc5473df6b6ef06542ec3f9f4a0953984f",
@@ -9,7 +9,7 @@
   "cloudSignInVerified": false,
   "cloudOriginalReadbackVerified": false,
   "files": {
-    "partners/connected/index.html": "775da39726ec6bb04f7186c51348cd8b9ea998a36ac9e264c34300a27f7fa4f9",
+    "partners/connected/index.html": "9bda85731d632fa0a4e1c636ad82b84407aa9fc9af10e2754c4f7b5e15164e27",
     "partners/connected/owner-auth-callback.html": "0b54950fe912aa992dafa5c15f79fb020c5a50df96939ef20ceae032844c5e8e",
     "assets/chunk-SGTLM5CQ.js": "d8b3360139a617b3c6d7a53ec96230177ff6869b520a578c5bbea7f5529804f9",
     "assets/chunk-OZVKXUIX.js": "7d853cc51c52b7203db69e44c6d2fedcccc3c2712416f534f812c3dc5869aebc",
@@ -113,10 +113,16 @@
     "assets/keepit-note-ui-db4948167388.js": "db49481673885b8c82e9591d14f44bf98c64bb41bc1fd2eb13dafb434ae52fd7",
     "assets/keepit-note-link-256bd3efc430.js": "256bd3efc4304d6c5694f7589c468fc596f628be4c56720dbb606b9c444547f1",
     "assets/keepit-note-entry-79b88dd8e8ec.js": "79b88dd8e8ecd04f0c71fdf0b48ff747f6b396834155c5c35e48e07490e24d96",
-    "partners/connected/liveit-keepit-links.mjs": "c64012da60b3244d9be2e6fa0f2343466fcf46e7cd2a9643c29f4e8e7d1829c4",
+    "partners/connected/liveit-keepit-links.mjs": "895c82db9733bf8a507960b5ed01c27222c33b89a28ec0e476e477a5bc508900",
     "partners/liveit/thinkit/connected-w18e-c15396/style-2.css": "330aa2538cc93bb9885a4cb6ba9e12ebe1492c018e3f3a3927ef7141fc777179",
     "partners/liveit/thinkit/connected-w18e-c15396/keepit-reference.js": "969b66dd92757dec755bd80bd58cd4c7243c24a8a88be77435a9f9b6fd3cd969",
-    "assets/library-app-b1c4897cfb7f.js": "b1c4897cfb7f11d76b9275ddbce3259231c95456fff8447148a669073bb00136"
+    "assets/library-app-aec4dde00dd9.js": "aec4dde00dd9acfad1b7759737429248459502a5aa0f6d35978df5f217b33618",
+    "partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html": "ba1791676830510ed413ab2d3b5aaacbaca5c6c7ab0f7ca806ee932588f08f5f",
+    "partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app.js": "b7c9ae36ba98b5b305b9e023d961704ad350bd3a715467487486ca133efd78a1",
+    "partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app-fast.js": "dbdc3ea9a968c76f9d432550c60fb9ba794505ca85aaa649f9d1fab13ad7d371",
+    "partners/travelit/thinkit/afda98f5ced9406d0fe5/js/domain.js": "f4e6ffad7ead18949b6c01240f07e92581c92d60faae51b876a094adb2f7a23b",
+    "partners/travelit/thinkit/afda98f5ced9406d0fe5/js/trip-preparation.js": "12f08422135c8311c5b6f1f6139193097e43833744a93c77812f00f412e672f6",
+    "partners/travelit/thinkit/afda98f5ced9406d0fe5/css/workspace.css": "27f7a679ffab109cf964b416ec5d08d4ce472fdd4dd900f494ced671fb5c5693"
   },
   "normalEntry": "/",
   "entryRelease": "owner-connection-v3"
