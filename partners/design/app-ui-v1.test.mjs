@@ -485,6 +485,10 @@ try {
    const page=await ctx.newPage();
    await page.goto(origin+'/partners/connected/',{waitUntil:'domcontentloaded'});
    await page.locator('#connected-apps-toggle').waitFor({state:'visible',timeout:30000});
+   // The deferred navigation stylesheet imports the shared palette. App
+   // navigation can be visible before that nested stylesheet has applied.
+   await page.waitForFunction(()=>getComputedStyle(document.documentElement)
+      .getPropertyValue('--suite-navy-900').trim()==='#102d40',null,{timeout:15000});
    const colors=await page.evaluate(()=>getComputedStyle(document.documentElement)
       .getPropertyValue('--suite-navy-900').trim());
    assert.equal(colors,'#102d40','Connected KeepIt did not receive suite tokens');
