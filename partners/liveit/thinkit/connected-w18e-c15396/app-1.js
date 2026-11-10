@@ -157,7 +157,7 @@
       const parked=/^parked:(work|personal):([A-Za-z0-9_-]{1,100})$/.exec(d.workspace);
       const owner=parked?parked[1]:d.workspace;
       return !WORKSPACES.has(owner)||!d.content||d.content.workspace!==owner||
-        typeof d.content.body!=='string'||(parked&&d.content.opId!==parked[2]);
+        typeof d.content.body!=='string'||!core.validKeepItLinks(d.content)||(parked&&d.content.opId!==parked[2]);
     }))throw new Error('Invalid or cross-workspace draft');
     if(by.records.some(r=>!['work','personal'].includes(r.workspace)||typeof r.opId!=='string'||!r.opId))throw new Error('Invalid record workspace or operation identity');
     const actualDay=value=>typeof value==='string'&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)&&
@@ -429,7 +429,7 @@
     // W5C: draft mutations and revision stamp commit in the same transaction.
     // Prevents stale backup-verification claims after edits in another window.
     async putDraft(workspace,draft){
-      if(!WORKSPACES.has(workspace)||!PLAIN(draft)||draft.workspace!==workspace||typeof draft.body!=='string')
+      if(!WORKSPACES.has(workspace)||!PLAIN(draft)||draft.workspace!==workspace||typeof draft.body!=='string'||!this.core.validKeepItLinks(draft))
         throw new Error('Draft workspace mismatch or malformed content');
       const tx=this.db.transaction(['meta','drafts'],'readwrite'),done=transactionDone(tx);
       try{
@@ -437,7 +437,7 @@
         if(!meta||meta.revision!==this.revision)throw new Error('Data changed in another LiveIt window; reload before saving draft');
         const draftStore=tx.objectStore('drafts');
         const prior=await request(draftStore.get(workspace));
-        if(prior&&prior.content?.opId!==draft.opId&&prior.content?.body?.trim()){
+        if(prior&&prior.content?.opId!==draft.opId&&(prior.content?.body?.trim()||prior.content?.keepItLinks?.length)){
           draftStore.put({...prior,workspace:parkedDraftKey(workspace,prior.content)});
         }
         draftStore.put({workspace,content:clone(draft),modifiedAt:new Date().toISOString()});
@@ -451,7 +451,7 @@
     // started from the same draft operation from overwriting each other's copy.
     async parkConflictCopy(workspace,draft,expectedEpoch,recoveryOpId){
       if(!WORKSPACES.has(workspace)||!draft||draft.workspace!==workspace ||
-         typeof draft.body!=='string'||!draft.body.trim())
+         typeof draft.body!=='string'||!this.core.validKeepItLinks(draft)||(!draft.body.trim()&&!draft.keepItLinks?.length))
         throw new Error('Invalid recovery draft; current editor remains open');
       const key=parkedDraftKey(workspace,{opId:recoveryOpId});
       if(typeof expectedEpoch!=='string'||!expectedEpoch)
