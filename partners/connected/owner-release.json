@@ -1,6 +1,6 @@
 {
   "schema": "keepit.owner-live-release.v1",
-  "buildId": "5d492a3fc6f2",
+  "buildId": "87fc5669ab6d",
   "entry": "/assets/library-app-bd256253b2c7.js",
   "target": "OneDrive / KeepIt",
   "sourceArchiveSha256": "d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a",
@@ -127,7 +127,15 @@
     "partners/connected/travel-calendar.mjs": "236d46d35c863a1916bc738c67d7076595555265a98a1cc23ff3d7e457b8af63",
     "partners/connected/liveit-calendar-read.mjs": "c956fdc30ab129725a91f659e990b427758e9b7bec42bd6d1fa64d8cf8cd2f42",
     "assets/library-app-bd256253b2c7.js": "bd256253b2c774d2cf105739b3dca09cfa475f704156e9b0d5ec710dbd37875a",
-    "assets/keepit-onedrive-connect-7eae6a4687c3.js": "7eae6a4687c312cfef79f5f1149bb6fa86bc58e5c0f101a0940ccedd5d104a09"
+    "assets/keepit-onedrive-connect-7eae6a4687c3.js": "7eae6a4687c312cfef79f5f1149bb6fa86bc58e5c0f101a0940ccedd5d104a09",
+    "thinkit/index.html": "1ce8f828d5a2adcc49e8813075139ed5da8a06fc5a52f85e0fea48659f856078",
+    "thinkit/assets/thinkit-2.js": "db3e915a6f4f379feb3e430c3222a147c01c31f22a065b9be07dd192e785d4ab",
+    "thinkit/36f8901ec722db162bcf/index.html": "7d935fb2d488a1d4d49e74b1cc6dcc73fe6382d26d178be33f6e0e045337f7d3",
+    "thinkit/36f8901ec722db162bcf/assets/thinkit-2.js": "8e05a52a0ea7fc368bfee1b42b6f856fe4162f3b764c9c070d64bd3248325eec",
+    "thinkit/business-model.html": "163da711abe4eabe9352aca54062c799c33c35b76196954fa4eee7ff03b4aa14",
+    "thinkit/assets/business-model-host.js": "6fd2a629a945daa4493acf0c91c6de300dc1e1844e310a858b71a568d8d78054",
+    "thinkit/assets/business-model-host.css": "1e696953098dab2995c1039d9eb2891dbd26015bf8e400e214c2158c2cf10c49",
+    "thinkit/assets/business-model.js": "e9458c7a0bf94acfb8cc67793aece243dcaf998056fe8babbb82a0f8b7505e40"
   },
   "normalEntry": "/",
   "entryRelease": "owner-connection-v3"

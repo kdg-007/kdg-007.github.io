@@ -79,6 +79,10 @@ jobs:
           import shutil
           for rel in [
               'thinkit/assets/thinkit-2.js',
+              'thinkit/assets/business-model-host.js',
+              'thinkit/assets/business-model-host.css',
+              'thinkit/assets/business-model.js',
+              'thinkit/business-model.html',
               'thinkit/assets/thinkit-0.css',
               'thinkit/36f8901ec722db162bcf/assets/thinkit-2.js',
               'thinkit/36f8901ec722db162bcf/assets/thinkit-0.css',
