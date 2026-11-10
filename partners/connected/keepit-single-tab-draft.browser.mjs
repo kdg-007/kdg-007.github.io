@@ -29,7 +29,6 @@ try{
    const reopened=await page.evaluate(async path=>{
     const {a:NoteUI}=await import('/'+path);
     const {c:NoteWorkspace}=await import('/assets/chunk-O6257ALA.js');
-    const {q:packNote}=await import('/assets/chunk-G42SHEZJ.js');
     const {b:hashBlob}=await import('/assets/chunk-ZKN76T53.js');
     const workspace=await new NoteWorkspace({name:'keepit-single-tab-'+crypto.randomUUID()}).open();
     const target='synthetic-local-library', itemId=crypto.randomUUID();
@@ -44,9 +43,10 @@ try{
     ]};
     const values={title:'Synthetic linked note',domain:'Aviation',recordType:'Notes',tags:[],customFields:[],source:'',notes:'',favorite:false};
     const draft=await workspace.saveDraft({id:reservation.draftId,itemId,noteId:itemId,target,document,assets:[asset],values,thinkItAuto:true},0);
-    const blob=await packNote({noteId:itemId,document,assets:[asset]});
-    const item={...values,id:itemId,version:1,digest:await hashBlob(blob),trashedAt:null};
-    await workspace.db.operations.add({id:crypto.randomUUID(),target,itemId,draftId:draft.id,state:'saved',item,digest:item.digest,blob});
+    const operation=await workspace.prepare(draft,{retainDraft:true});
+    const blob=operation.blob;
+    const item={...values,id:itemId,version:1,digest:operation.digest,trashedAt:null};
+    await workspace.db.operations.update(operation.id,{state:'saved',item});
     const library={getItem:async id=>id===itemId?item:null,original:async()=>blob};
     const schema={version:1,revision:0,categories:['Aviation'],recordTypes:['Notes'],fields:[]};
     const ui=new NoteUI({workspace,getLibrary:()=>library,getTarget:async()=>target,getSchema:()=>schema,getRecords:()=>[],onChange:()=>{}});
