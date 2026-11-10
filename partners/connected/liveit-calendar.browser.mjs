@@ -272,9 +272,18 @@ try{
   await otherTravel.locator('#modal-backdrop').waitFor({state:'hidden'});
   await otherTravel.getByText('Trip actions',{exact:true}).click();
   b.page.once('dialog',dialog=>dialog.accept());
+  const beforeDelete=await b.page.evaluate(()=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:travelit')).revision);
   await otherTravel.getByRole('button',{name:'Delete trip',exact:true}).click();
   await otherTravel.getByText('Your journeys',{exact:true}).waitFor();
-  await a.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentWindow?.LiveItDemo?.getProjectionCount()===0,null,{timeout:45000});
+  await b.page.waitForFunction(previous=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:travelit')).revision!==previous,beforeDelete,{timeout:30000}).catch(async error=>{
+   console.error('TRAVELIT_DELETE_SYNC_STATE',await otherTravel.locator('#trip-cloud-status').textContent(),await b.page.evaluate(()=>document.visibilityState),b.errors);
+   throw error;
+  });
+  await a.page.bringToFront();
+  await a.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentWindow?.LiveItDemo?.getProjectionCount()===0,null,{timeout:45000}).catch(async error=>{
+   console.error('LIVEIT_TRIP_DELETE_STATE',await a.page.evaluate(()=>document.visibilityState),await live.locator('#travelCalendarStatus').textContent(),a.errors);
+   throw error;
+  });
   assert.equal(await live.locator('.calendar-mark').filter({hasText:'App folder trip'}).count(),0);
   console.log('TRAVELIT_AUTOMATIC_WORKSPACE_AND_LIVEIT_PERSONAL_SPAN_'+engine.name().toUpperCase()+'_PASS');
 

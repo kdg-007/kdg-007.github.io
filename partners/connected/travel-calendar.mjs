@@ -1,4 +1,4 @@
-import {createAppRepository,findTravelWorkspace,hashText} from './app-repository-store.mjs';
+import {createAppRepository,findTravelWorkspace,hashText} from './app-repository-store.mjs?v=trip-sync-1';
 import {validDay} from '../liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1';
 
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;

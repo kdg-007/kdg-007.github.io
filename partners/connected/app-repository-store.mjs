@@ -96,6 +96,9 @@ export function createAppRepository({app, library, isCurrent}) {
    if(same)return {envelope:await read(key,same),conflict:heads.length>1};
    if(parent==='root'?heads.length!==0:heads.length!==1||heads[0].id!==parent)return {conflict:true};
    assertCurrent();
+   // A fresh OneDrive session has no write grant for folders it only read.
+   // fileFolder() resolved this exact child through the selected app root.
+   fs.allow(directory.id);
    await fs.create(directory.id,name,blob);
    assertCurrent();
    const item=await fs.child(directory.id,name);
