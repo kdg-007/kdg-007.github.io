@@ -1,31 +1,37 @@
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from 'node:https';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { extname, resolve, sep } from 'node:path';
+import { extname, join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const require=createRequire(resolve('package.json'));
 const { chromium,webkit }=require('playwright');
-const root=resolve('.');
-const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json'};
-const server=createServer(async(req,res)=>{
+const root=resolve('.'),temp=mkdtempSync(join(tmpdir(),'thinkit-bmc-'));
+const key=join(temp,'key.pem'),cert=join(temp,'cert.pem');
+execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,
+ '-days','1','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1'],{stdio:'ignore'});
+const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2','.webmanifest':'application/manifest+json'};
+const server=createServer({key:readFileSync(key),cert:readFileSync(cert)},async(req,res)=>{
  try{
-  const url=new URL(req.url,'http://127.0.0.1');
+  const url=new URL(req.url,'https://127.0.0.1');
   const path=resolve(root,'.'+url.pathname+(url.pathname.endsWith('/')?'index.html':''));
   assert.ok(path.startsWith(root+sep));
   const bytes=await readFile(path);
-  res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream'});
+  res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream','Cache-Control':'no-store'});
   res.end(bytes);
  }catch{res.writeHead(404).end();}
 });
 await new Promise(ok=>server.listen(0,'127.0.0.1',ok));
-const origin='http://127.0.0.1:'+server.address().port;
+const origin='https://127.0.0.1:'+server.address().port;
 const image={name:"proof.png",mimeType:"image/png",buffer:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8SsAAAAASUVORK5CYII=","base64")};
 const paths=['/thinkit/','/partners/connected/?connected-app=thinkit'];
 
 async function checkWorkspace(browser,index){
  const context=await browser.newContext({
-  viewport:index?{width:390,height:844}:{width:1440,height:1000},acceptDownloads:true,hasTouch:Boolean(index)
+  viewport:index?{width:390,height:844}:{width:1440,height:1000},acceptDownloads:true,hasTouch:Boolean(index),isMobile:Boolean(index),ignoreHTTPSErrors:true,serviceWorkers:'block'
  });
  try{
   await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
@@ -34,7 +40,10 @@ async function checkWorkspace(browser,index){
   const location=origin+paths[index];
   await page.goto(location,{waitUntil:'domcontentloaded'});
   const shell=index?page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]'):page;
-  await shell.locator('#diStartCreate').click();
+  await shell.locator('#diStartCreate').click().catch(async error=>{
+   console.error('ThinkIt startup',page.url(),errors,await page.locator('#connected-startup').allTextContents());
+   throw error;
+  });
   assert.deepEqual(await shell.locator('[data-project-mode]').evaluateAll(nodes=>nodes.map(node=>node.dataset.projectMode)),['flow','org','mind','bubble','bmc']);
   await shell.locator('[data-project-mode=bmc]').click();
   await shell.getByRole('button',{name:'Create blank project',exact:true}).click();
@@ -106,7 +115,7 @@ async function checkWorkspace(browser,index){
 }
 
 async function checkPrint(browser){
- const context=await browser.newContext();
+ const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'});
  try{
   const page=await context.newPage();
   await page.goto(origin+'/thinkit/business-model.html');
@@ -150,4 +159,4 @@ try{
    console.log('THINKIT_BUSINESS_MODEL_SAVE_REOPEN_AND_PRINT_'+engine.name().toUpperCase()+'_PASS');
   }finally{await browser.close();}
  }
-}finally{await new Promise(ok=>server.close(ok));}
+}finally{await new Promise(ok=>server.close(ok));rmSync(temp,{recursive:true,force:true});}
