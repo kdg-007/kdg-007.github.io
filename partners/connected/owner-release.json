@@ -113,7 +113,13 @@
     "partners/liveit/thinkit/connected-w18e-c15396/app-8.js": "327b13d3439508d34c68f663bbc702c2fec48a8957d6905f05dd614aa92a9bcb",
     "partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs": "0d83bbc265cc62e8fd776c0481b7198b4a8ba5445204b60b85c1b47b8b1b9958",
     "partners/connected/app-repository-store.mjs": "f569838835082bfd8d6b41a7236b2071cea5a8543c65e67df93a922cbb84f7a1",
-    "partners/connected/app-repository-sync.mjs": "d845631b26143c52897b4703a9678912bd881f51ef1e2948288d0fb4e3f1899b"
+    "partners/connected/app-repository-sync.mjs": "d845631b26143c52897b4703a9678912bd881f51ef1e2948288d0fb4e3f1899b",
+    "thinkit/36f8901ec722db162bcf/index.html": "fa54a3abb1a14fdc7a8da9c960cbcaeba1bb24fb2924eb72a3203fed0a8c178f",
+    "thinkit/36f8901ec722db162bcf/assets/thinkit-2.js": "f39e5aec4672e4ff746eb90dddbddf8ab5ef948d0c9da0a46c5dcaa53563a4f2",
+    "thinkit/36f8901ec722db162bcf/assets/business-canvas.js": "3f5a673c6f60f9a968ddfc18d8fe0b7e8aebb2f1f465ff1d0896fdd6e8ec445b",
+    "thinkit/36f8901ec722db162bcf/assets/workspace-layout.css": "4d6bee53afed3da3548fe98770ed466c14c6ad2d7a71bd210f7ecb126119d93f",
+    "thinkit/36f8901ec722db162bcf/assets/rulers.js": "40e68773ca61eeaf0c0e718659473569651287992475bff91fb5da608c049fb0",
+    "thinkit/36f8901ec722db162bcf/assets/print-layout.js": "3b6554f130eb10cd9982b095abf40e6f52e28a5618372d9ee206d76b238a5ea0"
   },
   "normalEntry": "/",
   "entryRelease": "owner-connection-v3"
