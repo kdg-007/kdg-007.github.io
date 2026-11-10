@@ -219,6 +219,8 @@ jobs:
         run: node partners/connected/liveit-calendar.browser.mjs
       - name: Verify Microsoft callback and nonblocking OneDrive reconnect
         run: node partners/connected/owner-connection.test.mjs
+      - name: Verify single-tab draft saves and copy recovery
+        run: node partners/connected/keepit-single-tab-draft.browser.mjs
       - name: Exercise canonical KeepIt native-note create, save and reopen
         shell: bash
         timeout-minutes: 9
