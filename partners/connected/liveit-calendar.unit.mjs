@@ -30,3 +30,37 @@ C.update(data,created.id,created.workspace,{keepItLinks:[]});
 assert.equal(Object.hasOwn(created,'keepItLinks'),false);
 console.log('LIVEIT_KEEPIT_REFERENCE_ROUNDTRIP_AND_VALIDATION_PASS');
 console.log('LIVEIT_CALENDAR_RANGE_CONTRACT_AND_STABLE_NOTE_ID_PASS');
+
+const {tripSpans}=await import('./travel-calendar.mjs');
+const {travelWorkspaceKey}=await import('./app-repository-store.mjs');
+const spanVersion={revision:'f'.repeat(64),payload:JSON.stringify({format:'travelit-local-backup',schemaVersion:6,records:[
+ {type:'trip',id:'legacy-id',data:{id:'legacy-id',title:'A scheduled trip',startDate:'2026-12-30',endDate:'2027-01-02',timezone:'Asia/Manila',notes:'Private notes'}},
+ {type:'stop',id:'entry',data:{title:'Private booking'}}
+]})};
+const [span]=await tripSpans(spanVersion);
+assert.equal(span.endDateExclusive,'2027-01-03');assert.equal(span.workspace,'personal');
+assert.equal(span.visibility,'private');assert.equal(span.editAuthority,'travelit');
+assert.doesNotMatch(JSON.stringify(span),/Private notes|Private booking/);
+assert.deepEqual(await tripSpans(spanVersion),[span]);
+assert.equal(travelWorkspaceKey('a'.repeat(64)),travelWorkspaceKey('a'.repeat(64)));
+assert.notEqual(travelWorkspaceKey('a'.repeat(64)),travelWorkspaceKey('b'.repeat(64)));
+console.log('TRAVELIT_PERSONAL_TRIP_SPAN_PRIVACY_AND_STABLE_WORKSPACE_PASS');
+
+const {readCalendarNotes}=await import('./liveit-calendar-read.mjs');
+const {CALENDAR_SOURCE,CALENDAR_TAG}=await import('../liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs');
+const originalItems=[];
+const bodies=new Map();
+for(let n=0;n<7;n++){
+ const row={...event,id:'fixture-'+n},id=await eventNoteId(row.id);
+ originalItems.push({id,digest:'digest'+n,version:1,source:CALENDAR_SOURCE,tags:[CALENDAR_TAG]});
+ bodies.set(id,{noteId:id,exportMetadata:{notes:n===2?'corrupt':JSON.stringify(eventEnvelope(row))}});
+}
+let requests=0,active=0,peak=0;
+const library={async reload(){},async list(){return originalItems;},async original(id){
+ requests++;active++;peak=Math.max(peak,active);
+ await new Promise(resolve=>setTimeout(resolve,5));active--;return bodies.get(id);
+}};
+const decoded=await readCalendarNotes(library,note=>note);
+assert.equal(decoded.rows.length,6);assert.equal(decoded.unavailable,1);assert.equal(peak,4);
+await readCalendarNotes(library,note=>note);assert.equal(requests,8);
+console.log('LIVEIT_CALENDAR_BOUNDED_READS_AND_PARTIAL_CATALOG_RECOVERY_PASS');

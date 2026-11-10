@@ -33,7 +33,7 @@
   // D1 source remains unchanged. LiveIt W1 is local-only and requires IndexedDB to save.
   let data=D.emptyData(C);
   let calendarSyncState={phase:'offline',message:'Events saved on this device · waiting for OneDrive'};
-  let projections=[]; // Trusted adapter absent: read-only projections; no writer exposed in W2.
+  let projections=[],tripCalendarNotice='';
   let storageIssue='Opening local IndexedDB…';
   let storageReady=false;
   let repository=null;
@@ -115,7 +115,7 @@
       await draftQueue;await mutationQueue;
       const latest=await repository.loadConsistentSnapshot();
       // W15: a reload still never authorizes or displays untrusted TravelIt staging.
-      data=latest.data;projections=[];
+      data=latest.data;
       for(const scope of ['work','personal']){
         cachedDrafts[scope]=latest.drafts[scope];parkedDrafts[scope]=latest.parked[scope];
       }
@@ -510,7 +510,7 @@
         <button type="button" class="utility-button mobile-search-toggle" data-action="mobile-search" aria-label="Search ${esc(scopes[ui.scope])} records" aria-expanded="${ui.mobileSearchOpen}" title="Search current workspace">⌕</button><button type="button" class="utility-button density-switch" data-action="density" aria-label="Switch dashboard density" aria-pressed="${ui.density==='compact'}" title="Switch between comfortable and compact layout">${ui.density==='compact'?'Compact':'Comfort'}</button>
       <button type="button" class="utility-button theme-toggle" data-action="theme" aria-label="Switch to ${ui.theme==='dark'?'light':'dark'} mode" title="Switch to ${ui.theme==='dark'?'light':'dark'} mode">${ui.theme==='dark'?'☼':'☾'}</button></div>
       <button class="button primary capture-top" data-action="capture">+ Capture</button></header>
-      <div class="workspace-context-banner" aria-live="polite"><span class="workspace-context-identity">${scopeLabels[ui.scope]}</span><span class="workspace-context-detail">${ui.scope==='work'?'Work records':'Personal records'} · Calendar shows Work + Personal</span><span class="workspace-context-local" id="calendarSyncStatus" role="status" data-phase="${calendarSyncState.phase}">${storageReady?esc(calendarSyncState.message):'Storage unavailable'}</span></div>
+      <div class="workspace-context-banner" aria-live="polite"><span class="workspace-context-identity">${scopeLabels[ui.scope]}</span><span class="workspace-context-detail">${ui.scope==='work'?'Work records':'Personal records'} · Calendar shows Work + Personal</span><span class="workspace-context-local" id="calendarSyncStatus" role="status" data-phase="${calendarSyncState.phase}">${storageReady?esc(calendarSyncState.message):'Storage unavailable'}</span><span id="travelCalendarStatus" class="small" role="status" hidden></span></div>
       <div id="calendarSyncConflicts"></div>
       ${externalChangeDetected?`<div class="freshness-banner" role="alert"><strong>Another LiveIt window changed this library.</strong> Your open edits are not automatically merged. Preserve your draft before reloading. <button type="button" class="button secondary" data-action="reload-library">Reload latest library</button></div>`:''}
       ${ui.mobileSearchOpen?`<div class="mobile-search-panel"><label for="mobileSearchField">Search ${esc(scopes[ui.scope])} records</label><input type="search" id="mobileSearchField" autocomplete="off" placeholder="Search current workspace" value="${esc(ui.query)}"/></div>`:''}
@@ -821,7 +821,7 @@
     let when=p.eventType==='all_day'?`${p.startDate} through ${C.dayAdd(p.endDateExclusive,-1)}`:
       `${D.sameLocalDay(p.startUTC,p.timezone)} ${D.localClock(p.startUTC,p.timezone)} (${p.timezone})`;
     $('#recordContent').innerHTML=`<div class="dialog-body"><div class="dialog-header"><div><div class="date-kicker">Personal · TravelIt-owned</div><h2 id="recordHeading" class="dialog-title">Travel schedule</h2></div><button class="button icon subtle" data-action="detail-close">×</button></div>
-      <div class="detail-text">${esc(p.title)}</div><div class="detail-meta">${esc(when)}</div><div class="notice" style="margin-top:15px">Read-only TravelIt projection. Editing stays in TravelIt. No verified TravelIt app deep-link or synchronization is connected in W2.</div></div>`;
+      <div class="detail-text">${esc(p.title)}</div><div class="detail-meta">${esc(when)}</div><div class="notice" style="margin-top:15px">Read-only trip from TravelIt. <a class="text-link" href="/partners/connected/?connected-app=travelit" target="_blank" rel="noopener noreferrer">Open TravelIt to edit</a>.</div></div>`;
     if(!details.open)details.showModal();
   }
   async function mutateRecord(id,updates) {
@@ -1466,6 +1466,7 @@
   const calendarPayload=r=>r.type==='event'?C.eventPayload(r):r._calendarSync?.outgoing?JSON.parse(r._calendarSync.outgoing):null;
   function calendarConflicts(){return data.records.filter(r=>r._calendarSync?.conflict);}
   function paintCalendarStatus(){
+    const tripLine=$('#travelCalendarStatus');if(tripLine){tripLine.textContent=tripCalendarNotice;tripLine.hidden=!tripCalendarNotice;}
     const line=$('#calendarSyncStatus');if(line){line.dataset.phase=calendarSyncState.phase;line.innerHTML=esc(calendarSyncState.message)+' <button class="text-link" data-action="calendar-retry">Sync events</button>';}
     const label=$('.workspace-context-local');if(label&&label!==line)label.textContent=calendarSyncState.message;
     const panel=$('#calendarSyncConflicts');if(panel)panel.innerHTML=calendarConflicts().map(r=>`<div class="notice" style="margin:8px 16px" role="alert"><strong>Event changed on another device</strong><p>On this device: ${esc(r.body)}<br>Saved in KeepIt: ${esc(r._calendarSync.conflict.record.body)}</p><button class="button secondary" data-action="calendar-keep-both" data-id="${esc(r.id)}">Keep both versions</button></div>`).join('');
@@ -1484,6 +1485,11 @@
   }
   const calendarAccess={
     ready:()=>ready,
+    setTravelSpans(rows,message=''){
+      const next=D.safeProjections(rows);
+      if(JSON.stringify(next)===JSON.stringify(projections)&&message===tripCalendarNotice)return;
+      projections=next;tripCalendarNotice=message;render();
+    },
     canSync:()=>!composer.open&&!details.open&&!saveInProgress&&!externalChangeDetected,
     async bind(target){
       const pending=mutationQueue.then(async()=>{

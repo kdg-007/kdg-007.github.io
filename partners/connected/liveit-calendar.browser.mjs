@@ -24,7 +24,7 @@ try{
   browser=await engine.launch({headless:true});const fixture=connectionFixture(origin,{writable:true}),contexts=[];uploadFixture=fixture;fixture.uploadEndpoint=origin+'/__calendar-upload';
   async function device(){const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:393,height:852},isMobile:true,hasTouch:true});contexts.push(context);const network={offline:false};await context.route('**/*',route=>network.offline&&['graph.microsoft.com','fixture.storage.live.com'].includes(new URL(route.request().url()).hostname)?route.abort():fixture.route(route));const page=await context.newPage();page.setDefaultTimeout(15000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
    console.log('CALENDAR_DEVICE_OPEN');
-   await page.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1');await page.locator('#onedrive-dialog[open]').waitFor();await page.locator('#onedrive-signin').click();await page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');await frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:20000}).catch(async error=>{console.error('INITIAL_CALENDAR_STATE',await frame.locator('#calendarSyncStatus').innerText(),errors);throw error;});console.log('CALENDAR_DEVICE_READY');return {context,page,frame,errors,network};}
+   await page.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1');await page.locator('#onedrive-dialog[open]').waitFor().catch(async error=>{console.error('STARTUP_ERROR',errors,await page.locator('#result-count').textContent(),await page.locator('#message').textContent());throw error;});await page.locator('#onedrive-signin').click();await page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');await frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:20000}).catch(async error=>{console.error('INITIAL_CALENDAR_STATE',await frame.locator('#calendarSyncStatus').innerText(),errors);throw error;});console.log('CALENDAR_DEVICE_READY');return {context,page,frame,errors,network};}
   const a=await device();
   // Create originals through KeepIt, then associate them in LiveIt.
   await a.page.goto(origin+'/partners/connected/?connected-app=keepit');
@@ -187,8 +187,11 @@ try{
   await a.page.goto(connectedPath('travelit'));await b.page.goto(connectedPath('travelit'));
   const travel=a.page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await travel.locator('#view-select').selectOption('trips');await travel.locator('[data-action="new-trip"]').click();
-  await travel.locator('#f-title').fill('App folder trip');await travel.locator('#modal-form button[type="submit"]').click();
+  await travel.locator('#f-title').fill('App folder trip');
+  await travel.locator('#f-startDate').fill(eventStart);await travel.locator('#f-endDate').fill(eventEnd);
+  await travel.locator('#modal-form button[type="submit"]').click();
   await travel.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await travel.locator('#trip-cloud-status').filter({hasText:'Trips saved in KeepIt'}).waitFor({timeout:45000});
   await a.page.setViewportSize({width:393,height:852});
   await travel.locator('[data-trip-tab="prepare"]').click();
   await travel.getByRole('button',{name:'Open documents'}).click();
@@ -233,12 +236,19 @@ try{
   await travel.locator('#view-select').selectOption('trips');
   await travel.locator('[data-trip-tab="documents"]').click();
   assert.equal(await tripDocs.locator('li').count(),2);
-  await saveAppFile(a.page,'TravelIt');await openAppFile(b.page,'TravelIt','travelit workspace');
+  await a.page.waitForFunction(()=>{
+   const frame=document.querySelector('iframe[title="TravelIt trip planning workspace"]');
+   return frame?.contentDocument.querySelector('#trip-cloud-status')?.textContent==='Trips saved in KeepIt.';
+  },null,{timeout:45000});
   const otherTravel=b.page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await otherTravel.locator('#view-select').selectOption('trips');
-  await otherTravel.getByRole('heading',{name:'App folder trip',exact:true}).waitFor();
+  await otherTravel.getByRole('heading',{name:'App folder trip',exact:true}).waitFor({timeout:45000}).catch(async error=>{
+   console.error('TRAVELIT_RESTORE_STATE',await otherTravel.locator('#trip-cloud-status').textContent(),await b.page.locator('#connected-cloud-status').textContent(),b.errors);
+   throw error;
+  });
   await otherTravel.locator('[data-trip-tab="documents"]').click();
   const restoredDocs=otherTravel.getByRole('region',{name:'Trip documents'});
+  await restoredDocs.getByText('Synthetic meeting note',{exact:true}).waitFor({timeout:45000});
   assert.equal(await restoredDocs.locator('li').count(),2);
   await restoredDocs.getByRole('button',{name:'Remove link to Synthetic boarding pass',exact:true}).click();
   await restoredDocs.locator('li').filter({hasText:'Synthetic boarding pass'}).waitFor({state:'hidden'});
@@ -246,6 +256,28 @@ try{
   await otherTravel.locator('#f-documentSearch').fill('boarding.txt');
   await otherTravel.locator('#keepit-document-choice option').filter({hasText:'Synthetic boarding pass'}).waitFor({state:'attached'});
   console.log('TRAVELIT_TRIP_KEEPIT_LINKS_CANONICAL_OPEN_DOWNLOAD_AND_REOPEN_'+engine.name().toUpperCase()+'_PASS');
+  // Independent profile sees the verified cloud trip in LiveIt without copying it into Work.
+  await a.page.goto(connectedPath('liveit'));
+  const live=a.page.frameLocator('iframe[title="LiveIt journal workspace"]');
+  await a.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentWindow?.LiveItDemo?.getProjectionCount()===1,null,{timeout:45000});
+  await live.locator('[data-action="scope"][data-scope="work"]').first().click();
+  await live.locator('[data-action="nav"][data-view="calendar"]:visible').first().click();
+  assert.equal(await live.locator('.calendar-mark').filter({hasText:'App folder trip'}).count(),0);
+  await live.locator('[data-action="scope"][data-scope="personal"]').first().click();
+  for(const day of [eventStart,eventMiddle,eventEnd]){
+   await live.locator('.calendar-cell[data-date="'+day+'"]').getByText(/App folder trip/).waitFor();
+  }
+  b.page.once('dialog',dialog=>dialog.accept());
+  await otherTravel.locator('#modal-close').click();
+  await otherTravel.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await otherTravel.getByText('Trip actions',{exact:true}).click();
+  b.page.once('dialog',dialog=>dialog.accept());
+  await otherTravel.getByRole('button',{name:'Delete trip',exact:true}).click();
+  await otherTravel.getByText('Your journeys',{exact:true}).waitFor();
+  await a.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentWindow?.LiveItDemo?.getProjectionCount()===0,null,{timeout:45000});
+  assert.equal(await live.locator('.calendar-mark').filter({hasText:'App folder trip'}).count(),0);
+  console.log('TRAVELIT_AUTOMATIC_WORKSPACE_AND_LIVEIT_PERSONAL_SPAN_'+engine.name().toUpperCase()+'_PASS');
+
   assert.deepEqual(a.errors,[]);assert.deepEqual(b.errors,[]);
   console.log('KEEPIT_DEDICATED_APP_FILES_TWO_DEVICES_'+engine.name().toUpperCase()+'_PASS');
   for(const context of contexts)await context.close();await browser.close();browser=null;

@@ -1,4 +1,5 @@
-import {APP_FOLDERS,createAppRepository,hashText,newFileKey} from './app-repository-store.mjs';
+import {APP_FOLDERS,createAppRepository,hashText,newFileKey,travelWorkspaceKey,findTravelWorkspace} from './app-repository-store.mjs?v=trip-sync-1';
+import {mountTravelCalendar} from './travel-calendar.mjs?v=1';
 
 const FRAMES={
  thinkit:'/thinkit/36f8901ec722db162bcf/index.html',
@@ -27,11 +28,13 @@ export function mountAppRepository({getLibrary}){
  const loadBinding=()=>{try{return JSON.parse(localStorage.getItem(settingsKey)||'null');}catch{return null;}};
  const saveBinding=value=>localStorage.setItem(settingsKey,JSON.stringify(value));
  const scopeKey=`${settingsKey}:scope`;
- const adapter=()=>{
+ const appFrame=()=>{
   const frame=[...document.querySelectorAll('iframe')].find(node=>new URL(node.src,location.href).pathname===FRAMES[app]);
-  try{if(frame?.contentWindow.location.origin===location.origin&&frame.contentWindow.location.pathname===FRAMES[app])return frame.contentWindow.keepItAppFiles;}catch{}
+  try{if(frame?.contentWindow.location.origin===location.origin&&frame.contentWindow.location.pathname===FRAMES[app])return frame;}catch{}
   return null;
  };
+ const adapter=()=>appFrame()?.contentWindow?.keepItAppFiles;
+ const syncTravelCalendar=app==='liveit'?mountTravelCalendar({frame:appFrame,getLibrary}):null;
  const connected=async()=>{
   const library=getLibrary();
   if(!library?.isCloud||library.readOnly)throw Error('Connect your KeepIt folder to browse or sync files on OneDrive.');
@@ -64,6 +67,7 @@ export function mountAppRepository({getLibrary}){
   if(task)return task;
   task=Promise.resolve().then(work).catch(error=>{
    status.textContent=error.message||'App file operation failed.';
+   adapter()?.syncStatus?.(status.textContent);
    if(!quiet)console.warn('KeepIt app files:',error.message);
   }).finally(()=>{task=null;});
   return task;
@@ -106,7 +110,7 @@ export function mountAppRepository({getLibrary}){
   const current=await client.capture({opening:true}), binding=loadBinding();
   const currentDigest=current&&await hashText(current.payload);
   if(current&&!current.empty&&!(binding?.scope===scope&&binding.key===version.key&&binding.digest===currentDigest)){
-   if(background)return;
+   if(background)return false;
    if(!window.confirm(`Open “${version.title}” in ${folder}? Your current work will be kept as a local recovery copy.`))return;
    const key=newFileKey(current.title), revision=await hashText(current.payload);
    await remember(scope,{key,title:`${current.title} (local recovery)`,payload:current.payload,revision,parent:'root',localOnly:true});
@@ -118,17 +122,44 @@ export function mountAppRepository({getLibrary}){
   saveBinding(version.localOnly?null:{scope,key:version.key,revision:version.revision,digest:await hashText(applied.payload),identity:applied.identity});
   status.textContent=`Opened “${version.title}” in ${folder}.`;
   if(!background)panel.close();
+  return true;
  }
  let lastRead=0;
  async function sync({newFile=false,quiet=false}={}){
   let binding=loadBinding();
-  if(!newFile&&!binding){if(quiet)return;throw Error('Use Save current work to create a KeepIt file first.');}
+  if(!newFile&&!binding&&app!=='travelit'){if(quiet)return;throw Error('Use Save current work to create a KeepIt file first.');}
   const client=adapter();if(!client){if(quiet)return;throw Error(`${folder} is still opening.`);}
   const current=await client.capture();if(!current){if(quiet)return;throw Error('Open a saved workspace or project first.');}
+  if(!newFile&&!binding&&app==='travelit'){
+   if(quiet&&Date.now()-lastRead<15000)return;
+   lastRead=Date.now();
+   const cloud=await connected(), found=await findTravelWorkspace(cloud.repo);
+   if(found.state==='ready'){
+    const digest=await hashText(current.payload);
+    if(current.empty){if(await openCopy(found.version,cloud.scope,cloud.isCurrent,{background:true}))adapter()?.syncStatus?.('Trips opened from KeepIt.');return;}
+    if(digest===found.version.digest){
+     saveBinding({scope:cloud.scope,key:found.version.key,revision:found.version.revision,digest,identity:current.identity});
+     adapter()?.syncStatus?.('Trips saved in KeepIt.');return;
+    }
+    adapter()?.syncStatus?.('Trips are saved on this device. Open TravelIt files to review the KeepIt workspace.');
+    if(!quiet)throw Error('This device has its own trips. Open the KeepIt workspace explicitly to keep a local recovery copy.');
+    return;
+   }
+   if(found.state==='review'){
+    adapter()?.syncStatus?.('Open TravelIt files to choose a KeepIt workspace.');
+    if(!quiet)throw Error('Choose which TravelIt workspace to open from KeepIt.');
+    return;
+   }
+   if(current.empty){adapter()?.syncStatus?.('No saved TravelIt workspace found in KeepIt.');return;}
+   const key=travelWorkspaceKey(cloud.scope);
+   if(!cloud.isCurrent())return;
+   binding={scope:cloud.scope,key,revision:'root',digest:'',identity:current.identity};
+   saveBinding(binding);
+  }
   if(!newFile&&binding.identity!==current.identity){if(quiet)return;throw Error('Save this work as a new KeepIt file.');}
   const digest=await hashText(current.payload);
   const clean=!newFile&&digest===binding.digest;
-  if(clean&&quiet&&Date.now()-lastRead<60000)return;
+  if(clean&&quiet&&Date.now()-lastRead<(app==='travelit'?15000:60000))return;
   const cloud=await connected();
   if(!newFile&&cloud.scope!==binding.scope)throw Error('This file is linked to a different KeepIt folder.');
   if(clean){
@@ -136,9 +167,12 @@ export function mountAppRepository({getLibrary}){
    const heads=await cloud.repo.heads(binding.key);
    if(heads.length===1&&heads[0].id!==binding.revision){
     const newer=await cloud.repo.open(binding.key,heads[0].id);
-    await openCopy(newer,cloud.scope,cloud.isCurrent,{background:true});
+    if(await openCopy(newer,cloud.scope,cloud.isCurrent,{background:true}))adapter()?.syncStatus?.('Trips updated from KeepIt.');
    }else if(heads.length!==1)status.textContent='Review the file versions in KeepIt before continuing.';
-   else if(!quiet)status.textContent=`Up to date with KeepIt / ${folder}.`;
+   else{
+    if(!quiet)status.textContent=`Up to date with KeepIt / ${folder}.`;
+    client.syncStatus?.('Trips saved in KeepIt.');
+   }
    return;
   }
   if(newFile&&!(binding?.scope===cloud.scope&&binding.identity===current.identity&&binding.revision==='root')){
@@ -149,11 +183,13 @@ export function mountAppRepository({getLibrary}){
   if(result.envelope)await remember(cloud.scope,result.envelope);
   if(result.conflict){
    status.textContent='KeepIt has a newer or conflicting version. Your local edits are intact. Refresh files to review, or save as a new file.';
+   client.syncStatus?.('TravelIt needs a sync review. Open TravelIt files.');
    return;
   }
   if(!cloud.isCurrent())throw Error('The selected KeepIt folder changed.');
   saveBinding({...binding,revision:result.envelope.revision,digest});
   status.textContent=`Saved and verified in KeepIt / ${folder}.`;
+  client.syncStatus?.('Trips saved in KeepIt.');
  }
  action('Save current work as new file',()=>run(async()=>{await sync({newFile:true});const result=status.textContent;await browse();status.textContent=result;}));
  action('Sync edits now',()=>run(()=>sync()));
@@ -181,8 +217,20 @@ export function mountAppRepository({getLibrary}){
  }
  const observer=new MutationObserver(()=>{install();if(document.querySelector('[data-keepit-app-files]'))observer.disconnect();});
  observer.observe(document.body,{childList:true,subtree:true});install();
- const auto=()=>{if(navigator.onLine&&getLibrary()?.isCloud&&document.visibilityState==='visible')void run(()=>sync({quiet:true}),{quiet:true});};
- window.addEventListener('online',()=>{lastRead=0;auto();});
- window.addEventListener('keepit-connection-state',event=>{if(event.detail?.phase==='connected')auto();});
+ function auto(force=false){
+  if(!navigator.onLine||document.hidden)return;
+  if(syncTravelCalendar)void syncTravelCalendar(force);
+  if(getLibrary()?.isCloud)void run(()=>sync({quiet:true}),{quiet:true});
+  else if(app==='travelit'&&['signin','choose-folder','error'].includes(window.keepItConnectionState?.phase))adapter()?.syncStatus?.('Trips on this device. Connect to the same KeepIt library to sync.');
+ }
+ const resume=()=>{lastRead=0;auto(true);};
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)resume();});
+ window.addEventListener('focus',resume);
+ window.addEventListener('online',resume);
+ window.addEventListener('keepit-library-ready',resume);
+ window.addEventListener('connected-workspace-ready',resume);
+ window.addEventListener('keepit-connection-state',event=>{if(['connected','signin','choose-folder','error'].includes(event.detail?.phase))resume();});
+ window.addEventListener('storage',event=>{if(event.key==='keepit-app-file-binding-v1:travelit')resume();});
+ if(app==='travelit')document.addEventListener('travelit-workspace-change',()=>{if(task)void task.then(resume);else resume();});
  setInterval(auto,15000);
 }

@@ -32,6 +32,7 @@ let disposeStreetMap=null;
 let itineraryMode='table',ganttScope='day';
 const budgetDrafts=new Map();
 const state={mapMode:'online',streetViewport:null,db:null,recovery:null,view:'explore',places:[],trips:[],stops:[],packing:[],vehicles:[],expenses:[],outbox:[],keepitAssociations:[],annotations:[],mapPacks:[],activePackId:null,mapFaults:[],atlasView:null,atlasLoading:null,atlasRequest:0,atlasAudit:null,mapDraft:null,mapFixedBounds:null,storageState:'Checking storage…',storageHealth:null,localAudit:null,shellCached:false,shellReport:null,selectedTrip:null,tripTab:'itinerary',search:'',category:'All',stageFilter:'All',calendarMonth:'',chosenDay:'',toastTimer:null};
+state.tripSync=window.parent===window?'Trips on this device. Open TravelIt from LiveIt’s Apps menu to sync.':'Trips on this device. Checking KeepIt…';
 state.recordRevisions={};state.recordPresence={};state.workspaceEpoch=null;state.workspaceRevision=0;state.mapRevision=0;
 const isOnline=()=>navigator.onLine;
 const byTrip=type=>type.filter(v=>v.tripId===state.selectedTrip);
@@ -42,7 +43,12 @@ const pad=n=>String(n).padStart(2,'0');
 const dateShort=d=>{if(!d)return '';const [y,m,day]=d.split('-');return `${m}/${day}/${y}`;};
 function colorStatus(){const e=$('#connection-pill');if(!e)return;e.textContent=isOnline()?'On-device only':'Offline · on-device';e.classList.toggle('offline',!isOnline());}
 function toast(msg,error=false){const t=$('#toast');t.textContent=msg;t.className='toast'+(error?' error':'');clearTimeout(state.toastTimer);state.toastTimer=setTimeout(()=>t.classList.add('hidden'),4400);}
-async function setNav(view){document.documentElement.dataset.navOpen='false';$('#navigation-toggle').setAttribute('aria-expanded','false');state.view=view;const url=new URL(location.href);url.searchParams.set('view',view);['title','text','url'].forEach(k=>url.searchParams.delete(k));history.replaceState(null,'',url);try{if(view==='more'||view==='map'&&state.mapMode==='offline')await refresh();}catch(error){toast(error.message,true);}render();}
+function notifyTripSync(){
+ if(window.parent!==window)setTimeout(()=>{
+  try{parent.document.dispatchEvent(new parent.Event('travelit-workspace-change'));}catch{}
+ },0);
+}
+async function setNav(view){document.documentElement.dataset.navOpen='false';$('#navigation-toggle').setAttribute('aria-expanded','false');state.view=view;const url=new URL(location.href);url.searchParams.set('view',view);['title','text','url'].forEach(k=>url.searchParams.delete(k));history.replaceState(null,'',url);try{if(view==='more'||view==='map'&&state.mapMode==='offline')await refresh();}catch(error){toast(error.message,true);}render();if(view==='trips')notifyTripSync();}
 async function refresh(){const data=await allData(state.db);const info=await getWorkspaceMetadata(state.db);state.recordRevisions=Object.fromEntries(data.records.map(r=>[r.key,r.localRevision??0]));state.recordPresence=Object.fromEntries(data.records.map(r=>[r.key,true]));state.workspaceEpoch=info.epoch;state.workspaceRevision=info.revision;state.mapRevision=info.mapRevision;const of=type=>data.records.filter(r=>r.type===type).map(r=>r.data);state.places=of('place').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));state.trips=of('trip').sort((a,b)=>a.startDate.localeCompare(b.startDate));state.stops=of('stop');state.packing=of('packing');state.vehicles=of('vehicle');state.expenses=of('expense');state.annotations=of('annotation');state.keepitAssociations=of('keepitAssociation');state.outbox=data.outbox;state.recovery=await recoveryInfo(state.db);if(state.loadedMapRevision!==info.mapRevision&&(state.view==='more'||state.view==='map'&&state.mapMode==='offline')){const packs=await listMapPacks(state.db);state.mapPacks=[];state.mapFaults=[];for(const pack of packs){if(await verifyMapPack(pack))state.mapPacks.push(pack);else state.mapFaults.push(pack.name||'Unnamed corrupt map');}for(const region of await listAtlasRegions(state.db)){if(await verifyRegionManifest(region))state.mapPacks.push(region);else state.mapFaults.push(region.name||'Corrupt regional atlas');}const active=await getSetting(state.db,'active-map-pack-id');state.activePackId=active==='__none__'?null:(state.mapPacks.some(p=>p.id===active)?active:(state.mapPacks[0]?.id||null));state.loadedMapRevision=info.mapRevision;}if(!selected()&&state.trips.length)state.selectedTrip=state.trips[0].id;}
 async function finishMapChange(){await refresh();workspaceChannel?.announce('map-edit');}
 async function commit(type,value){const guard=guardedContext(type,value.id);await writeLocally(()=>guardedSaveRecord(state.db,type,value,guard));}
@@ -98,7 +104,8 @@ function guardedContext(type,id){
 }
 async function writeLocally(work){
  if(versionObsolete)throw Error('TravelIt was upgraded in another tab. Reopen this page before saving.');
- localOperationDepth++;try{await work();await refresh();for(const [id,draft] of budgetDrafts)if(!draft.dirty)budgetDrafts.delete(id);workspaceChannel?.announce('edit');render();toast('Saved on this device. Cloud sync is not connected.');}
+ localOperationDepth++;try{await work();await refresh();for(const [id,draft] of budgetDrafts)if(!draft.dirty)budgetDrafts.delete(id);workspaceChannel?.announce('edit');render();toast('Saved on this device.');
+ notifyTripSync();}
  finally{localOperationDepth--;}
 }
 function closeModal(force=false){if(modalBusy){toast('Finishing the import. Please wait.');return false;}if(modalDirty&&force!==true&&!confirm('Discard your unsaved changes?'))return false;modalCleanup?.();modalCleanup=null;$('#modal-backdrop').classList.remove('excel-preview-dialog');$('#modal-backdrop').classList.add('hidden');$('#modal-body').replaceChildren();modalDirty=false;if(modalReturnFocus?.isConnected)modalReturnFocus.focus();else $('#quick-save').focus();return true;}
@@ -403,7 +410,7 @@ async function useTripDocument(target,actionName){
 }
 function renderTrips(){
  const t=selected();const selector=state.trips.length?`<label class="trip-select-label">Trip <select id="trip-select" aria-label="Selected trip">${state.trips.map(v=>`<option value="${esc(v.id)}" ${v.id===t?.id?'selected':''}>${esc(v.title)}</option>`).join('')}</select></label>`:'<h2>Your journeys</h2>';
- const heading=`<div class="trip-command-bar">${selector}<div class="row wrap">${action('Import Excel','preview-excel')}${action('+ New trip','new-trip')}${t?menu('Trip actions',action('Edit trip','edit-trip')+action('Download trip brief','brief-trip')+(t.importReceipt?`<p>Excel: ${esc(t.importReceipt.filename)} · ${t.importReceipt.activityCount} activities. Schedule and activity details.</p>${action('Undo import','undo-excel-import')}`:'')+action('Delete trip','delete-trip','button button-small button-danger')):''}</div></div>`;
+ const heading=`<p id="trip-cloud-status" class="subtext" role="status">${esc(state.tripSync)}</p><div class="trip-command-bar">${selector}<div class="row wrap">${action('Import Excel','preview-excel')}${action('+ New trip','new-trip')}${t?menu('Trip actions',action('Edit trip','edit-trip')+action('Download trip brief','brief-trip')+(t.importReceipt?`<p>Excel: ${esc(t.importReceipt.filename)} · ${t.importReceipt.activityCount} activities. Schedule and activity details.</p>${action('Undo import','undo-excel-import')}`:'')+action('Delete trip','delete-trip','button button-small button-danger')):''}</div></div>`;
  if(!t)return heading+`<p class="empty-inline">Create a trip or import an Excel itinerary to begin.</p>`;
  return heading+`<section class="trip-workspace"><div class="trip-title-row"><div><h2>${esc(t.title)}</h2><p class="subtext">${dateShort(t.startDate)} – ${dateShort(t.endDate)} · ${esc(t.timezone)}</p></div>${action('Activities table','add-stop','button button-primary button-small')}</div><div class="view-tabs">${[['itinerary','Itinerary'],['calendar','Calendar'],['packing','Packing'],['prepare','Prepare'],['costs','Budget'],['documents','Documents'],['info','Trip info']].map(([tab,label])=>`<button data-trip-tab="${tab}" class="${state.tripTab===tab?'active':''}">${label}</button>`).join('')}</div>${state.tripTab==='itinerary'?renderItinerary(t):state.tripTab==='calendar'?renderTripCalendar(t):state.tripTab==='packing'?renderPacking(true):state.tripTab==='costs'?renderCosts(t):state.tripTab==='prepare'?renderPreparation(t):state.tripTab==='documents'?renderTripDocuments(t):`<div class="card"><p>${esc(t.notes||'No trip notes yet.')}</p><p class="subtext">Native rich notes use KeepIt notes in the Apps menu.</p></div>`}</section>`;
 }
@@ -681,9 +688,9 @@ async function handler(target){const actionName=target.dataset.action;if(!action
  if(actionName==='delete-trip'){
   const trip=selected();if(!trip)return;
   const guard={expectedEpoch:state.workspaceEpoch,expectedWorkspaceRevision:state.workspaceRevision,expectedTripRevision:state.recordRevisions['trip:'+trip.id]};
-  if(!confirm(`Delete “${trip.title}” from this device? This also removes its itinerary, packing, expenses, map annotations and note links.`))return;
+  if(!confirm(`Delete “${trip.title}” and its itinerary, packing, expenses, map annotations and note links? If this workspace syncs with KeepIt, the deletion will sync as well.`))return;
   await writeLocally(()=>guardedDeleteTrip(state.db,trip.id,guard));
-  budgetDrafts.delete(trip.id);state.chosenDay='';state.calendarMonth='';state.tripTab='itinerary';render();toast('Trip deleted from this device.');return;
+  budgetDrafts.delete(trip.id);state.chosenDay='';state.calendarMonth='';state.tripTab='itinerary';render();toast('Trip deleted.');return;
  }
  if(actionName==='undo-excel-import'){
   const trip=selected();if(!trip?.importReceipt)return;
@@ -737,6 +744,7 @@ async function keepItMapList(){
  return [...await listMapPacks(state.db),...await listAtlasRegions(state.db)];
 }
 window.keepItAppFiles=Object.freeze({capture:captureKeepItTrips,
+ syncStatus(message){state.tripSync=message;const line=$('#trip-cloud-status');if(line)line.textContent=message;},
  async listMaps(){return (await keepItMapList()).map(({id,name})=>({id,name}));},
  async captureMap(id){
   const map=(await keepItMapList()).find(item=>item.id===id);
