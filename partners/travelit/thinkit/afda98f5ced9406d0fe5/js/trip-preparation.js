@@ -45,7 +45,10 @@ export function reviewTripPreparation({trip,stops=[],places=[],packing=[],expens
  add('app-cache','Offline application',shellReport?.ready===true?'ok':'unverified',shellReport?.ready===true?'Current application-shell files checked in browser cache; device persistence is not guaranteed.':'Offline shell has not passed its cache verification on this device.','offline');
  const hasReferenceMap=mapPacks.some(p=>p && (p.regionAtlas || p.dataProfile || p.type || p.featureCount));
  add('offline-map','Offline map', 'unverified',hasReferenceMap?'A local reference map is installed, but it is NOT offline road navigation.':'No locally verified geographic reference map. Waze requires its own connectivity and map availability.','offline');
- add('documents','Travel documents','unverified','Passport, IDs, tickets and confirmations cannot be verified here; use a trusted secure wallet until KeepIt integration is approved.',null);
+ const documents=trip.keepItDocuments?.length||0;
+ add('documents','Travel documents','unverified',documents
+  ? `${documents} KeepIt link(s) saved. Review the originals and download any files you need offline.`
+  : 'Link your passports, itineraries, confirmations, brochures and guides from KeepIt.','documents');
  add('backup','External backup','unverified','No external backup recovery has been verified. Export a TravelIt backup and keep a copy outside this browser.','offline');
  if(storageHealth?.ok===true)add('storage','Storage readback','ok','A temporary local write/readback succeeded; this does not guarantee long-term device retention.','offline');
  else add('storage','Storage readback','unverified','Run Local Data Diagnostics to check this browser’s immediate write/readback.','offline');

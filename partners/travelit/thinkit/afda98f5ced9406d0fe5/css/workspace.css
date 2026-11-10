@@ -88,3 +88,8 @@ html[data-suite-app="travelit"]:fullscreen .topbar,html[data-suite-app="travelit
 html[data-suite-app="travelit"]:fullscreen #main{padding:10px;height:100dvh;overflow:auto}
 html[data-suite-app="travelit"]:fullscreen .street-map-frame{height:calc(100dvh - 100px)}
 html[data-suite-app="travelit"]:fullscreen #main:has(.map-editing) .street-map-frame{height:calc(100dvh - 155px)}
+
+.trip-document-list{list-style:none;margin:12px 0;padding:0}
+.trip-document{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line);padding:12px 0;overflow-wrap:anywhere}
+.trip-document .button{min-height:40px}
+#trip-document-status:empty{display:none}

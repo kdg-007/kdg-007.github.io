@@ -182,10 +182,63 @@ try{
   await travel.locator('#view-select').selectOption('trips');await travel.locator('[data-action="new-trip"]').click();
   await travel.locator('#f-title').fill('App folder trip');await travel.locator('#modal-form button[type="submit"]').click();
   await travel.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await a.page.setViewportSize({width:393,height:852});
+  await travel.locator('[data-trip-tab="prepare"]').click();
+  await travel.getByRole('button',{name:'Open documents'}).click();
+  const tripDocs=travel.getByRole('region',{name:'Trip documents'});
+  await tripDocs.waitFor();
+  assert.equal(await tripDocs.getByRole('link',{name:/Add files in KeepIt/}).getAttribute('href'),'/partners/connected/?connected-app=keepit');
+  async function addTripDocument(query,title){
+   await tripDocs.getByRole('button',{name:/Link from KeepIt/}).click();
+   await travel.locator('#f-documentSearch').fill(query);
+   const options=travel.locator('#keepit-document-choice');
+   const option=options.locator('option').filter({hasText:title});
+   await option.waitFor({state:'attached'});
+   await options.selectOption(await option.getAttribute('value'));
+   await travel.getByRole('button',{name:'Link to trip',exact:true}).click();
+   await travel.locator('#modal-backdrop').waitFor({state:'hidden'});
+  }
+  // The original can be added from KeepIt in a different tab after the trip is open.
+  const keepItTab=await a.context.newPage();
+  await keepItTab.goto(connectedPath('keepit'));
+  await keepItTab.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});
+  await keepItTab.locator('#file-input').setInputFiles({name:'boarding.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic boarding confirmation')});
+  await keepItTab.locator('#capture-title').fill('Synthetic boarding pass');
+  await keepItTab.locator('#capture-form').getByRole('button',{name:'Save',exact:true}).click();
+  await keepItTab.getByText('Synthetic boarding pass',{exact:true}).first().waitFor();
+  await keepItTab.locator('#upload-summary').filter({hasText:'Uploads complete'}).waitFor({state:'attached'});
+  await keepItTab.close();
+  await addTripDocument('boarding.txt','Synthetic boarding pass');
+  await addTripDocument('meeting','Synthetic meeting note');
+  await tripDocs.getByRole('button',{name:'Open Synthetic meeting note in KeepIt',exact:true}).click();
+  await a.page.locator('dialog.note-dialog[open]').getByText('Original meeting notes for the LiveIt link test.',{exact:true}).waitFor();
+  await a.page.locator('dialog.note-dialog[open]').getByRole('button',{name:'Close',exact:true}).click();
+  await tripDocs.getByRole('button',{name:'Open Synthetic boarding pass in KeepIt',exact:true}).click();
+  await a.page.locator('#item-dialog[open] #item-heading').filter({hasText:'Synthetic boarding pass'}).waitFor();
+  await a.page.locator('#item-dialog').evaluate(dialog=>dialog.close());
+  const [download]=await Promise.all([
+   a.page.waitForEvent('download'),
+   tripDocs.getByRole('button',{name:'Download Synthetic boarding pass for offline use',exact:true}).click()
+  ]);
+  assert.equal(download.suggestedFilename(),'boarding.txt');
+  assert.equal(readFileSync(await download.path(),'utf8'),'Synthetic boarding confirmation');
+  await a.page.reload();
+  await travel.locator('#view-select').selectOption('trips');
+  await travel.locator('[data-trip-tab="documents"]').click();
+  assert.equal(await tripDocs.locator('li').count(),2);
   await saveAppFile(a.page,'TravelIt');await openAppFile(b.page,'TravelIt','travelit workspace');
   const otherTravel=b.page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await otherTravel.locator('#view-select').selectOption('trips');
   await otherTravel.getByRole('heading',{name:'App folder trip',exact:true}).waitFor();
+  await otherTravel.locator('[data-trip-tab="documents"]').click();
+  const restoredDocs=otherTravel.getByRole('region',{name:'Trip documents'});
+  assert.equal(await restoredDocs.locator('li').count(),2);
+  await restoredDocs.getByRole('button',{name:'Remove link to Synthetic boarding pass',exact:true}).click();
+  await restoredDocs.locator('li').filter({hasText:'Synthetic boarding pass'}).waitFor({state:'hidden'});
+  await restoredDocs.getByRole('button',{name:/Link from KeepIt/}).click();
+  await otherTravel.locator('#f-documentSearch').fill('boarding.txt');
+  await otherTravel.locator('#keepit-document-choice option').filter({hasText:'Synthetic boarding pass'}).waitFor({state:'attached'});
+  console.log('TRAVELIT_TRIP_KEEPIT_LINKS_CANONICAL_OPEN_DOWNLOAD_AND_REOPEN_'+engine.name().toUpperCase()+'_PASS');
   assert.deepEqual(a.errors,[]);assert.deepEqual(b.errors,[]);
   console.log('KEEPIT_DEDICATED_APP_FILES_TWO_DEVICES_'+engine.name().toUpperCase()+'_PASS');
   for(const context of contexts)await context.close();await browser.close();browser=null;

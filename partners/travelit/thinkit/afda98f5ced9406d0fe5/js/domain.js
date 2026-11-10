@@ -1,3 +1,4 @@
+import '../../../../liveit/thinkit/connected-w18e-c15396/keepit-reference.js?v=1';
 import {importMetadata} from './excel-metadata.js?v=excel-import-1';
 import {normalizeKeepItAssociation,logicalAssociationKey} from './keepit-associations.js';
 import {normalizeVehicle,normalizeExpense,normalizeLeg} from './trip-costs.js';
@@ -19,6 +20,12 @@ export function normalizePlace(input, now = new Date().toISOString()){
   if(input.stage!==undefined && !DISCOVERY_STAGES.includes(input.stage)) throw Error('Unknown discovery stage.');
   return {...(input.importSource!==undefined?{importSource:importMetadata(input.importSource,'source')}:{}),id:input.id||uid(),name:name||'Unidentified place', category:PLACE_CATEGORIES.includes(input.category)?input.category:'Other', stage:input.stage||'Idea', sourceUrl, lat:hasLat?Number(input.lat):null, lng:hasLat?Number(input.lng):null, notes:cleanText(input.notes,4000), createdAt:input.createdAt||now, updatedAt:now};
 }
+export const tripDocumentReferences=globalThis.LiveItKeepItReferences;
+function normalizeTripDocuments(value){
+  const documents=tripDocumentReferences.normalize(value);
+  if(value?.some(link=>Object.keys(link).sort().join(',')!=='itemId,kind,scope,title'))throw Error('A trip document must contain only its KeepIt reference and display title.');
+  return documents;
+}
 export function normalizeTrip(input,now=new Date().toISOString()){
   const title=cleanText(input.title,150);
   if(!title) throw Error('Trip name is required.');
@@ -26,7 +33,8 @@ export function normalizeTrip(input,now=new Date().toISOString()){
   if(input.endDate<input.startDate) throw Error('End date cannot precede start date.');
   const timezone=cleanText(input.timezone||'Asia/Manila',100);
   try{ new Intl.DateTimeFormat('en-US',{timeZone:timezone});}catch{throw Error('Unknown time zone.');}
-  const reserve=Number(input.fuelReservePct??10);if(!Number.isFinite(reserve)||reserve<0||reserve>50)throw Error('Fuel reserve must be 0–50%.');return {...(input.importReceipt!==undefined?{importReceipt:importMetadata(input.importReceipt,'trip')}:{}),id:input.id||uid(),title,startDate:input.startDate,endDate:input.endDate,timezone,vehicleId:input.vehicleId||null,fuelReservePct:reserve,notes:cleanText(input.notes,2000),createdAt:input.createdAt||now,updatedAt:now};
+  const documents=normalizeTripDocuments(input.keepItDocuments);
+  const reserve=Number(input.fuelReservePct??10);if(!Number.isFinite(reserve)||reserve<0||reserve>50)throw Error('Fuel reserve must be 0–50%.');return {...(input.importReceipt!==undefined?{importReceipt:importMetadata(input.importReceipt,'trip')}:{}),...(documents.length?{keepItDocuments:documents}:{}),id:input.id||uid(),title,startDate:input.startDate,endDate:input.endDate,timezone,vehicleId:input.vehicleId||null,fuelReservePct:reserve,notes:cleanText(input.notes,2000),createdAt:input.createdAt||now,updatedAt:now};
 }
 export function validDate(v){ const d=new Date(v+'T12:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(v||'') && !Number.isNaN(d.getTime()) && d.toISOString().slice(0,10)===v;}
 export function normalizeStop(input,trip,now=new Date().toISOString()){
