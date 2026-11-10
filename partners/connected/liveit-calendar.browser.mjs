@@ -26,14 +26,75 @@ try{
    console.log('CALENDAR_DEVICE_OPEN');
    await page.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1');await page.locator('#onedrive-dialog[open]').waitFor();await page.locator('#onedrive-signin').click();await page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');await frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:20000}).catch(async error=>{console.error('INITIAL_CALENDAR_STATE',await frame.locator('#calendarSyncStatus').innerText(),errors);throw error;});console.log('CALENDAR_DEVICE_READY');return {context,page,frame,errors,network};}
   const a=await device();
+  // Create originals through KeepIt, then associate them in LiveIt.
+  await a.page.goto(origin+'/partners/connected/?connected-app=keepit');
+  await a.page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});
+  await a.page.locator('#add-files').click();
+  await a.page.locator('#write-note').click();
+  const editor=a.page.locator('dialog.note-dialog[open]');
+  await editor.getByRole('textbox',{name:'Subject'}).fill('Synthetic meeting note');
+  await editor.locator('.note-editor [contenteditable="true"]').fill('Original meeting notes for the LiveIt link test.');
+  await editor.getByRole('button',{name:'Save',exact:true}).click();
+  await editor.locator('.note-status').filter({hasText:/synced to OneDrive/i}).waitFor({state:'attached',timeout:30000}).catch(async error=>{console.error('LINK_FIXTURE_NOTE_SAVE',await editor.locator('.note-status').innerText(),a.errors);throw error;});
+  await editor.getByRole('button',{name:'Close',exact:true}).click();
+  await a.page.locator('#file-input').setInputFiles({name:'slides.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic presentation contents')});
+  await a.page.locator('#capture-title').fill('Synthetic presentation');
+  await a.page.locator('#capture-form').getByRole('button',{name:'Save',exact:true}).click();
+  await a.page.getByText('Synthetic presentation',{exact:true}).first().waitFor({timeout:30000});
+  await a.page.locator('#upload-summary').filter({hasText:'Uploads complete'}).waitFor({state:'attached',timeout:30000});
+  await a.page.goto(origin+'/partners/connected/?connected-app=liveit');
+  await a.page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});
+  await a.frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:30000});
+  async function attach(frame,query,title){
+    await frame.getByRole('button',{name:'Link from KeepIt'}).click();
+    await frame.locator('#keepItSearch').fill(query);
+    await frame.locator('#keepItResults').getByRole('button',{name:title,exact:true}).click();
+  }
+  await a.frame.locator('[data-action="capture"][data-type="note"]').first().click();
+  await a.frame.locator('#captureBody').fill('Synthetic LiveIt note with links');
+  await attach(a.frame,'slides.txt','Synthetic presentation · file');
+  await attach(a.frame,'meeting','Synthetic meeting note · note');
+  await a.frame.locator('#captureDialog [data-action="capture-close"]').last().click();
+  await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
+  await a.page.reload();
+  await a.page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});
+  await a.frame.locator('[data-action="capture"][data-type="note"]').first().click();
+  assert.equal(await a.frame.locator('#captureBody').inputValue(),'Synthetic LiveIt note with links');
+  assert.equal(await a.frame.locator('[data-action="keepit-unlink"]').count(),2);
+  await a.frame.locator('#saveCapture').click();
+  await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
+  await a.frame.getByText('Synthetic LiveIt note with links',{exact:true}).first().click();
+  const noteDetail=a.frame.locator('#recordDialog');
+  await noteDetail.getByRole('button',{name:'Synthetic meeting note · note'}).click();
+  await a.page.locator('dialog.note-dialog[open]').getByText('Original meeting notes for the LiveIt link test.',{exact:true}).waitFor();
+  await a.page.locator('dialog.note-dialog[open]').getByRole('button',{name:'Close',exact:true}).click();
+  await noteDetail.getByRole('button',{name:'Synthetic presentation · file'}).click();
+  await a.page.locator('#item-dialog[open] #item-heading').filter({hasText:'Synthetic presentation'}).waitFor();
+  await a.page.locator('#item-dialog').evaluate(dialog=>dialog.close());
+  await noteDetail.getByRole('button',{name:'Edit'}).click();
+  await a.frame.getByRole('button',{name:'Remove link to Synthetic presentation'}).click();
+  await a.frame.locator('#saveCapture').click();
+  await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
+  await a.frame.getByText('Synthetic LiveIt note with links',{exact:true}).first().click();
+  assert.equal(await noteDetail.locator('[data-action="keepit-open"]').count(),1);
+  await noteDetail.locator('[data-action="detail-close"]').click();
+  console.log('LIVEIT_KEEPIT_NOTE_AND_FILE_LINKS_OPEN_AND_RECOVER_'+engine.name().toUpperCase()+'_PASS');
+
   const month=await a.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.getTodayDate().slice(0,7));
   const eventStart=`${month}-16`,eventMiddle=`${month}-18`,eventEnd=`${month}-20`;
-  await a.frame.locator('[data-action="capture"][data-type="event"]').first().click();await a.frame.locator('#captureBody').fill('ASEAN Summit');await a.frame.locator('#captureDate').fill(eventStart);await a.frame.locator('#captureEndDate').fill(eventEnd);await a.frame.locator('#captureAllDay').check();await a.frame.locator('#saveCapture').click();await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
+  await a.frame.locator('[data-action="capture"][data-type="event"]').first().click();await a.frame.locator('#captureBody').fill('ASEAN Summit');await a.frame.locator('#captureDate').fill(eventStart);await a.frame.locator('#captureEndDate').fill(eventEnd);await a.frame.locator('#captureAllDay').check();await attach(a.frame,'slides','Synthetic presentation · file');await a.frame.locator('#saveCapture').click();await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
   await a.frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:30000}).catch(async error=>{console.error('CALENDAR_SAVE_FAILURE',engine.name(),await a.frame.locator('#calendarSyncStatus').innerText(),a.errors,JSON.stringify(fixture.requests.slice(-15)),await a.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records));throw error;});console.log('AFTER_SAVE',await a.frame.locator('#calendarSyncStatus').innerText());
   await a.page.waitForFunction(()=>{const f=document.querySelector('iframe[title="LiveIt journal workspace"]');return f.contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit'&&r._calendarSync?.pending===false);});
   console.log('FIRST_DEVICE_EVENT_SAVED');const b=await device();await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit'));
   const received=await b.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.find(r=>r.body==='ASEAN Summit'));
   assert.equal(received.endDate,eventEnd);assert.equal(received.allDay,true);
+  assert.deepEqual(received.keepItLinks.map(({kind,title})=>({kind,title})),[{kind:'file',title:'Synthetic presentation'}]);
+  const wrongLibrary=await b.page.evaluate(async link=>{
+    const access=document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.liveItKeepItLinks;
+    try{await access.open({...link,scope:'sha256:'+'0'.repeat(64)});return false;}
+    catch(error){return error.message;}
+  },received.keepItLinks[0]);
+  assert.match(wrongLibrary,/original KeepIt library/);
   // The other workspace has the same date range, without duplicate records.
   await b.frame.locator('[data-action="scope"][data-scope="personal"]').first().click();await b.frame.locator('[data-action="nav"][data-view="calendar"]:visible').first().click();
   const weekdays=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -61,10 +122,10 @@ try{
   await b.frame.locator('[data-action="scope"][data-scope="work"]').first().click();assert.equal(await b.frame.locator('[data-record-id="'+received.id+'"] .feed-title').count()>0||await b.frame.locator('.calendar-mark').filter({hasText:'ASEAN Summit'}).count()>0,true);
   // Offline edit remains pending; reconnect sends it to the same cloud note.
   b.network.offline=true;await b.context.setOffline(true);
-  await b.frame.locator('[data-action="detail"][data-id="'+received.id+'"]').first().click();await b.frame.locator('[data-action="edit"]').click();await b.frame.locator('#captureBody').fill('ASEAN Summit updated offline');await b.frame.locator('#saveCapture').click();await b.frame.locator('#captureDialog').waitFor({state:'hidden'});
+  await b.frame.locator('[data-action="detail"][data-id="'+received.id+'"]').first().click();await b.frame.locator('[data-action="edit"]').click();await b.frame.locator('#captureBody').fill('ASEAN Summit updated offline');await b.frame.getByRole('button',{name:'Remove link to Synthetic presentation'}).click();await b.frame.locator('#saveCapture').click();await b.frame.locator('#captureDialog').waitFor({state:'hidden'});
   assert.ok(await b.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit updated offline'&&r._calendarSync.pending)));
   b.network.offline=false;await b.context.setOffline(false);await b.frame.locator('[data-action="calendar-retry"]').click();await b.frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:30000});
-  await a.frame.locator('[data-action="calendar-retry"]').click();await a.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit updated offline'));
+  await a.frame.locator('[data-action="calendar-retry"]').click();await a.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit updated offline'&&!r.keepItLinks?.length));
   // Concurrent offline changes are held for review, never last-write-wins.
   b.network.offline=true;
   await b.frame.locator('[data-action="detail"][data-id="'+received.id+'"]').first().click();await b.frame.locator('[data-action="edit"]').click();await b.frame.locator('#captureBody').fill('Offline alternative');await b.frame.locator('#saveCapture').click();await b.frame.locator('#captureDialog').waitFor({state:'hidden'});

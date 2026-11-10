@@ -571,8 +571,100 @@
     renderCapture();if (!composer.open) composer.showModal();
     setTimeout(()=>$('#captureBody')?.focus(),0);
   }
+  const keepItReferences=globalThis.LiveItKeepItReferences;
+  let keepItPicker=null;
+  const hasDraftContent=draft=>!!(C.normalize(draft?.body)||draft?.keepItLinks?.length);
+  function keepItLinksMarkup(record,editing) {
+    const links=record.keepItLinks||[];
+    const canAdd=editing&&['note','event'].includes(record.type);
+    if(!canAdd&&!links.length)return '';
+    return `<section class="keepit-links field-group" aria-label="KeepIt links">
+      <div class="field-label">KeepIt links</div>
+      ${links.length?`<ul class="keepit-link-list">${links.map((link,index)=>`<li>
+        ${editing?`<span>${esc(link.title)} <small>· ${link.kind}</small></span><button type="button" class="button subtle" data-action="keepit-unlink" data-index="${index}" aria-label="Remove link to ${esc(link.title)}">Remove</button>`
+          :`<button type="button" class="button secondary" data-action="keepit-open" data-index="${index}">${esc(link.title)} <small>· ${link.kind}</small></button>`}
+      </li>`).join('')}</ul>`:''}
+      ${canAdd?`<button type="button" class="button secondary" data-action="keepit-pick" aria-controls="keepItPicker" aria-expanded="false" ${links.length>=keepItReferences.limit?'disabled':''}>+ Link from KeepIt</button>
+        <div id="keepItPicker" hidden>
+          <label class="field-label" for="keepItSearch">Find a KeepIt file or note</label>
+          <input class="date-input" type="search" id="keepItSearch" placeholder="Search by title or filename" autocomplete="off">
+          <div class="caption" id="keepItPickerStatus" role="status"></div><ul class="keepit-link-list" id="keepItResults"></ul>
+        </div>`:''}
+      <p class="caption keepit-link-status" role="status"></p>
+    </section>`;
+  }
+  function refreshCaptureLinks(focus) {
+    const area=$('#captureKeepItLinks');
+    if(!area||!ui.capture)return;
+    keepItPicker=null;
+    area.innerHTML=keepItLinksMarkup(ui.capture,true);
+    if(focus)(area.querySelector(focus)||area.querySelector('[data-action="keepit-unlink"]')||$('#captureBody'))?.focus();
+  }
+  function paintKeepItResults() {
+    const results=$('#keepItResults'),status=$('#keepItPickerStatus');
+    if(!keepItPicker?.items||!results||!status)return;
+    const query=$('#keepItSearch').value.trim().toLocaleLowerCase();
+    const selected=new Set((ui.capture.keepItLinks||[]).map(keepItReferences.key));
+    const matches=keepItPicker.items.filter(link=>!selected.has(keepItReferences.key(link))&&
+      [link.title,link.filename].some(label=>label.toLocaleLowerCase().includes(query)));
+    results.replaceChildren(...matches.slice(0,30).map(link=>{
+      const row=document.createElement('li'),button=document.createElement('button');
+      button.type='button';button.className='button subtle';button.dataset.action='keepit-add';
+      button.dataset.id=link.itemId;
+      button.textContent=link.title+' · '+link.kind;
+      if(link.filename&&link.filename!==link.title)button.title=link.filename;
+      row.append(button);return row;
+    }));
+    status.textContent=matches.length>30?'Showing 30 results. Search to narrow the list.':matches.length?'':'No matching files or notes.';
+  }
+  async function toggleKeepItPicker(button) {
+    const panel=$('#keepItPicker'),cap=ui.capture;
+    if(!panel||!composer.open||!cap||saveInProgress)return;
+    panel.hidden=!panel.hidden;
+    button.setAttribute('aria-expanded',String(!panel.hidden));
+    if(panel.hidden){keepItPicker=null;return;}
+    const picker={items:null};
+    keepItPicker=picker;
+    $('#keepItSearch').focus();
+    $('#keepItPickerStatus').textContent='Opening KeepIt library…';
+    try{
+      if(!window.liveItKeepItLinks)throw Error('Open LiveIt from the connected workspace to use KeepIt links.');
+      const items=await window.liveItKeepItLinks.list();
+      if(keepItPicker!==picker||ui.capture!==cap||!panel.isConnected)return;
+      picker.items=items;paintKeepItResults();
+    }catch(error){
+      if(keepItPicker===picker&&panel.isConnected)$('#keepItPickerStatus').textContent=error.message;
+    }
+  }
+  function editKeepItLinks(action,element) {
+    if(!composer.open||!ui.capture||saveInProgress||freshCaptureInProgress)return;
+    const links=ui.capture.keepItLinks||[];
+    if(action==='keepit-add'){
+      const link=keepItPicker?.items?.find(item=>item.itemId===element.dataset.id);
+      if(!link||links.length>=keepItReferences.limit||links.some(item=>keepItReferences.key(item)===keepItReferences.key(link)))return;
+      ui.capture.keepItLinks=keepItReferences.normalize([...links,link]);
+    }else{
+      ui.capture.keepItLinks=links.filter((_,index)=>index!==Number(element.dataset.index));
+    }
+    void persistDraft();
+    refreshCaptureLinks('[data-action="keepit-pick"]:enabled');
+  }
+  async function openKeepItLink(button) {
+    const record=allScoped({includeArchived:true}).find(row=>row.id===ui.detail);
+    const link=record?.keepItLinks?.[Number(button.dataset.index)];
+    if(!details.open||!link)return;
+    const status=$('#recordContent .keepit-link-status');
+    button.disabled=true;status.textContent='Opening in KeepIt…';
+    try{
+      if(!window.liveItKeepItLinks)throw Error('Open LiveIt from the connected workspace to use KeepIt links.');
+      await window.liveItKeepItLinks.open(link);
+      status.textContent='';
+    }catch(error){status.textContent=error.message;}
+    finally{button.disabled=false;}
+  }
   function renderCapture() {
     const cap=ui.capture;if(!cap)return;
+    keepItPicker=null;
     const isTask=cap.type==='task'||cap.type==='reminder';const isEvent=cap.type==='event';const isJournal=cap.type==='journal';
     const types=['note','quote','task','reminder','event','journal'];
     $('#captureContent').innerHTML=`<div class="dialog-body"><div class="dialog-header"><div><div class="date-kicker">${esc(scopeLabels[cap.workspace])} · local draft</div><h2 class="dialog-title" id="captureHeading">${ui.editing?'Edit record':'Quick Capture'}</h2></div><button class="button icon subtle" data-action="capture-close" aria-label="Close and preserve draft">×</button></div>
@@ -582,6 +674,7 @@
       ${isTask&&(cap.targetWorkspace||cap.workspace)==='work'?`<div class="task-stream-field"><label class="field-label" for="captureTaskStream">Work task stream</label><select id="captureTaskStream" class="select-input" aria-label="Classify this Work task"><option value="unassigned" ${workTaskStream(cap)==='unassigned'?'selected':''}>Unassigned</option><option value="projects" ${workTaskStream(cap)==='projects'?'selected':''}>Projects</option><option value="operations" ${workTaskStream(cap)==='operations'?'selected':''}>Operations</option></select></div>`:''}
       <div class="capture-toolrow"><div class="capture-type"><label class="field-label" for="captureType">Capture as</label><select id="captureType" class="select-input">${types.map(t=>`<option value="${t}" ${cap.type===t?'selected':''}>${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}</select></div>
       <button class="button subtle" data-action="capture-more" aria-expanded="${ui.captureDetailsOpen}" aria-controls="captureOptional">${ui.captureDetailsOpen?'− Fewer options':'+ Date, space & settings'}</button></div>
+      <div id="captureKeepItLinks">${keepItLinksMarkup(cap,true)}</div>
       ${cap.categories.length&&!ui.captureDetailsOpen?`<p class="caption" style="margin-top:8px">Selected: ${cap.categories.map(esc).join(', ')}</p>`:''}
       ${ui.captureDetailsOpen?`<div id="captureOptional" class="capture-optional"><div class="field-group" style="margin-top:0"><label class="field-label" for="captureScope">Save this record in</label><select id="captureScope" class="select-input" aria-label="Choose destination workspace for this record" style="max-width:210px">${["work","personal"].map(s=>`<option value="${s}" ${s===(cap.targetWorkspace||cap.workspace)?"selected":""}>${scopes[s]}</option>`).join("")}</select>${(cap.targetWorkspace||cap.workspace)!==cap.workspace?`<p class="caption" role="status" style="margin-top:8px">On Save, this ${cap.editingId?'record will move':'entry will be created'} in <strong>${esc(scopes[cap.targetWorkspace])}</strong>. The unfinished recovery draft stays available here until saved.</p>`:''}</div><div class="row-fields field-group"><div><label class="field-label" for="captureDate">${isJournal?'Occurred on':isEvent?'Start date':'Date'}</label><input class="date-input" type="date" id="captureDate" value="${esc(isJournal?cap.occurredOn||cap.date:cap.date)}" /></div>
       ${isTask?`<div><label class="field-label" for="captureDue">${cap.type==='reminder'?'Due date (required)':'Due date (optional)'}</label><input class="date-input" type="date" id="captureDue" value="${esc(cap.dueDate||'')}" ${cap.type==='reminder'?'required':''}/><div class="due-quick-actions" role="group" aria-label="Quick due-date choices">${[['today','Today'],['tomorrow','Tomorrow'],['week','In 7 days'],...(cap.type==='task'?[['clear','Clear date']]:[])].map(([choice,label])=>{const expected=W12.quickDueDate(todayDate,choice,cap.type);return `<button type="button" class="due-quick-choice" data-action="due-quick" data-choice="${choice}" aria-pressed="${(cap.dueDate||'')===expected}">${label}</button>`;}).join('')}</div></div>`:'<div></div>'}</div>
@@ -625,7 +718,7 @@
       ui.captureDetailsOpen=!!(fresh.categories.length||['event','reminder','journal'].includes(fresh.type));
       renderCapture();
       $('#captureBody')?.focus();
-      notify('New '+fresh.type+' started.'+(C.normalize(previous.body)?' Earlier unfinished draft preserved in Recoverable drafts.':''));
+      notify('New '+fresh.type+' started.'+(hasDraftContent(previous)?' Earlier unfinished draft preserved in Recoverable drafts.':''));
       started=true;
       return true;
     }catch(error){
@@ -634,7 +727,7 @@
     }finally{freshCaptureInProgress=false;if(!started)renderCapture();}
   }
   async function closeCapture() {
-    if (ui.capture && C.normalize(ui.capture.body)) { const ok=await persistDraft(); if(!ok){notify('Draft recovery failed. Copy your text before leaving.');return;} notify('Unfinished draft preserved on this device.'); }
+    if (hasDraftContent(ui.capture)) { const ok=await persistDraft(); if(!ok){notify('Draft recovery failed. Copy your text before leaving.');return;} notify('Unfinished draft preserved on this device.'); }
     const hadConflict=captureConflictMode;
     ui.capture=null;ui.editing=null;ui.recovered=false;captureIntent=null;
     captureConflictMode=false;conflictRecoveryId=null;conflictCopySaved=false;
@@ -667,9 +760,9 @@
       const transfer=cap.editingId&&destination!==cap.workspace?{id:cap.editingId,from:cap.workspace,to:destination}:null;
       await enqueueMutation(next=>{
         if(cap.editingId){
-          const rec=C.update(next,cap.editingId,cap.workspace,{body:C.normalize(cap.body),type:cap.type,categories:cap.categories,dueDate:cap.dueDate||'',remindAt:cap.remindAt||'',date:cap.date||todayDate,time:cap.time||'12:00',occurredOn:cap.type==='journal'?cap.occurredOn||cap.date:'',endDate:cap.type==='event'?(cap.endDate||cap.date):'',endTime:cap.type==='event'?(cap.endTime||''):'',allDay:cap.type==='event'&&cap.allDay===true,repeat:cap.type==='event'?cap.repeat||'none':'none'});
+          const rec=C.update(next,cap.editingId,cap.workspace,{body:C.normalize(cap.body),type:cap.type,categories:cap.categories,keepItLinks:cap.keepItLinks||[],dueDate:cap.dueDate||'',remindAt:cap.remindAt||'',date:cap.date||todayDate,time:cap.time||'12:00',occurredOn:cap.type==='journal'?cap.occurredOn||cap.date:'',endDate:cap.type==='event'?(cap.endDate||cap.date):'',endTime:cap.type==='event'?(cap.endTime||''):'',allDay:cap.type==='event'&&cap.allDay===true,repeat:cap.type==='event'?cap.repeat||'none':'none'});
           if(transfer)rec.workspace=destination;
-        }else C.create(next,{workspace:destination,body:cap.body,type:cap.type,categories:cap.categories,date:cap.date,time:cap.type==='event'?(cap.time||'12:00'):'12:00',dueDate:cap.type==='task'||cap.type==='reminder'?cap.dueDate:'',remindAt:cap.type==='task'||cap.type==='reminder'?cap.remindAt:'',occurredOn:cap.type==='journal'?cap.occurredOn||cap.date:'',endDate:cap.type==='event'?(cap.endDate||cap.date):'',endTime:cap.type==='event'?(cap.endTime||''):'',allDay:cap.type==='event'&&cap.allDay===true,repeat:cap.type==='event'?cap.repeat||'none':'none',opId:cap.opId});
+        }else C.create(next,{workspace:destination,body:cap.body,type:cap.type,categories:cap.categories,keepItLinks:cap.keepItLinks,date:cap.date,time:cap.type==='event'?(cap.time||'12:00'):'12:00',dueDate:cap.type==='task'||cap.type==='reminder'?cap.dueDate:'',remindAt:cap.type==='task'||cap.type==='reminder'?cap.remindAt:'',occurredOn:cap.type==='journal'?cap.occurredOn||cap.date:'',endDate:cap.type==='event'?(cap.endDate||cap.date):'',endTime:cap.type==='event'?(cap.endTime||''):'',allDay:cap.type==='event'&&cap.allDay===true,repeat:cap.type==='event'?cap.repeat||'none':'none',opId:cap.opId});
       },{clearDraftWorkspace:cap.workspace,clearDraftOpId:cap.opId,workspaceTransfer:transfer});
       const didSwitch=ui.scope!==destination;
       ui.capture=null;ui.editing=null;ui.recovered=false;captureIntent=null;captureConflictMode=false;conflictRecoveryId=null;conflictCopySaved=false;
@@ -696,16 +789,17 @@
     $('#recordContent').innerHTML=`<div class="dialog-body"><div class="dialog-header"><div><div class="date-kicker">${esc(scopes[rec.workspace])} · ${esc(rec.type)}</div><h2 id="recordHeading" class="dialog-title">Record details</h2></div><button class="button icon subtle" data-action="detail-close" aria-label="Close details">×</button></div>
       <div class="detail-text">${esc(rec.body)}</div><div class="detail-meta" style="margin-top:17px">Recorded date: ${esc(dateShort(rec.date))}${rec.type==='journal'&&rec.occurredOn?`<br>Occurred on: ${esc(dateShort(rec.occurredOn))}`:''}${rec.dueDate?`<br>Due: ${esc(dateShort(rec.dueDate))}`:''}${rec.type==='event'?'<br>End: '+esc(dateShort(rec.endDate||rec.date))+(rec.endTime&&!rec.allDay?' '+esc(rec.endTime):'')+(rec.allDay?' · All day':''):''}<br>Workspace: ${esc(scopes[rec.workspace])}<br>Type: ${esc(rec.type)}</div>
       <div>${rec.categories.map(tag).join('')}</div>${rec.type==='event'&&rec.repeat==='yearly'?'<p class="caption">Repeats yearly from the original date. Feb 29 occurs only in leap years.</p>':''}<div class="detail-footer">${rec.archived?'':`<button class="button secondary" data-action="edit" data-id="${esc(rec.id)}">Edit</button>`}${['task','reminder'].includes(rec.type)?`<button class="button subtle" data-action="toggle-detail-task" data-id="${esc(rec.id)}" ${taskSaving(rec)?'disabled aria-busy="true"':''}>${taskSaving(rec)?'Saving…':rec.complete?'Mark incomplete':'Complete task'}</button>`:''}<button class="button subtle" data-action="archive" data-id="${esc(rec.id)}">${rec.archived?'Restore':'Archive'}</button><button class="button ghost" data-action="move-record" data-id="${esc(rec.id)}" data-destination="${rec.workspace==='work'?'personal':'work'}">Move to ${rec.workspace==='work'?'Personal':'Work'}…</button></div>
+      ${keepItLinksMarkup(rec,false)}
       ${['note','quote','journal'].includes(rec.type)?`<section class="keepit-manual-handoff" aria-label="Optional manual KeepIt transfer">
         <div class="keepit-manual-heading">KeepIt notes</div>
-        <p>This record is saved only in LiveIt on this device. Native KeepIt linking and cloud synchronization are not connected.</p>
+        <p>This short entry is saved on this device. Copy its text to use it in a KeepIt note.</p>
         <div class="keepit-manual-actions">
           <button type="button" class="button secondary" data-action="copy-local-note" data-id="${esc(rec.id)}">Copy text</button>
           <a class="button ghost" href="https://kdg-007.github.io/" target="_blank" rel="noopener noreferrer">Open KeepIt</a>
         </div>
-        <p class="caption">Optional manual transfer: paste into a KeepIt note yourself. The LiveIt record stays unchanged and the two notes are not linked.</p>
+        <p class="caption">To associate an existing KeepIt item with a note or event, use Link from KeepIt in the editor.</p>
       </section>`:''}
-      <p class="caption" style="margin-top:15px">On-device record. KeepIt promotion is intentionally disabled until its authenticated connector is verified.</p></div>`;
+      <p class="caption" style="margin-top:15px">${rec.type==='event'?'Event changes sync when the original KeepIt library is available.':'On-device record.'}</p></div>`;
     if(!details.open)details.showModal();
   }
   // Explicit transfer opens the editor: Save is required, never a surprise view switch.
@@ -858,6 +952,9 @@
       }catch(err){notify('Draft recovery was not completed: '+err.message);}})();
       return;
     }
+    if(action==='keepit-pick'){void toggleKeepItPicker(el);return;}
+    if(action==='keepit-add'||action==='keepit-unlink'){editKeepItLinks(action,el);return;}
+    if(action==='keepit-open'){void openKeepItLink(el);return;}
     if(action==='capture-close') {void closeCapture();return;}
     if(action==='capture-save') {void commitCapture();return;}
     if(action==='capture-more') {ui.captureDetailsOpen=!ui.captureDetailsOpen;renderCapture();$('#captureContent [data-action="capture-more"]')?.focus();return;}
@@ -951,6 +1048,7 @@
   });
   document.addEventListener('input',ev=>{
     const el=ev.target;
+    if(el.id==='keepItSearch'){paintKeepItResults();return;}
     if(el.id==='journalQuery'){ui.journalQuery=el.value.slice(0,100);const caret=el.selectionStart;refreshContent();const replacement=$('#journalQuery');replacement?.focus();replacement?.setSelectionRange(caret,caret);return;}
     if(el.id==='captureBody'&&ui.capture){ui.capture.body=el.value;persistDraft();const save=$('#saveCapture');if(save)save.disabled=!C.normalize(el.value);return;}
     if(el.id==='searchField'||el.id==='mobileSearchField'){
@@ -1379,6 +1477,7 @@
       const local=next.records.find(r=>r.id===id),remote=local?._calendarSync?.conflict;if(!remote)return;
       if(local.type!=='event')throw Error('This entry was converted on this device. Its local text is retained; review the saved event separately.');
       const target=local._calendarSync.target,copy={...C.eventPayload(local),id:C.uid(),body:local.body+' (copy)',opId:C.uid(),createdAt:new Date().toISOString(),_calendarSync:{target,version:0,pending:true,operationId:crypto.randomUUID()}};
+      if(!remote.record.keepItLinks?.length)delete local.keepItLinks;
       Object.assign(local,remote.record,{_calendarSync:{target,version:remote.version,itemId:remote.itemId,digest:remote.digest,pending:false,syncedRecord:C.eventSignature(remote.record)}});
       next.records.unshift(copy);if(!next.operations.includes(copy.opId))next.operations.push(copy.opId);
     },{calendarImport:true,workspaceTransfer:transfer});render();window.dispatchEvent(new Event('liveit-calendar-change'));}catch(error){notify(error.message);}
@@ -1411,7 +1510,10 @@
             return;
           }
           const imported={...saved.record,_calendarSync:{target,itemId:saved.itemId,version:saved.version,digest:saved.digest,pending:false,syncedRecord:C.eventSignature(saved.record)}};
-          if(local)Object.assign(local,imported);else{next.records.unshift(imported);if(!next.operations.includes(imported.opId))next.operations.push(imported.opId);}
+          if(local){
+            if(!imported.keepItLinks?.length)delete local.keepItLinks;
+            Object.assign(local,imported);
+          }else{next.records.unshift(imported);if(!next.operations.includes(imported.opId))next.operations.push(imported.opId);}
         },{calendarImport:true,skipUnchanged:true,workspaceTransfer:transfer});
       }
       render();return true;

@@ -1,3 +1,4 @@
+import './keepit-reference.js?v=1';
 // Portable, credential-free event data shared by LiveIt and its KeepIt host.
 export const CALENDAR_SOURCE='https://kdg-007.github.io/partners/connected/?connected-app=liveit#calendar-v1';
 export const CALENDAR_TAG='LiveIt calendar';
@@ -11,7 +12,8 @@ export function eventRecord(raw){
  if(!['none','yearly',undefined].includes(raw.repeat))throw Error('Invalid event recurrence.');
  if(!Array.isArray(raw.categories)||raw.categories.length>100||raw.categories.some(x=>typeof x!=='string'||x.length>512))throw Error('Invalid event categories.');
  if(typeof raw.createdAt!=='string'||!Number.isFinite(Date.parse(raw.createdAt))||typeof raw.opId!=='string'||!raw.opId)throw Error('Invalid event identity.');
- return {id:raw.id,workspace:raw.workspace,type:'event',body:raw.body,date:raw.date,time,endDate,endTime,allDay,repeat:raw.repeat||'none',categories:[...raw.categories],archived:raw.archived===true,complete:false,inbox:false,dueDate:'',remindAt:'',occurredOn:'',createdAt:raw.createdAt,opId:raw.opId};
+ const links=globalThis.LiveItKeepItReferences.normalize(raw.keepItLinks);
+ return {id:raw.id,workspace:raw.workspace,type:'event',body:raw.body,date:raw.date,time,endDate,endTime,allDay,repeat:raw.repeat||'none',categories:[...raw.categories],archived:raw.archived===true,complete:false,inbox:false,dueDate:'',remindAt:'',occurredOn:'',createdAt:raw.createdAt,opId:raw.opId,...(links.length?{keepItLinks:links}:{})};
 }
 export const eventSignature=raw=>JSON.stringify(eventRecord(raw));
 export async function eventNoteId(id){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('LiveIt calendar v1:'+id));const h=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-5'+h.slice(13,16)+'-8'+h.slice(17,20)+'-'+h.slice(20,32);}

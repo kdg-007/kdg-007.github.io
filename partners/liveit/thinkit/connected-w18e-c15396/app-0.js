@@ -60,9 +60,14 @@
   }
   const allowed = new Set(['note', 'quote', 'task', 'reminder', 'event', 'journal']);
   const workspaces = new Set(['work', 'personal']);
+  function validKeepItLinks(record) {
+    if (record.keepItLinks === undefined) return true;
+    try { globalThis.LiveItKeepItReferences.normalize(record.keepItLinks); return true; }
+    catch { return false; }
+  }
   function validateRecord(rec) {
     return rec && typeof rec.id === 'string' && workspaces.has(rec.workspace) && allowed.has(rec.type) &&
-      typeof rec.body === 'string' && typeof rec.date === 'string' && Array.isArray(rec.categories) &&
+      typeof rec.body === 'string' && typeof rec.date === 'string' && Array.isArray(rec.categories) && validKeepItLinks(rec) &&
       (rec.repeat===undefined || rec.repeat==='none' || (rec.type==='event' && rec.repeat==='yearly')) && (rec.type!=='event'||validEventRange(rec));
   }
   function validEventRange(rec){
@@ -73,7 +78,7 @@
     if(rec.endTime&&!rec.allDay&&end===rec.date&&rec.endTime<=(rec.time||'12:00'))return false;
     return rec.repeat!=='yearly'||Date.parse(end)-Date.parse(rec.date)<=366*86400000;
   }
-  function eventPayload(r){return {id:r.id,workspace:r.workspace,type:'event',body:r.body,date:r.date,time:r.time||'12:00',endDate:r.endDate||r.date,endTime:r.endTime||'',allDay:r.allDay===true,repeat:r.repeat||'none',categories:[...r.categories],archived:r.archived===true,complete:false,inbox:false,dueDate:'',remindAt:'',occurredOn:'',createdAt:r.createdAt,opId:r.opId};}
+  function eventPayload(r){return {id:r.id,workspace:r.workspace,type:'event',body:r.body,date:r.date,time:r.time||'12:00',endDate:r.endDate||r.date,endTime:r.endTime||'',allDay:r.allDay===true,repeat:r.repeat||'none',categories:[...r.categories],archived:r.archived===true,complete:false,inbox:false,dueDate:'',remindAt:'',occurredOn:'',createdAt:r.createdAt,opId:r.opId,...(r.keepItLinks?.length?{keepItLinks:globalThis.LiveItKeepItReferences.normalize(r.keepItLinks)}:{})};}
   const eventSignature=r=>JSON.stringify(eventPayload(r));
   function assertData(data) {
     if (!data || data.schema !== 1 || !Array.isArray(data.records) || !Array.isArray(data.operations)) throw new Error('Invalid prototype store');
@@ -98,6 +103,7 @@
       endDate:input.type==='event'?(input.endDate||date):'',endTime:input.type==='event'?(input.endTime||''):'',allDay:input.type==='event'&&input.allDay===true,
       repeat: input.type==='event'&&input.repeat==='yearly'?'yearly':'none',
       occurredOn: input.type === 'journal' ? (input.occurredOn || date) : '',
+      ...(input.keepItLinks?.length ? {keepItLinks:globalThis.LiveItKeepItReferences.normalize(input.keepItLinks)} : {}),
       opId: input.opId,
       createdAt: new Date().toISOString()
     });
@@ -110,9 +116,11 @@
     const rec = data.records.find(x => x.id === id && x.workspace === workspace);
     if (!rec) throw new Error('Record unavailable in active workspace');
     if (changes.workspace && changes.workspace !== workspace) throw new Error('Cross-workspace move forbidden');
-    const allowedFields = ['body','type','categories','dueDate','remindAt','date','time','occurredOn','complete','archived','inbox','repeat','endDate','endTime','allDay'];
+    const allowedFields = ['body','type','categories','dueDate','remindAt','date','time','occurredOn','complete','archived','inbox','repeat','endDate','endTime','allDay','keepItLinks'];
     for (const key of allowedFields) if (Object.prototype.hasOwnProperty.call(changes,key)) rec[key] = changes[key];
     if (!validateRecord(rec)) throw new Error('Invalid update');
+    if (rec.keepItLinks?.length) rec.keepItLinks=globalThis.LiveItKeepItReferences.normalize(rec.keepItLinks);
+    else delete rec.keepItLinks;
     return rec;
   }
   function scoped(data, workspace, opts = {}) {
@@ -127,6 +135,6 @@
   const dayAdd = (iso, amount) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + amount); return d.toISOString().slice(0,10); };
   const monthAdd = (iso, amount) => { const [y,m] = iso.split('-').map(Number); return new Date(Date.UTC(y,m-1+amount,1)).toISOString().slice(0,10); };
   const dateLabel = iso => new Intl.DateTimeFormat('en', {weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${iso}T12:00:00Z`));
-  return { validEventRange,eventPayload,eventSignature, DEMO_DATE, KEY, DRAFT_PREFIX, defaultSpaces, seed, assertData, normalize, create, update, scoped, esc, dayAdd, monthAdd, dateLabel, uid };
+  return { validKeepItLinks,validEventRange,eventPayload,eventSignature, DEMO_DATE, KEY, DRAFT_PREFIX, defaultSpaces, seed, assertData, normalize, create, update, scoped, esc, dayAdd, monthAdd, dateLabel, uid };
 });
 
