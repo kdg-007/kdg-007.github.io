@@ -32,11 +32,15 @@ try{
   await a.page.locator('#add-files').click();
   await a.page.locator('#write-note').click();
   const editor=a.page.locator('dialog.note-dialog[open]');
-  await editor.getByRole('textbox',{name:'Subject'}).fill('Synthetic meeting note');
   await editor.locator('.note-editor [contenteditable="true"]').fill('Original meeting notes for the LiveIt link test.');
+  const subject=editor.getByRole('textbox',{name:'Subject'});
+  await subject.fill('Synthetic meeting note');
+  await subject.press('Tab');
+  assert.equal(await subject.inputValue(),'Synthetic meeting note');
   await editor.getByRole('button',{name:'Save',exact:true}).click();
   await editor.locator('.note-status').filter({hasText:/synced to OneDrive/i}).waitFor({state:'attached',timeout:30000}).catch(async error=>{console.error('LINK_FIXTURE_NOTE_SAVE',await editor.locator('.note-status').innerText(),a.errors);throw error;});
   await editor.getByRole('button',{name:'Close',exact:true}).click();
+  await a.page.getByText('Synthetic meeting note',{exact:true}).first().waitFor({timeout:30000});
   await a.page.locator('#file-input').setInputFiles({name:'slides.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic presentation contents')});
   await a.page.locator('#capture-title').fill('Synthetic presentation');
   await a.page.locator('#capture-form').getByRole('button',{name:'Save',exact:true}).click();
@@ -48,7 +52,10 @@ try{
   async function attach(frame,query,title){
     await frame.getByRole('button',{name:'Link from KeepIt'}).click();
     await frame.locator('#keepItSearch').fill(query);
-    await frame.locator('#keepItResults').getByRole('button',{name:title,exact:true}).click();
+    await frame.locator('#keepItResults').getByRole('button',{name:title,exact:true}).click().catch(async error=>{
+     console.error('LIVEIT_KEEPIT_PICKER_RESULTS',await frame.locator('#keepItPickerStatus').textContent(),await frame.locator('#keepItResults').textContent());
+     throw error;
+    });
   }
   await a.frame.locator('[data-action="capture"][data-type="note"]').first().click();
   await a.frame.locator('#captureBody').fill('Synthetic LiveIt note with links');
