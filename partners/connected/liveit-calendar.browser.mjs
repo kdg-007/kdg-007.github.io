@@ -35,12 +35,13 @@ try{
   await editor.getByRole('textbox',{name:'Subject'}).fill('Synthetic meeting note');
   await editor.locator('.note-editor [contenteditable="true"]').fill('Original meeting notes for the LiveIt link test.');
   await editor.getByRole('button',{name:'Save',exact:true}).click();
-  await editor.locator('.note-status').filter({hasText:/synced to OneDrive/i}).waitFor({timeout:30000}).catch(async error=>{console.error('LINK_FIXTURE_NOTE_SAVE',await editor.locator('.note-status').innerText(),a.errors);throw error;});
+  await editor.locator('.note-status').filter({hasText:/synced to OneDrive/i}).waitFor({state:'attached',timeout:30000}).catch(async error=>{console.error('LINK_FIXTURE_NOTE_SAVE',await editor.locator('.note-status').innerText(),a.errors);throw error;});
   await editor.getByRole('button',{name:'Close',exact:true}).click();
   await a.page.locator('#file-input').setInputFiles({name:'slides.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic presentation contents')});
   await a.page.locator('#capture-title').fill('Synthetic presentation');
   await a.page.locator('#capture-form').getByRole('button',{name:'Save',exact:true}).click();
   await a.page.getByText('Synthetic presentation',{exact:true}).first().waitFor({timeout:30000});
+  await a.page.locator('#upload-summary').filter({hasText:'Uploads complete'}).waitFor({state:'attached',timeout:30000});
   await a.page.goto(origin+'/partners/connected/?connected-app=liveit');
   await a.page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});
   await a.frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:30000});
