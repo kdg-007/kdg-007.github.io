@@ -1,0 +1,213 @@
+/* Pair sidebar controls with the surface they are painted on. */
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar :is(
+  .shape-card, .page-icon, .footer-action, .small-action, .mind-notes-trigger, .sidebar-bottom-note
+) {
+  background: var(--app-raised);
+  color: var(--app-text);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar :is(
+  .shape-card:hover, .page-item:hover, .page-item.active, .footer-action:hover, .small-action:hover, .mind-notes-trigger:hover
+) {
+  background: var(--app-soft);
+  color: var(--app-text);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .page-item:is(:hover,.active) :is(.page-mode,.di-page-closed-tag) {
+  color: var(--app-muted);
+  opacity: 1;
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar :is(.page-icon,.footer-action span,.small-action,.mind-notes-trigger) {
+  color: var(--app-accent);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .sidebar-top {
+  background: var(--app-chrome);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .collapse-btn:hover {
+  background: var(--app-chrome-soft);
+  color: var(--app-chrome-ink);
+}
+@media(max-width: 850px) {
+  html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .collapse-btn {
+    background: var(--app-chrome-soft);
+    color: var(--app-chrome-ink);
+  }
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .tiny-hint {
+  color: var(--app-chrome-ink);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .inspector {
+  background: var(--app-surface) !important;
+  color: var(--app-text) !important;
+  --ink: var(--app-text) !important;
+  --navy: var(--app-text) !important;
+  --teal: var(--app-accent) !important;
+  --muted: var(--app-muted) !important;
+}
+html[data-suite-app="thinkit"][data-app-scheme] .inspector :is(.sidebar-title,.inspector-subheading,p) {
+  color: var(--app-text);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .inspector .inspector-btn.primary {
+  color: var(--app-accent-on);
+}
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap {
+  --thinkit-paper: #fbf8ee;
+  --thinkit-paper-text: #30271d;
+  --thinkit-paper-muted: #574a36;
+  --grid-dot: #8c8271;
+  background: var(--thinkit-paper);
+}
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap :is(.empty-hint strong,.canvas-guide) { color: var(--thinkit-paper-text); }
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap .empty-hint span:not(.empty-symbol) { color: var(--thinkit-paper-muted); }
+html[data-suite-app="thinkit"][data-app-scheme="midnight"] #canvasWrap,
+html[data-suite-app="thinkit"][data-app-scheme="forest"] #canvasWrap {
+  --thinkit-paper: #f5f6ef;
+  --thinkit-paper-text: #222d28;
+  --thinkit-paper-muted: #43534b;
+  --grid-dot: #829289;
+}
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap .empty-symbol { color: var(--thinkit-paper-muted); }
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap .zoom-controls {
+  background: var(--app-raised);
+  color: var(--app-text);
+}
+
+.thinkit-rulers {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.thinkit-rulers svg,.thinkit-ruler-unit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--ruler-surface, var(--surface2, #f7f8f5));
+  color: var(--ruler-ink, var(--ink, #28382f));
+}
+.thinkit-rulers svg:first-child { border-bottom: 1px solid currentColor; }
+.thinkit-rulers svg:nth-child(2) { border-right: 1px solid currentColor; }
+.thinkit-rulers path { fill: none; stroke: currentColor; stroke-width: .8px; }
+.thinkit-rulers text { fill: currentColor; font: 10px system-ui,sans-serif; }
+.thinkit-ruler-unit {
+  width: 38px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  font: 700 10px system-ui,sans-serif;
+}
+
+.business-active :is(#canvasWrap,#inspector,#diInspectorToggle,.business-diagram-tools,.left-sidebar .sidebar-divider,.status-tip) {
+  display: none !important;
+}
+.business-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: clamp(12px,2vw,28px);
+  background: var(--paper);
+  color: var(--ink);
+}
+.business-board {
+  --board-ink: var(--app-text, var(--ink, #202e33));
+  --board-muted: var(--app-muted, var(--muted, #465a5e));
+  --board-paper: var(--app-raised, var(--surface, #fff));
+  --board-soft: var(--app-soft, var(--surface2, #eaf1f0));
+  --board-rule: var(--board-muted);
+  display: grid;
+  grid-template-columns: repeat(10,minmax(0,1fr));
+  grid-template-rows: minmax(145px,auto) minmax(145px,auto) minmax(135px,auto) auto;
+  grid-template-areas:
+    "partners partners activities activities value value relationships relationships customers customers"
+    "partners partners resources resources value value channels channels customers customers"
+    "cost cost cost cost cost revenue revenue revenue revenue revenue"
+    "credit credit credit credit credit credit credit credit credit credit";
+  gap: 5px;
+  max-width: 1320px;
+  margin-inline: auto;
+  color: var(--board-ink);
+}
+.business-block {
+  min-width: 0;
+  padding: 10px;
+  background: var(--board-paper);
+  border: 1px solid var(--board-rule);
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+.business-block[data-block="partners"] { grid-area: partners; }
+.business-block[data-block="activities"] { grid-area: activities; }
+.business-block[data-block="resources"] { grid-area: resources; }
+.business-block[data-block="value"] { grid-area: value; }
+.business-block[data-block="relationships"] { grid-area: relationships; }
+.business-block[data-block="channels"] { grid-area: channels; }
+.business-block[data-block="customers"] { grid-area: customers; }
+.business-block[data-block="cost"] { grid-area: cost; }
+.business-block[data-block="revenue"] { grid-area: revenue; }
+.business-block h2 { font-size: 15px; margin: 0 0 6px; }
+.business-guide { color: var(--board-muted); font-size: 12px; margin: 0 0 10px; }
+.business-card {
+  padding: 7px;
+  margin: 7px 0;
+  border: 1px solid var(--board-rule);
+  border-radius: 5px;
+}
+.business-card[data-kind="note"] { background: var(--board-soft); border-left-width: 3px; }
+.business-card-heading,.business-add,.business-tools { display: flex; gap: 5px; flex-wrap: wrap; align-items: baseline; }
+.business-card-heading { justify-content: space-between; }
+.business-action,.business-tools button {
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--surface2);
+  border: 1px solid var(--muted);
+  border-radius: 5px;
+  padding: 4px 7px;
+  min-height: 32px;
+}
+.business-action:hover,.business-tools button:hover { background: var(--teal-light); }
+.business-credit { grid-area: credit; font-size: 10px; margin: 3px 0; color: var(--board-muted); }
+.business-credit a,.business-rich a { color: inherit; text-decoration: underline; }
+.business-rich {
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.business-rich :is(p,h1,h2,h3,h4,ul,ol,figure,blockquote) { margin: .45em 0; }
+.business-rich :is(ul,ol) { padding-inline-start: 1.55em; }
+.business-rich pre { white-space: pre-wrap; }
+.business-rich figure { max-width: 100%; }
+.business-rich img { display: block; width: 100%; height: auto; }
+.business-rich table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+.business-rich :is(td,th) { min-width: 0; padding: .3em; border: 1px solid currentColor; vertical-align: top; }
+.business-rich th { background: var(--board-soft, var(--teal-light)); }
+.business-edit {
+  padding: 10px;
+  margin-top: 8px;
+  min-height: 155px;
+  max-height: 36vh;
+  overflow: auto;
+  border: 1px solid var(--muted);
+  border-radius: 7px;
+  background: var(--surface2);
+}
+.business-field { display: grid; gap: 5px; margin-bottom: 10px; }
+.business-field input { min-height: 32px; padding: 5px 8px; }
+.business-message { min-height: 1.35em; margin: 6px 0 0; color: var(--muted); }
+.business-print {
+  position: absolute;
+  width: 1024px;
+  transform-origin: top left;
+}
+.business-print .business-board {
+  --board-ink: #18292d;
+  --board-muted: #46565d;
+  --board-paper: #fff;
+  --board-soft: #edf4f2;
+  --board-rule: #52666a;
+}
+@media(max-width: 850px) {
+  .business-workspace .business-board { display: flex; flex-direction: column; gap: 9px; }
+  .business-action,.business-tools button { min-height: 40px; }
+}
+
+#controls[data-business] :is(label[for="framing"],#framing) { display: none; }

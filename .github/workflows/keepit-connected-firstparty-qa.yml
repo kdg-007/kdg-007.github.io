@@ -199,6 +199,9 @@ jobs:
           printf '{"type":"module","private":true}\n' > package.json
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 esbuild@0.28.2
           npx playwright install --with-deps chromium webkit
+      - name: Verify ThinkIt contrast, millimeter rulers and Business Model Canvas
+        timeout-minutes: 3
+        run: node partners/design/thinkit-layout.browser.mjs
       - name: Verify committed TravelIt startup bundle matches source
         shell: bash
         run: |
