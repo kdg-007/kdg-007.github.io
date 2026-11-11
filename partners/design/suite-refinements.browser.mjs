@@ -12,7 +12,7 @@ execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',jo
 const types={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.json':'application/json','.webmanifest':'application/manifest+json'};
 const serve=(req,res)=>{
  const pathname=new URL(req.url,'https://localhost').pathname,file=resolve(root,'.'+pathname+(pathname.endsWith('/')?'index.html':''));
- try{assert.ok(file.startsWith(root+sep));res.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});res.end(readFileSync(file));}catch{res.writeHead(404).end();}
+ try{assert.ok(file.startsWith(root+sep));const bytes=readFileSync(file);res.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});res.end(bytes);}catch{res.writeHead(404).end();}
 };
 const server=createServer({key:readFileSync(join(temp,'key')),cert:readFileSync(join(temp,'cert'))},serve);
 const travelPath='/partners/travelit/thinkit/afda98f5ced9406d0fe5/';
@@ -58,12 +58,23 @@ async function layout(browser,origin){
   const opened=page.waitForEvent('popup');await page.locator('#diMenuPopup [data-dcmd="view.ruler"]').click();const print=await opened;
   print.on('pageerror',e=>console.error('PRINT_ERROR',e.message));await print.locator('#measurementControls').waitFor().catch(async e=>{console.error('PRINT_BODY',await print.evaluate(()=>({url:location.href,base:document.baseURI,scripts:[...document.scripts].map(s=>s.src)}))); throw e;});
   await print.locator('#rulerPrint').check();
-  for(const name of ['A4','A3','A2','Letter','Legal'])for(const orientation of ['portrait','landscape']){
+  const papers={A4:[210,297],A3:[297,420],A2:[420,594],Letter:[215.9,279.4],Legal:[215.9,355.6]};
+  for(const name of Object.keys(papers))for(const orientation of ['portrait','landscape']){
    await print.locator('#paper').selectOption(name);await print.locator('#orientation').selectOption(orientation);
    const geometry=await print.locator('#paperRulers').evaluate(svg=>({box:svg.getAttribute('viewBox'),x:[...svg.querySelectorAll('line')].some(line=>line.getAttribute('x1')==='100'),y:[...svg.querySelectorAll('line')].some(line=>line.getAttribute('y1')==='100')}));
    assert.ok(geometry.x&&geometry.y);assert.match(geometry.box,/^0 0 /);
    if(browser.browserType().name()==='chromium'){
-    const pdf=(await print.pdf({preferCSSPageSize:true,printBackground:true})).toString('latin1');assert.equal((pdf.match(/\/Type\s*\/Page\b/g)||[]).length,1,name+' '+orientation);
+    await print.emulateMedia({media:'print'});
+    const intervals=await print.locator('#paperRulers').evaluate(svg=>{
+     const line=(axis,mm)=>[...svg.querySelectorAll('line')].find(l=>l.getAttribute(axis+'1')===String(mm)&&l.getAttribute(axis+'2')===String(mm));
+     return {x:line('x',200).getBoundingClientRect().x-line('x',100).getBoundingClientRect().x,y:line('y',200).getBoundingClientRect().y-line('y',100).getBoundingClientRect().y};
+    });
+    for(const value of Object.values(intervals))assert.ok(Math.abs(value-100*96/25.4)<.1,'100 mm print interval');
+    const bytes=await print.pdf({preferCSSPageSize:true,printBackground:true}),pdf=bytes.toString('latin1');assert.equal((pdf.match(/\/Type\s*\/Page\b/g)||[]).length,1,name+' '+orientation);
+    const media=pdf.match(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/);assert.ok(media,'PDF paper dimensions');
+    const dimensions=orientation==='landscape'?[...papers[name]].reverse():papers[name];
+    dimensions.forEach((mm,i)=>assert.ok(Math.abs(Number(media[i+1])-mm*72/25.4)<1,'PDF '+name+' '+orientation));
+    await print.emulateMedia({media:'screen'});
    }
   }
   await print.locator('#rulerH').uncheck();assert.equal(await print.locator('#paperRulers line').evaluateAll(lines=>lines.filter(line=>line.getAttribute('x1')===line.getAttribute('x2')).length),0);
