@@ -43,9 +43,18 @@ try{
  await first.frame.getByRole('button',{name:'Create blank project',exact:true}).click();
  await first.editor.getByText('Ready · local project autosave').waitFor();
  await first.editor.getByRole('textbox',{name:'Value Propositions',exact:true}).fill('Saved via KeepIt project folder');
- const original=JSON.parse((await first.frame.locator('body').evaluate(()=>window.keepItAppFiles.capture())).payload);
- await first.frame.locator('#keepitProjectSync').filter({hasText:/saved.*KeepIt/i}).waitFor({timeout:30000});const panel=await files(first);
- await panel.getByRole('button',{name:'Move Synthetic canvas integration to Trash',exact:true}).waitFor();first.page.once('dialog',dialog=>dialog.accept());await panel.getByRole('button',{name:'Move Synthetic canvas integration to Trash',exact:true}).click();await panel.getByRole('button',{name:'Show Trash',exact:true}).click();await panel.getByRole('button',{name:'Restore Synthetic canvas integration',exact:true}).click();await panel.getByRole('status').filter({hasText:'Restored in KeepIt.'}).waitFor();
+ let original=JSON.parse((await first.frame.locator('body').evaluate(()=>window.keepItAppFiles.capture())).payload);
+ await first.page.waitForFunction(async()=>{
+  const current=await document.querySelector('iframe[title="ThinkIt diagramming and Mind Map workspace"]').contentWindow.keepItAppFiles.capture();
+  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(current.payload)),digest=[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  return JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:thinkit')||'null')?.digest===digest;
+ },null,{timeout:30000});const panel=await files(first);
+ await panel.getByRole('button',{name:'Move Synthetic canvas integration to Trash',exact:true}).waitFor();
+ const before=await first.page.evaluate(()=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:thinkit')).revision);
+ await first.editor.getByRole('textbox',{name:'Key Partners',exact:true}).evaluate(node=>{node.textContent='Retain the latest autosave';node.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'Retain the latest autosave'}));});
+ await first.page.waitForFunction(previous=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:thinkit')).revision!==previous,before);
+ original=JSON.parse((await first.frame.locator('body').evaluate(()=>window.keepItAppFiles.capture())).payload);
+ await panel.getByRole('button',{name:'Move Synthetic canvas integration to Trash',exact:true}).waitFor();first.page.once('dialog',dialog=>dialog.accept());await panel.getByRole('button',{name:'Move Synthetic canvas integration to Trash',exact:true}).click();await panel.getByRole('status').filter({hasText:'Moved to KeepIt Trash.'}).waitFor().catch(async error=>{console.error('TRASH_MOVE_DIAGNOSTIC',engine.name(),await panel.innerText());throw error;});await panel.getByRole('button',{name:'Show Trash',exact:true}).click();await panel.getByRole('button',{name:'Restore Synthetic canvas integration',exact:true}).click().catch(async error=>{console.error('TRASH_RESTORE_DIAGNOSTIC',engine.name(),await panel.innerText());throw error;});await panel.getByRole('status').filter({hasText:'Restored in KeepIt.'}).waitFor();
  await first.context.close();
  const second=await device(),panel2=await files(second);
  await panel2.getByRole('button',{name:'Synthetic canvas integration',exact:true}).click();

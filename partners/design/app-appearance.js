@@ -33,6 +33,16 @@
   applyScheme(readPreference());
 
   function initialize() {
+    const dismissMenus=target=>{
+      let closed=false;
+      for(const menu of document.querySelectorAll('details.action-menu[open],details.note-command-menu[open],details.apps-menu[open]')){
+        if(!target||!menu.contains(target)){menu.open=false;closed=true;}
+      }
+      return closed;
+    };
+    document.addEventListener('pointerdown',event=>dismissMenus(event.target),true);
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&dismissMenus(null)){event.preventDefault();event.stopPropagation();}},true);
+
     // Connected workspaces share their parent's appearance control.
     if (window.parent !== window) {
       try {
@@ -99,7 +109,7 @@
     applyScheme(selected);
 
     function placeButton() {
-      const target = document.querySelector('.connected-shell-bar') ||
+      const target = (window.innerWidth<=600 && document.querySelector('#connected-apps-list')) || document.querySelector('.connected-shell-bar') ||
         document.querySelector('.library-top .top-actions') ||
         document.querySelector('.topbar');
       if (target && button.parentNode !== target) {
@@ -108,6 +118,7 @@
       }
     }
     placeButton();
+    window.addEventListener('resize',placeButton);
     new MutationObserver(placeButton).observe(document.body, {childList: true, subtree: true});
   }
   window.addEventListener('storage', event => {

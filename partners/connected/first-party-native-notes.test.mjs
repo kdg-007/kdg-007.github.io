@@ -31,6 +31,14 @@ const server=createServer({key:readFileSync(key),cert:readFileSync(cert)},(req,r
   res.end(readFileSync(file));
  }catch{res.writeHead(404);res.end('Not found');}
 });
+async function reopenNoteTools(page){
+ const drawer=page.locator('#connected-note-tools');
+ if(await drawer.getAttribute('open')===null){
+  if(await page.locator('#connected-apps-list').isHidden())await page.locator('#connected-apps-toggle').click();
+  await page.locator('#connected-note-tools-toggle').click();
+ }
+ await page.locator('#connected-note-tools[open] > header').waitFor({state:'visible'});
+}
 let browser=null;
 const ua='Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1';
 try{
@@ -225,7 +233,7 @@ try{
     'section[aria-label="LiveIt connected workspace"] select')?.options.length>0,
     null,{timeout:30000});
    assert.ok(await target.locator('option').count()>0);
-   await host.getByRole('button',{name:'Open native note'}).click();
+   await reopenNoteTools(page);await host.getByRole('button',{name:'Open native note'}).click();
    const note=page.locator('dialog.note-dialog');
    await note.waitFor({state:'visible',timeout:45000});
    const editor=note.locator('.note-editor [contenteditable="true"]');
@@ -272,7 +280,7 @@ try{
    console.log('KEEPIT_QA_LIVEIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:20000});
-   await host.getByRole('button',{name:'Open native note'}).click();
+   await reopenNoteTools(page);await host.getByRole('button',{name:'Open native note'}).click();
    await note.waitFor({state:'visible',timeout:30000});
    await page.waitForFunction(t=>document.querySelector('dialog.note-dialog')?.textContent?.includes(t),
     noteText,{timeout:30000});
@@ -314,7 +322,7 @@ try{
     'section[aria-label="TravelIt connected workspace"] select')?.options.length>0,
     null,{timeout:25000});
    assert.ok((await travelTarget.locator('option').count())>0);
-   await travelHost.getByRole('button',{name:'Open native note'}).click();
+   await reopenNoteTools(page);await travelHost.getByRole('button',{name:'Open native note'}).click();
    await note.waitFor({state:'visible',timeout:35000}).catch(async()=>{
      throw Error('TravelIt native editor not opened: '+JSON.stringify({
       status:await travelHost.getByRole('status').textContent(),errors
@@ -348,7 +356,7 @@ try{
    console.log('KEEPIT_QA_TRAVELIT_ORIGINAL_BODY_READBACK_'+tag+'_PASS');
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden'});
-   await travelHost.getByRole('button',{name:'Open native note'}).click();
+   await reopenNoteTools(page);await travelHost.getByRole('button',{name:'Open native note'}).click();
    await note.waitFor({state:'visible',timeout:35000});
    await page.waitForFunction(text=>document.querySelector('dialog.note-dialog')?.textContent?.includes(text),
      travelNote,{timeout:25000});
