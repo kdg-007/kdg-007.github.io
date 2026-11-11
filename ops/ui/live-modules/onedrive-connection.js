@@ -791,7 +791,7 @@ var ve = class {
     }, l("onedrive-dialog").addEventListener("cancel", (c) => {
       this.pending && c.preventDefault();
     }), l("onedrive-signin").onclick = () => this.work(async () => {
-      if (!this.canChange()) throw new Error("Finish your current edit before connecting OneDrive.");
+      await this.waitForChange();
       sessionStorage.setItem("keepit-open-onedrive", "1");
       let c = new URL(location.href).searchParams.get("connected-app");
       sessionStorage.setItem("keepit-owner-return-app", ["liveit", "keepit", "thinkit", "travelit"].includes(c) ? c : "keepit"), await this.prepareAuth(), await this.auth.signIn();
@@ -950,8 +950,19 @@ var ve = class {
     const fs=new _(this.auth,{onProgress:this.progress,fetcher}),root=await fs.initialize();
     fs.qaDriveRootId=root.id;this.fs=fs;this.stack=[root];this.status();
   }
-  async show() {
-    return this.startTask ? (this.present(), this.startTask) : this.canChange() ? (this.present(), this.bound && this.fs ? (this.$("onedrive-browser").hidden = true, this.note("Connected to OneDrive / " + (S()?.path || "your library") + "."), true) : this.start({ force: true, interactive: true })) : this.progress({ error: "Save or close the current edit before changing libraries." });
+  async waitForChange(){
+    const deadline=Date.now()+2000;
+    while(!this.canChange()){
+      if(Date.now()>=deadline)throw Error('A save or edit is still active. Let it finish or close the edit, then retry. Your local work is retained.');
+      await new Promise(resolve=>setTimeout(resolve,40));
+    }
+  }
+  async show(){
+    if(this.startTask){this.present();return this.startTask;}
+    // Viewing an existing connection never switches libraries or signs out.
+    if(this.bound&&this.fs){this.present();this.$('onedrive-browser').hidden=true;this.note('Connected to OneDrive / '+(S()?.path||'your library')+'.');return true;}
+    try{await this.waitForChange();this.present();return this.start({force:true,interactive:true});}
+    catch(error){this.progress({error:error.message});return false;}
   }
   async browse() {
     let e = this.$, t = this.stack.at(-1);

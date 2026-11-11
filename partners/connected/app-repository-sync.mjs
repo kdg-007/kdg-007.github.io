@@ -24,6 +24,7 @@ function make(tag,label,into){const element=document.createElement(tag);element.
 export function mountAppRepository({getLibrary}){
  const app=new URL(location.href).searchParams.get('connected-app'),folder=APP_FOLDERS[app];
  if(!Object.hasOwn(FRAMES,app)||!folder)return;
+ const saveSession=crypto.randomUUID();
  const settingsKey=`keepit-app-file-binding-v1:${app}`;
  const contentLabel=app==='travelit'?'Trips':app==='thinkit'?'Project':'Workspace';
  const loadBinding=()=>{try{return JSON.parse(localStorage.getItem(settingsKey)||'null');}catch{return null;}};
@@ -112,7 +113,13 @@ export function mountAppRepository({getLibrary}){
  async function changeFileState(file,remove){
   if(remove&&!window.confirm('Move “'+file.title+'” to Trash in KeepIt? You can restore the saved file later.'))return;
   const cloud=await connected();
-  const result=remove?await cloud.repo.trash(file.key,file.revision):await cloud.repo.restore(file.key,file.revision);
+  const latest=loadBinding();
+  // A background save in this same mount may have advanced the listed row.
+  // Only adopt our own acknowledged revision; remote and other-tab changes
+  // still require an explicit refresh and the repository's head check.
+  const own=remove&&latest?.scope===cloud.scope&&latest.key===file.key&&latest.localSaveSession===saveSession&&latest.localSaveRevision===latest.revision;
+  const expected=own?latest.revision:file.revision;
+  const result=remove?await cloud.repo.trash(file.key,expected):await cloud.repo.restore(file.key,expected);
   if(result.conflict)throw Error('Another device changed this file. Refresh its versions before continuing.');
   if(!cloud.isCurrent())throw Error('The selected KeepIt folder changed.');
   const binding=loadBinding();
@@ -216,6 +223,7 @@ export function mountAppRepository({getLibrary}){
    binding={scope:cloud.scope,key:newFileKey(current.title),revision:'root',digest:'',identity:current.identity};
    saveBinding(binding);
   }
+  client.syncStatus?.(contentLabel+' saved on this device · Syncing with KeepIt…');
   const result=await cloud.repo.save({key:binding.key,parent:binding.revision,title:current.title,payload:current.payload});
   if(result.envelope)await remember(cloud.scope,result.envelope);
   if(result.conflict){
@@ -224,7 +232,7 @@ export function mountAppRepository({getLibrary}){
    return;
   }
   if(!cloud.isCurrent())throw Error('The selected KeepIt folder changed.');
-  saveBinding({...binding,revision:result.envelope.revision,digest});
+  saveBinding({...binding,revision:result.envelope.revision,digest,localSaveSession:saveSession,localSaveRevision:result.envelope.revision});
   status.textContent=`Saved and verified in KeepIt / ${folder}.`;
   client.syncStatus?.(contentLabel+' saved in KeepIt.');
  }
