@@ -61,9 +61,12 @@
  connection.addEventListener('click',()=>document.getElementById('connect-onedrive')?.click());
  const updateConnection=detail=>{
   if(!detail?.message)return;
-  connection.hidden=false;connection.textContent=detail.message;
+  connection.hidden=false;
+  const labels={connected:'KeepIt connected',connecting:'Connecting…',waiting:'Sync waiting',signin:'Reconnect KeepIt','choose-folder':'Choose KeepIt folder',error:'Connection needs attention'};
+  connection.textContent=labels[detail.phase]||'KeepIt connection';
+  connection.setAttribute('aria-label',detail.message);
   connection.dataset.phase=detail.phase;
-  connection.title=detail.phase==='connected'?'Open OneDrive connection':'Open OneDrive connection to sign in or retry';
+  connection.title=detail.message+' · Open connection details';
  };
  window.addEventListener('keepit-connection-state',event=>updateConnection(event.detail));
  updateConnection(window.keepItConnectionState);
@@ -92,6 +95,14 @@
    window.dispatchEvent(new Event('connected-workspace-ready'));
   };
   const frame=host.querySelector('iframe');
+  const reserve=()=>{
+   const width=Math.ceil(bar.getBoundingClientRect().width)+24;
+   host.style.setProperty('--connected-controls-width',width+'px');
+   try{frame?.contentDocument?.documentElement.style.setProperty('--connected-controls-width',width+'px');}catch{}
+  };
+  new ResizeObserver(reserve).observe(bar);window.addEventListener('resize',reserve);
+  if(frame)frame.addEventListener('load',reserve);
+  reserve();
   if(frame){
    frame.addEventListener('load',finishOpening,{once:true});
    if(frame.contentDocument?.readyState==='complete'&&frame.contentDocument.URL!=='about:blank')finishOpening();
@@ -144,4 +155,43 @@
  document.addEventListener('click',e=>{
   if(!list.hidden&&!nav.contains(e.target)){list.hidden=true;opener.setAttribute('aria-expanded','false');}
  });
+ const wired=new WeakSet(),documents=new Set();
+ function dismiss(source,target,escape=false){
+  let closed=false;
+  for(const doc of documents){
+   if(doc!==document&&!doc.defaultView?.frameElement?.isConnected){documents.delete(doc);continue;}
+   const inside=element=>!escape&&source===doc&&target&&element?.contains(target);
+   const apps=doc.getElementById('connected-apps-list'),toggle=doc.getElementById('connected-apps-toggle');
+   if(apps&&!apps.hidden&&!inside(apps)&&!inside(toggle)){
+    apps.hidden=true;toggle?.setAttribute('aria-expanded','false');if(escape)toggle?.focus();closed=true;
+   }
+   const drawer=doc.getElementById('connected-note-tools');
+   if(drawer?.open&&!inside(drawer)&&!inside(doc.getElementById('connected-note-tools-toggle'))){drawer.open=false;closed=true;}
+   for(const menu of doc.querySelectorAll('details.action-menu[open],details.note-command-menu[open],details.apps-menu[open]')){
+    if(!inside(menu)){menu.open=false;if(escape)menu.querySelector('summary')?.focus();closed=true;}
+   }
+   const popup=doc.getElementById('diMenuPopup');
+   if(popup&&!popup.hidden&&!inside(doc.getElementById('diMenuBar'))){const trigger=doc.querySelector('#diMenuTabs [aria-expanded=true]');if(trigger){trigger.click();if(escape)trigger.focus();}closed=true;}
+   const more=doc.getElementById('more-menu');
+   if(more&&!more.hidden&&!inside(more)&&!inside(doc.getElementById('more-trigger'))){more.hidden=true;doc.getElementById('more-trigger')?.setAttribute('aria-expanded','false');closed=true;}
+  }
+  return closed;
+ }
+ function wire(doc){
+  if(!doc||wired.has(doc))return;wired.add(doc);documents.add(doc);
+  doc.addEventListener('pointerdown',event=>dismiss(doc,event.target),true);
+  doc.addEventListener('keydown',event=>{
+   if(event.key==='Escape'&&dismiss(doc,event.target,true)){event.preventDefault();event.stopPropagation();}
+  },true);
+  doc.addEventListener('click',event=>{
+   const menu=doc.getElementById('connected-apps-list');
+   if(menu?.contains(event.target)&&event.target.closest('a,button'))queueMicrotask(()=>{menu.hidden=true;doc.getElementById('connected-apps-toggle')?.setAttribute('aria-expanded','false');});
+  },true);
+  const scan=()=>doc.querySelectorAll('iframe').forEach(frame=>{
+   if(!frame.dataset.dismissWired){frame.dataset.dismissWired='true';frame.addEventListener('load',()=>{try{wire(frame.contentDocument);}catch{}});}
+   try{wire(frame.contentDocument);}catch{}
+  });
+  new MutationObserver(scan).observe(doc,{childList:true,subtree:true});scan();
+ }
+ wire(document);
 })();

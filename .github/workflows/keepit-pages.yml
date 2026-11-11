@@ -83,6 +83,8 @@ jobs:
               'thinkit/assets/business-model-host.css',
               'thinkit/assets/business-model.js',
               'thinkit/assets/interface-refinements.css',
+              'partners/design/app-appearance.css',
+              'partners/design/app-appearance.js',
               'thinkit/assets/print-layout.js',
               'thinkit/36f8901ec722db162bcf/assets/print-layout.js',
               'thinkit/business-model.html',

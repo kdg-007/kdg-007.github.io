@@ -31,7 +31,7 @@ try{
  const workspace=page.frameLocator('iframe[title="LiveIt journal workspace"]').locator('#app .app-shell');await workspace.waitFor({state:'visible',timeout:40000});
  await page.locator('#onedrive-dialog[open]').waitFor();await page.locator('#onedrive-signin').click();
  await page.locator('#onedrive-folders button').filter({hasText:'Documents'}).click();await page.locator('#onedrive-folders button').filter({hasText:'Travel Library'}).click();await page.locator('#onedrive-use').click();
- await page.locator('#connected-cloud-status').filter({hasText:'OneDrive / Documents / Travel Library connected'}).waitFor({timeout:40000});
+ await page.locator('#connected-cloud-status[data-phase=connected]').waitFor({timeout:40000});assert.match(await page.locator('#connected-cloud-status').getAttribute('aria-label'),/Documents \/ Travel Library connected/);
  await workspace.waitFor({state:'visible'});assert.equal(fixture.signins,1);assert.equal(fixture.driveRequests,1);assert.deepEqual(errors,[]);
  assert.deepEqual(documents.filter(x=>!x.startsWith('/consumers/')),['/partners/connected/','/auth/callback/','/partners/connected/']);assert.ok(fixture.requests.every(r=>r.method==='GET'));
  const live=page.frameLocator('iframe[title="LiveIt journal workspace"]');await live.locator('#calendarSyncStatus').waitFor();await live.locator('[data-action="capture"][data-type="event"]').first().click();await live.locator('#captureEndDate').waitFor();await live.locator('#captureAllDay').waitFor();await live.getByRole('button',{name:'Close and preserve draft',exact:true}).click();

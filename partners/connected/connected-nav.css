@@ -184,7 +184,7 @@ html[data-connected-app="liveit"] .connected-shell-home{display:none}
  }
  html[data-connected-app] .connected-shell-current{display:none}
  html[data-connected-app="keepit"] .library-main{position:relative}
- html[data-connected-app="keepit"] .library-top{padding-right:310px;top:0}
+ html[data-connected-app="keepit"] .library-top{padding-right:var(--connected-controls-width,310px);top:0}
  html[data-connected-app="keepit"] .library-main > .connected-shell-bar{z-index:30}
 }
 
@@ -194,3 +194,12 @@ html[data-connected-app="liveit"] .connected-shell-home{display:none}
 #connected-cloud-status[data-phase=error]{border-color:#d99078}
 #connected-cloud-status[data-phase=connected]{border-color:#8ac8a4}
 @media(max-width:600px){#connected-cloud-status{max-width:170px;font-size:11px;padding:4px 7px}}
+
+/* Compact connection summary; full folder and state stay in accessible details. */
+#connected-cloud-status{max-width:150px;min-height:40px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+#connected-cloud-status[data-phase=waiting],#connected-cloud-status[data-phase=signin]{border-color:var(--app-accent,#88c8bd)}
+@media(max-width:600px){
+ [data-connected-ui="ready"]>.connected-shell-bar{gap:7px;padding-inline:8px}
+ #connected-cloud-status{max-width:140px;font-size:12px}
+ #connected-apps-list .app-appearance-button{width:100%;text-align:left;border:0;border-top:1px solid var(--app-line);border-radius:7px}
+}
