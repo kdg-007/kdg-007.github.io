@@ -1,3 +1,4 @@
+import {normalizeStopDependencies} from './trip-dependencies.js';
 import '../../../../liveit/thinkit/connected-w18e-c15396/keepit-reference.js?v=1';
 import {importMetadata} from './excel-metadata.js?v=excel-import-1';
 import {normalizeKeepItAssociation,logicalAssociationKey} from './keepit-associations.js';
@@ -47,7 +48,7 @@ export function normalizeStop(input,trip,now=new Date().toISOString()){
   if(!Number.isInteger(duration)||duration<0||duration>10080) throw Error('Duration must be 0–10080 minutes.');
   const sortOrder=input.sortOrder===undefined||input.sortOrder===null?1000000:Number(input.sortOrder);
   if(!Number.isInteger(sortOrder)||sortOrder<0||sortOrder>100000000) throw Error('Invalid itinerary order.');
-  return {...(input.importSource!==undefined?{importSource:importMetadata(input.importSource,'source')}:{}),id:input.id||uid(),tripId:trip.id,placeId:input.placeId||null,title,date,time,durationMinutes:duration,kind:STOP_KINDS.includes(input.kind)?input.kind:'Activity',fixed:!!input.fixed,sortOrder,notes:cleanText(input.notes,2000),...normalizeLeg(input),createdAt:input.createdAt||now,updatedAt:now};
+  return {...(input.importSource!==undefined?{importSource:importMetadata(input.importSource,'source')}:{}),...(input.dependencies!==undefined?{dependencies:normalizeStopDependencies(input.dependencies)}:{}),id:input.id||uid(),tripId:trip.id,placeId:input.placeId||null,title,date,time,durationMinutes:duration,kind:STOP_KINDS.includes(input.kind)?input.kind:'Activity',fixed:!!input.fixed,sortOrder,notes:cleanText(input.notes,2000),...normalizeLeg(input),createdAt:input.createdAt||now,updatedAt:now};
 }
 export function normalizePacking(input,trip,now=new Date().toISOString()){
   const label=cleanText(input.label,150),qty=Number(input.quantity??1);

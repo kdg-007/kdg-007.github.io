@@ -199,6 +199,12 @@ jobs:
           printf '{"type":"module","private":true}\n' > package.json
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 esbuild@0.28.2
           npx playwright install --with-deps chromium webkit
+      - name: Verify app-file trash, restore and automatic ThinkIt saving
+        run: node partners/connected/app-file-lifecycle.browser.mjs
+      - name: Verify calendar, contrast, measured rulers and TravelIt refinements
+        run: node partners/design/suite-refinements.browser.mjs
+      - name: Verify dependency constraints and bounded map downloads
+        run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/refinements.test.mjs
       - name: Verify ThinkIt Business Model Canvas in Chromium and WebKit
         run: node partners/design/thinkit-business-model.browser.mjs
       - name: Verify committed TravelIt startup bundle matches source

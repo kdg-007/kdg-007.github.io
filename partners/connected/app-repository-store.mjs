@@ -52,16 +52,53 @@ export function createAppRepository({app, library, isCurrent}) {
   const envelope = JSON.parse(await blob.text());
   if(envelope?.schema!=='keepit-app-file-v1'||envelope.app!==app||envelope.key!==key||envelope.parent!==head.parent||envelope.revision!==head.id||typeof envelope.title!=='string'||typeof envelope.payload!=='string')throw Error('App file metadata could not be verified.');
   const digest=await hashText(envelope.payload);
-  if(!['workspace','map'].includes(envelope.kind)||(envelope.kind==='map'&&app!=='travelit')||envelope.digest!==digest||head.id!==await hashText(JSON.stringify([app,key,head.parent,envelope.kind,envelope.title,digest])))throw Error('App file integrity check failed.');
+  if(!['workspace','map','trash'].includes(envelope.kind)||(envelope.kind==='map'&&app!=='travelit')||envelope.digest!==digest||head.id!==await hashText(JSON.stringify([app,key,head.parent,envelope.kind,envelope.title,digest])))throw Error('App file integrity check failed.');
   return envelope;
  };
+ async function write({key,parent,title,payload,kind='workspace'}){
+   if(!['workspace','map','trash'].includes(kind)||(kind==='map'&&app!=='travelit')||(parent!=='root'&&!/^[0-9a-f]{64}$/.test(parent))||typeof title!=='string'||typeof payload!=='string')throw Error('Invalid app file save request.');
+   if(encoder.encode(payload).byteLength>MAX_FILE_BYTES)throw Error('This app file exceeds the 32 MiB sync limit.');
+   title=title.slice(0,150);
+   const digest=await hashText(payload),revision=await hashText(JSON.stringify([app,key,parent,kind,title,digest]));
+   const name=revision+'--'+parent+'.json';
+   const envelope={schema:'keepit-app-file-v1',app,key,parent,revision,title,kind,digest,payload};
+   const blob=new Blob([JSON.stringify(envelope)],{type:'application/json'});
+   if(blob.size>MAX_FILE_BYTES)throw Error('This app file exceeds the 32 MiB sync limit.');
+   const directory=await fileFolder(key,parent==='root');
+   if(!directory)throw Error('The KeepIt file folder was removed. Save a new copy to preserve local changes.');
+   const heads=await getHeads(directory),same=heads.find(head=>head.id===revision);
+   if(same)return {envelope:await read(key,same),conflict:heads.length>1};
+   if(parent==='root'?heads.length!==0:heads.length!==1||heads[0].id!==parent)return {conflict:true};
+   assertCurrent();fs.allow(directory.id);
+   await fs.create(directory.id,name,blob);assertCurrent();
+   const item=await fs.child(directory.id,name);
+   if(!item)throw Error('KeepIt could not read back the uploaded app file.');
+   const verified=await read(key,{id:revision,parent,item}),current=await getHeads(directory);
+   return {envelope:verified,conflict:current.length!==1||current[0].id!==revision};
+ }
+ async function currentVersion(key,expected){
+  const heads=await getHeads(await fileFolder(key));
+  if(heads.length!==1||heads[0].id!==expected)throw Error('The file changed. Refresh its versions before continuing.');
+  return read(key,heads[0]);
+ }
  return Object.freeze({
-  async list(){
-   const directory=await appFolder(false);
-   if(!directory)return [];
-   const entries=await fs.children(directory.id);
-   assertCurrent();
-   return entries.filter(item=>item.folder&&keyPattern.test(item.name)).map(item=>({key:item.name,title:fileLabel(item.name)})).sort((a,b)=>a.title.localeCompare(b.title));
+  async list({includeTrashed=false}={}){
+   const directory=await appFolder(false);if(!directory)return [];
+   const entries=await fs.children(directory.id);assertCurrent();
+   const candidates=entries.filter(item=>item.folder&&keyPattern.test(item.name));
+   const rows=[];let cursor=0;
+   await Promise.all(Array.from({length:Math.min(candidates.length,3)},async()=>{
+    while(cursor<candidates.length){
+     const item=candidates[cursor++],heads=await getHeads(item);
+     if(!heads.length)continue;
+     let version=null;
+     try{version=heads.length===1?await read(item.name,heads[0]):null;}
+     catch{rows.push({key:item.name,title:fileLabel(item.name),trashed:false,revision:null,unavailable:true});continue;}
+     const trashed=version?.kind==='trash';
+     if(includeTrashed||!trashed)rows.push({key:item.name,title:version?.title||fileLabel(item.name),trashed,kind:version?.kind,revision:version?.revision||null,conflict:heads.length>1});
+    }
+   }));
+   return rows.sort((a,b)=>a.title.localeCompare(b.title));
   },
   async heads(key){
    const directory=await fileFolder(key);
@@ -71,7 +108,7 @@ export function createAppRepository({app, library, isCurrent}) {
    const heads=await getHeads(await fileFolder(key));
    if(heads.length!==1)return {state:'review'};
    const version=await read(key,heads[0]);
-   return version.kind==='workspace'?{state:'ready',version}:{state:'review'};
+   return version.kind==='workspace'?{state:'ready',version}:version.kind==='trash'?{state:'deleted',version}:{state:'review'};
   },
   async open(key,revision){
    const directory=await fileFolder(key);
@@ -80,32 +117,30 @@ export function createAppRepository({app, library, isCurrent}) {
    if(!head)throw Error('The app file changed. Refresh its versions and try again.');
    return read(key,head);
   },
-  async save({key,parent,title,payload,kind='workspace'}){
-   if(!['workspace','map'].includes(kind)||(kind==='map'&&app!=='travelit')||(parent!=='root'&&!/^[0-9a-f]{64}$/.test(parent))||typeof title!=='string'||typeof payload!=='string')throw Error('Invalid app file save request.');
-   if(encoder.encode(payload).byteLength>MAX_FILE_BYTES)throw Error('This app file exceeds the 32 MiB sync limit.');
-   title=title.slice(0,150);
-   const digest=await hashText(payload), revision=await hashText(JSON.stringify([app,key,parent,kind,title,digest]));
-   const name=`${revision}--${parent}.json`;
-   const envelope={schema:'keepit-app-file-v1',app,key,parent,revision,title,kind,digest,payload};
-   const blob=new Blob([JSON.stringify(envelope)],{type:'application/json'});
-   if(blob.size>MAX_FILE_BYTES)throw Error('This app file exceeds the 32 MiB sync limit.');
-   const directory=await fileFolder(key,parent==='root');
-   if(!directory)throw Error('The KeepIt file folder was removed. Save a new copy to preserve local changes.');
-   const heads=await getHeads(directory);
-   const same=heads.find(head=>head.id===revision);
-   if(same)return {envelope:await read(key,same),conflict:heads.length>1};
-   if(parent==='root'?heads.length!==0:heads.length!==1||heads[0].id!==parent)return {conflict:true};
-   assertCurrent();
-   // A fresh OneDrive session has no write grant for folders it only read.
-   // fileFolder() resolved this exact child through the selected app root.
-   fs.allow(directory.id);
-   await fs.create(directory.id,name,blob);
-   assertCurrent();
-   const item=await fs.child(directory.id,name);
-   if(!item)throw Error('KeepIt could not read back the uploaded app file.');
-   const verified=await read(key,{id:revision,parent,item});
-   const current=await getHeads(directory);
-   return {envelope:verified,conflict:current.length!==1||current[0].id!==revision};
+  async save(options){
+   if(options.kind==='trash')throw Error('Use Move to trash to remove a saved app file.');
+   if(options.parent!=='root'){
+    const heads=await getHeads(await fileFolder(options.key));
+    if(heads.length===1&&heads[0].id===options.parent&&(await read(options.key,heads[0])).kind==='trash')throw Error('This file is in Trash. Restore it before saving edits.');
+   }
+   return write(options);
+  },
+  async trash(key,revision){
+   const original=await currentVersion(key,revision);
+   if(original.kind==='trash')return {envelope:original,conflict:false};
+   return write({key,parent:revision,title:original.title,kind:'trash',payload:JSON.stringify({revision,kind:original.kind})});
+  },
+  async restore(key,revision){
+   const deleted=await currentVersion(key,revision);
+   if(deleted.kind!=='trash')throw Error('This file is already active. Refresh the file list.');
+   const target=JSON.parse(deleted.payload);
+   if(target.revision!==deleted.parent||!['workspace','map'].includes(target.kind))throw Error('The recovery reference could not be verified.');
+   const directory=await fileFolder(key),entries=await fs.children(directory.id);
+   const item=entries.find(item=>item.file&&revisionPattern.exec(item.name)?.[1]===target.revision);
+   if(!item)throw Error('The saved content required for recovery is missing.');
+   const match=revisionPattern.exec(item.name),original=await read(key,{id:match[1],parent:match[2],item});
+   if(original.kind!==target.kind)throw Error('The recovery content type changed.');
+   return write({key,parent:revision,title:original.title,kind:original.kind,payload:original.payload});
   }
  });
 }
@@ -121,4 +156,10 @@ export async function findTravelWorkspace(repo,key){
  if(!keys.length)return {state:'absent'};
  if(keys.length!==1)return {state:'review'};
  return repo.openSingle(keys[0]);
+}
+
+export async function projectFileKey(scope,identity,title){
+ if(!/^[0-9a-f]{64}$/.test(scope)||typeof identity!=='string'||!identity)throw Error('Invalid project identity.');
+ const hash=await hashText(scope+':'+identity),label=newFileKey(title).split('--')[1];
+ return hash.slice(0,8)+'-'+hash.slice(8,12)+'-5'+hash.slice(13,16)+'-8'+hash.slice(17,20)+'-'+hash.slice(20,32)+'--'+label;
 }

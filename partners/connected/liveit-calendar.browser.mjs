@@ -171,7 +171,7 @@ try{
   await a.frame.locator('[data-action="capture"][data-type="task"]').first().click();
   await a.frame.locator('#captureBody').fill('App folder task');await a.frame.locator('#saveCapture').click();
   await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
-  await saveAppFile(a.page,'LiveIt');await openAppFile(b.page,'LiveIt','liveit workspace');
+  await saveAppFile(a.page,'LiveIt');await openAppFile(b.page,'LiveIt','LiveIt workspace');
   await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='App folder task'));
   assert.ok(await b.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.type==='event')));
 
@@ -186,7 +186,7 @@ try{
   await think.locator('#saveStatus[data-state="saved"]').filter({hasText:'Saved on this device'}).waitFor({state:'attached'});
   await a.context.setOffline(false);
   await a.page.waitForFunction(previous=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:thinkit')).revision!==previous,lastRevision,{timeout:35000});
-  await openAppFile(b.page,'ThinkIt','app folder project');
+  await openAppFile(b.page,'ThinkIt','Edited offline');
   assert.equal(await b.page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]').locator('#docName').inputValue(),'Edited offline');
 
   await a.page.goto(connectedPath('travelit'));await b.page.goto(connectedPath('travelit'));
