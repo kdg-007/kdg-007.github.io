@@ -105,7 +105,11 @@ async function connected(browser){
   networkOffline=false;await page.evaluate(()=>document.getElementById('onedrive-retry').click());
   await note.locator('.note-status').filter({hasText:'Verified synced to OneDrive'}).waitFor({timeout:40000});
   assert.equal(await note.getByRole('textbox',{name:'Subject'}).inputValue(),'Latest offline change must survive');
+  networkOffline=true;await note.getByRole('textbox',{name:'Subject'}).fill('Closed offline note must resume automatically');
   await note.getByRole('button',{name:'Close',exact:true}).click();
+  await note.waitFor({state:'hidden'});networkOffline=false;await page.reload();
+  await page.locator('#connected-cloud-status[data-phase=connected]').waitFor({timeout:30000});
+  await page.getByText('Closed offline note must resume automatically',{exact:true}).first().waitFor({timeout:40000});
  }finally{await context.close();}
 }
 async function headers(browser){

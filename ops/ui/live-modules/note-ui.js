@@ -581,7 +581,7 @@ var r = (u, t, i) => {
         await this.workspace.discard(e.draft.id, e.revision), this.cleanup(), this.dialog.close(), await this.onChange();
       }
     }))), s.addEventListener("submit", () => F.click()), await A(), a.focus();
-    if(t.connectedAuto)this.attachConnectedAutosave();
+    if(t.connectedAuto){if(t.thinkItAuto)this.attachThinkItAutosave();else this.attachConnectedAutosave();}
   }
   attachThinkItAutosave() {
     if (this.nativeAutosave || !this.session) return;
@@ -608,7 +608,7 @@ var r = (u, t, i) => {
     const automatic=!!this.nativeAutosave;
     this.nativeAutosave?.dispose();this.nativeAutosave=null;this.library=next;
     if(this.mode==='edit'&&(automatic||session?.draft.connectedAuto)){
-      if(session.draft.connectedAuto)this.attachConnectedAutosave();else this.attachThinkItAutosave();
+      if(session.draft.connectedAuto&&!session.draft.thinkItAuto)this.attachConnectedAutosave();else this.attachThinkItAutosave();
       queueMicrotask(()=>this.nativeAutosave?.flush());
     }
     return true;
@@ -655,6 +655,7 @@ var r = (u, t, i) => {
       if (this.mode === "edit") return this.withEditingLock(async () => {
         let t = this.session;
         if (this.editor && t.update(await this.editor.read()), await this.flush(), t.error) throw t.error;
+        if(this.nativeAutosave){await t.update({connectedAuto:true});if(t.error)throw t.error;}
         this.cleanup(), this.dialog.close(), await this.onChange();
       });
       this.cleanup(), this.dialog.close(), await this.onChange();

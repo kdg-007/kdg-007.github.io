@@ -2159,6 +2159,7 @@ async function pn() {
       E("The upload queue could not open. " + j(f), true);
     }
     if (J = new d({ settled: () => {
+      ye = false;
       Q?.syncCalendar?.(), window.dispatchEvent(new Event("keepit-library-ready")), te && Ee(), me && xe();
     }, canChange: () => !ye && !J?.startTask && !u?.pending && !$ && !re && !Te(), pause: async () => {
       await u?.close?.(), u = null, await M({ reload: false });
