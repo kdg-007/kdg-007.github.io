@@ -1,0 +1,74 @@
+/* Pair sidebar controls with the surface they are painted on. */
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar :is(
+  .shape-card, .page-icon, .footer-action, .small-action, .mind-notes-trigger, .sidebar-bottom-note
+) {
+  background: var(--app-raised);
+  color: var(--app-text);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar :is(
+  .shape-card:hover, .page-item:hover, .page-item.active, .footer-action:hover, .small-action:hover, .mind-notes-trigger:hover
+) {
+  background: var(--app-soft);
+  color: var(--app-text);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .page-item:is(:hover,.active) :is(.page-mode,.di-page-closed-tag) {
+  color: var(--app-muted);
+  opacity: 1;
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar :is(.page-icon,.footer-action span,.small-action,.mind-notes-trigger) {
+  color: var(--app-accent);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .sidebar-top {
+  background: var(--app-chrome);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .collapse-btn:hover {
+  background: var(--app-chrome-soft);
+  color: var(--app-chrome-ink);
+}
+@media(max-width: 850px) {
+  html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .collapse-btn {
+    background: var(--app-chrome-soft);
+    color: var(--app-chrome-ink);
+  }
+}
+html[data-suite-app="thinkit"][data-app-scheme] .left-sidebar .tiny-hint {
+  color: var(--app-chrome-ink);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .inspector {
+  background: var(--app-surface) !important;
+  color: var(--app-text) !important;
+  --ink: var(--app-text) !important;
+  --navy: var(--app-text) !important;
+  --teal: var(--app-accent) !important;
+  --muted: var(--app-muted) !important;
+}
+html[data-suite-app="thinkit"][data-app-scheme] .inspector :is(.sidebar-title,.inspector-subheading,p) {
+  color: var(--app-text);
+}
+html[data-suite-app="thinkit"][data-app-scheme] .inspector .inspector-btn.primary {
+  color: var(--app-accent-on);
+}
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap {
+  --thinkit-paper: #fbf8ee;
+  --thinkit-paper-text: #30271d;
+  --thinkit-paper-muted: #574a36;
+  --grid-dot: #8c8271;
+  background: var(--thinkit-paper);
+}
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap :is(.empty-hint strong,.canvas-guide) { color: var(--thinkit-paper-text); }
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap .empty-hint span:not(.empty-symbol) { color: var(--thinkit-paper-muted); }
+html[data-suite-app="thinkit"][data-app-scheme="midnight"] #canvasWrap,
+html[data-suite-app="thinkit"][data-app-scheme="forest"] #canvasWrap {
+  --thinkit-paper: #f5f6ef;
+  --thinkit-paper-text: #222d28;
+  --thinkit-paper-muted: #43534b;
+  --grid-dot: #829289;
+}
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap .empty-symbol { color: var(--thinkit-paper-muted); }
+html[data-suite-app="thinkit"][data-app-scheme] #canvasWrap .zoom-controls {
+  background: var(--app-raised);
+  color: var(--app-text);
+}
+
+
+html[data-suite-app="thinkit"] :is(button,input,select,textarea,[tabindex]):focus-visible {outline:3px solid var(--app-accent, #087578);outline-offset:2px;}

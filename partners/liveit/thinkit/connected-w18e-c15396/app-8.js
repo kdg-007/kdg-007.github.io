@@ -345,7 +345,7 @@
     const count=dayCount(iso);
     const list=eventsOn(iso).slice(0,2);
     return `<button type="button" data-action="calendar-day" data-date="${iso}" class="calendar-cell ${iso===ui.selected?'selected':''} ${iso.slice(0,7)!==ui.selected.slice(0,7)?'other':''}" aria-label="${esc(C.dateLabel(iso))}, ${count} entries">
-      <span class="calendar-daynum">${Number(iso.slice(8))}</span>${list.map(x=>`<span class="calendar-mark">▣ ${esc(x.body.slice(0,23))}</span>`).join('')}${count>list.length?`<span class="calendar-mark">+ ${count-list.length} more</span>`:''}</button>`;
+      <span class="calendar-daynum">${ui.calendarMode==='week'?new Intl.DateTimeFormat('en',{weekday:'short',timeZone:'UTC'}).format(new Date(iso+'T12:00:00Z'))+' ':''}${Number(iso.slice(8))}</span>${list.map(x=>`<span class="calendar-mark">▣ ${esc(x.body.slice(0,23))}</span>`).join('')}${count>list.length?`<span class="calendar-mark">+ ${count-list.length} more</span>`:''}</button>`;
   }
   function calendar() {
     const mode=ui.calendarMode;
@@ -353,7 +353,7 @@
     const tabs=['day','week','month'].map(s=>`<button data-action="calendar-mode" data-mode="${s}" class="${mode===s?'active':''}" aria-pressed="${mode===s}">${s[0].toUpperCase()+s.slice(1)}</button>`).join('');
     return `<div class="row-between" style="flex-wrap:wrap"><div class="calendar-view-controls">${tabs}</div><button class="button secondary" data-action="capture" data-type="event">+ Add event</button></div>
       ${mode==='day'?today():`<div class="${mode==='week'?'calendar-week':'calendar-grid'}" style="margin-top:17px">
-      ${mode==='month'?['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=>`<div class="calendar-wd">${day}</div>`).join(''):''}
+      ${mode==='month'?`<div class="calendar-weekdays" aria-label="Days of the week" style="grid-column:1 / -1;display:grid;grid-template-columns:subgrid;gap:inherit">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=>`<div class="calendar-wd">${day}</div>`).join('')}</div>`:''}
       ${dates.map(calendarCell).join('')}</div>
       <h2 class="section-heading">${esc(C.dateLabel(ui.selected))}</h2>${[...eventsOn(ui.selected),...activityOn(ui.selected)].map(x=>feedCard(x)).join('')||'<p class="muted small">No entries on this date.</p>'}`}`;
   }
