@@ -37,7 +37,7 @@ async function reopenNoteTools(page){
   if(await page.locator('#connected-apps-list').isHidden())await page.locator('#connected-apps-toggle').click();
   await page.locator('#connected-note-tools-toggle').click();
  }
- await page.locator('#connected-note-tools[open]').waitFor();
+ await page.locator('#connected-note-tools[open] > header').waitFor({state:'visible'});
 }
 let browser=null;
 const ua='Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1';
