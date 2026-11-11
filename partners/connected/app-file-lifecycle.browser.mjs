@@ -62,6 +62,29 @@ try{
  await third.editor.getByRole('textbox',{name:'Value Propositions',exact:true}).getByText('Updated from the second device').waitFor();
  await third.context.close();
  console.log('THINKIT_AUTOMATIC_SAVE_TRASH_RESTORE_AND_THREE_PROFILE_EDIT_'+engine.name().toUpperCase()+'_PASS');
+ async function mapDevice(){
+  const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:1200,height:900}});
+  await context.route('**/*',fixture.route);
+  await context.route('https://overpass-api.de/api/interpreter',route=>route.fulfill({status:200,headers:{'access-control-allow-origin':'*'},contentType:'application/json',body:JSON.stringify({elements:[{type:'way',tags:{highway:'residential',name:'Synthetic road'},geometry:[{lat:14.599,lon:120.984},{lat:14.601,lon:120.985}]}]})}));
+  const page=await context.newPage();await page.goto(origin+'/partners/connected/?connected-app=travelit&connect-onedrive=1');
+  await page.locator('#onedrive-signin').click();await page.locator('#connected-cloud-status[data-phase=connected]').waitFor({timeout:30000});
+  const frame=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
+  await frame.locator('#view-select').waitFor();return {context,page,frame};
+ }
+ const sender=await mapDevice();await sender.frame.locator('#view-select').selectOption('map');
+ await sender.frame.getByRole('button',{name:'Download offline map',exact:true}).click();await sender.frame.locator('#f-name').fill('Synthetic shared road map');
+ await sender.frame.getByRole('button',{name:'Download to this device',exact:true}).click();
+ await sender.page.waitForFunction(()=>localStorage.getItem('keepit-map-backup-pending')===null&&document.querySelector('iframe[title="TravelIt trip planning workspace"]').contentDocument.querySelector('.map-pack-meta')?.textContent.includes('Synthetic shared road map'));
+ await sender.page.locator('#connected-apps-toggle').click();await sender.page.getByRole('button',{name:'TravelIt files',exact:true}).click();
+ await sender.page.getByRole('dialog',{name:'TravelIt files in KeepIt'}).getByRole('button',{name:'Install Synthetic shared road map on this device',exact:true}).waitFor({timeout:30000});
+ await sender.context.close();
+ const receiver=await mapDevice();await receiver.page.locator('#connected-apps-toggle').click();await receiver.page.getByRole('button',{name:'TravelIt files',exact:true}).click();
+ const mapFiles=receiver.page.getByRole('dialog',{name:'TravelIt files in KeepIt'});
+ await mapFiles.getByRole('button',{name:'Install Synthetic shared road map on this device',exact:true}).click();
+ await mapFiles.getByRole('status').filter({hasText:'Installed “Synthetic shared road map” for offline use on this device.'}).waitFor();
+ const installed=await receiver.frame.locator('body').evaluate(()=>window.keepItAppFiles.listMaps());assert.equal(installed.length,1);assert.equal(installed[0].name,'Synthetic shared road map');
+ await receiver.context.close();
+ console.log('TRAVELIT_DOWNLOADED_MAP_AUTOMATIC_BACKUP_AND_SECOND_DEVICE_INSTALL_'+engine.name().toUpperCase()+'_PASS');
  console.log('Microsoft and OneDrive fixtures are synthetic. No live account accessed.');
  await browser.close();
  }
