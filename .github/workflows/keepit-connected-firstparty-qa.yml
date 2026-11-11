@@ -205,6 +205,19 @@ jobs:
           git diff --exit-code -- assets partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json
       - name: Verify interrupted note saving, connection renewal and nonoverlapping headers
         run: node partners/connected/save-connection-layout.browser.mjs
+      - name: Verify single-tab draft saves and copy recovery
+        run: node partners/connected/keepit-single-tab-draft.browser.mjs
+      - name: Exercise canonical KeepIt native-note create, save and reopen
+        shell: bash
+        timeout-minutes: 9
+        env:
+          CI: "true"
+        run: node partners/connected/first-party-native-notes.test.mjs
+      - name: Verify shared navigation across devices in Chromium and WebKit
+        if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
+        shell: bash
+        timeout-minutes: 6
+        run: node partners/design/app-ui-v1.test.mjs
       - name: Verify app-file trash, restore and automatic ThinkIt saving
         run: node partners/connected/app-file-lifecycle.browser.mjs
       - name: Verify calendar, contrast, measured rulers and TravelIt refinements
@@ -233,19 +246,6 @@ jobs:
         run: node partners/connected/liveit-calendar.browser.mjs
       - name: Verify Microsoft callback and nonblocking OneDrive reconnect
         run: node partners/connected/owner-connection.test.mjs
-      - name: Verify single-tab draft saves and copy recovery
-        run: node partners/connected/keepit-single-tab-draft.browser.mjs
-      - name: Exercise canonical KeepIt native-note create, save and reopen
-        shell: bash
-        timeout-minutes: 9
-        env:
-          CI: "true"
-        run: node partners/connected/first-party-native-notes.test.mjs
-      - name: Verify shared navigation across devices in Chromium and WebKit
-        if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
-        shell: bash
-        timeout-minutes: 6
-        run: node partners/design/app-ui-v1.test.mjs
       - name: Save interface previews
         if: ${{ !cancelled() && steps.browser_runtime.outcome == 'success' }}
         uses: actions/upload-artifact@v4
