@@ -401,7 +401,7 @@ var r = (u, t, i) => {
     let a = m("Edit", () => {
       this.beginEdit().catch((h) => this.error(h));
     }, "primary");
-    this.editButton = a, a.title = "Edit note (\u2318 E)", a.disabled = !!s?.historical || !!i.trashedAt, this.actions.append(a), this.headerControls({ details: true });
+    this.editButton = a, a.title = "Edit note (\u2318 E)", a.disabled = !!s?.historical || !!i.trashedAt || !!s && !s.draftId, this.actions.append(a), this.headerControls({ details: true });
     let d = m("\u2922", () => this.toggleFullscreen(!this.fullscreen));
     d.title = "Full screen", d.setAttribute("aria-label", "Full screen"), this.actions.append(d), this.overflowPanel.append(m("Export", () => {
       this.exportMenu().catch((h) => this.error(h));
@@ -448,6 +448,7 @@ var r = (u, t, i) => {
       await this.editDraft(t);
       return;
     }
+    if(this.pending&&!this.pending.historical)throw Error('This older pending save has no retained working draft. Its source is safe; use Save a copy from Pending saves to continue.');
     await this.editDraft({ id: crypto.randomUUID(), target: this.target, itemId: this.item.id, noteId: this.note.noteId, baseItem: this.item, baseDocument: this.note.document, baseBlob: this.blob, document: this.note.document, assets: this.note.assets, values: this.item, revision: 0, rootHandle: this.library.isFolder && !this.library.isCloud ? this.library.root : null });
   }
   async editDraft(t) {

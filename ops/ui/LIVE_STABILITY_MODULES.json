@@ -5,8 +5,8 @@
   "paths": {
     "auth": "assets/keepit-auth-live-95a7194c8d12.js",
     "connection": "assets/keepit-onedrive-connect-afcf0264fc8b.js",
-    "ui": "assets/keepit-note-ui-101050975569.js",
-    "link": "assets/keepit-note-link-bb9a9880d4d6.js",
-    "entry": "assets/library-app-1d3c597400f1.js"
+    "ui": "assets/keepit-note-ui-f0cbb1641a49.js",
+    "link": "assets/keepit-note-link-8ef102a9a872.js",
+    "entry": "assets/library-app-27de5dd31c87.js"
   }
 }
