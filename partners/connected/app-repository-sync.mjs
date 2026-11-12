@@ -1,5 +1,6 @@
 import {APP_FOLDERS,createAppRepository,hashText,newFileKey,travelWorkspaceKey,findTravelWorkspace,projectFileKey} from './app-repository-store.mjs?v=trip-sync-1';
 import {mountTravelCalendar} from './travel-calendar.mjs?v=1';
+import {createSyncBindings} from './app-sync-bindings.mjs?v=1';
 
 const FRAMES={
  thinkit:'/thinkit/40791585175d0e8d51c4/index.html',
@@ -27,8 +28,10 @@ export function mountAppRepository({getLibrary}){
  const saveSession=crypto.randomUUID();
  const settingsKey=`keepit-app-file-binding-v1:${app}`;
  const contentLabel=app==='travelit'?'Trips':app==='thinkit'?'Project':'Workspace';
- const loadBinding=()=>{try{return JSON.parse(localStorage.getItem(settingsKey)||'null');}catch{return null;}};
- const saveBinding=value=>localStorage.setItem(settingsKey,JSON.stringify(value));
+ let tabStorage;try{tabStorage=window.sessionStorage;}catch{}
+ const bindings=createSyncBindings({storage:localStorage,session:tabStorage,key:settingsKey});
+ const loadBinding=(identity,scope)=>bindings.load(identity,scope);
+ const saveBinding=value=>bindings.save(value);
  const scopeKey=`${settingsKey}:scope`;
  const appFrame=()=>{
   const accepted=new Set([FRAMES[app],...(app==='thinkit'?['/thinkit/36f8901ec722db162bcf/index.html']:[])]);
@@ -65,17 +68,20 @@ export function mountAppRepository({getLibrary}){
  };
  const list=make('div','',panel);list.style.cssText='display:grid;gap:8px;margin-top:14px';
  document.body.append(panel);
- let task=null,showTrash=false;
+ let task=null,showTrash=false,resyncRequested=false;
  let mapsPending=app==='travelit'&&localStorage.getItem('keepit-map-backup-pending')==='true';
  new MutationObserver(()=>{if(/saved|sync|trash|restore|pending|version|connect/i.test(status.textContent))adapter()?.syncStatus?.(status.textContent);}).observe(status,{childList:true,characterData:true,subtree:true});
- function run(work,{quiet=false}={}){
-  if(task)return quiet?task:task.then(()=>run(work));
+ function run(work,{quiet=false,retry=false}={}){
+  if(task){if(quiet){if(retry)resyncRequested=true;return task;}return task.then(()=>run(work));}
   for(const button of panel.querySelectorAll('button'))if(button.textContent!=='Close')button.disabled=true;
   task=Promise.resolve().then(work).catch(error=>{
    status.textContent=error.message||'App file operation failed.';
    adapter()?.syncStatus?.(status.textContent);
    if(!quiet)console.warn('KeepIt app files:',error.message);
-  }).finally(()=>{task=null;for(const button of panel.querySelectorAll('button'))button.disabled=false;});
+  }).finally(()=>{
+   task=null;for(const button of panel.querySelectorAll('button'))button.disabled=false;
+   if(resyncRequested){resyncRequested=false;queueMicrotask(()=>auto(true));}
+  });
   return task;
  }
  async function snapshot(){const client=adapter();if(!client)throw Error(`${folder} is still opening.`);return client.capture();}
@@ -139,7 +145,7 @@ export function mountAppRepository({getLibrary}){
    await remember(scope,version);await client.installMap(version.payload);
    status.textContent=`Installed “${version.title}” for offline use on this device.`;return;
   }
-  const current=await client.capture({opening:true}), binding=loadBinding();
+  const current=await client.capture({opening:true}), binding=current?loadBinding(current.identity,scope):loadBinding();
   const currentDigest=current&&await hashText(current.payload);
   if(current&&!current.empty&&!(binding?.scope===scope&&binding.key===version.key&&binding.digest===currentDigest)){
    if(background)return false;
@@ -158,14 +164,15 @@ export function mountAppRepository({getLibrary}){
  }
  let lastRead=0;
  async function sync({newFile=false,quiet=false}={}){
-  let binding=loadBinding();
-  if(!newFile&&!binding&&!['travelit','thinkit'].includes(app)){if(quiet)return;throw Error('Save your current work as a KeepIt file first.');}
   const client=adapter();if(!client){if(quiet)return;throw Error(`${folder} is still opening.`);}
   const current=await client.capture();if(!current){if(quiet)return;throw Error('Open a saved workspace or project first.');}
+  const cloud=await connected();
+  let binding=loadBinding(current.identity,cloud.scope);
+  if(!newFile&&!binding&&!['travelit','thinkit'].includes(app)){if(quiet)return;throw Error('Save your current work as a KeepIt file first.');}
   if(!newFile&&binding?.trashed&&binding.identity===current.identity){status.textContent='This saved file is in Trash. Restore it or save a new copy to resume sync.';return;}
   if(!newFile&&app==='thinkit'&&(!binding||binding.identity!==current.identity)){
    if(current.empty)return;
-   const cloud=await connected(),key=await projectFileKey(cloud.scope,current.identity,current.title);
+   const key=await projectFileKey(cloud.scope,current.identity,current.title);
    const heads=await cloud.repo.heads(key);
    if(heads.length){
     const found=await cloud.repo.openSingle(key);
@@ -177,7 +184,7 @@ export function mountAppRepository({getLibrary}){
   if(!newFile&&!binding&&app==='travelit'){
    if(quiet&&Date.now()-lastRead<15000)return;
    lastRead=Date.now();
-   const cloud=await connected(), found=await findTravelWorkspace(cloud.repo);
+   const found=await findTravelWorkspace(cloud.repo);
    if(found.state==='ready'){
     const digest=await hashText(current.payload);
     if(current.empty){if(await openCopy(found.version,cloud.scope,cloud.isCurrent,{background:true}))adapter()?.syncStatus?.(contentLabel+' opened from KeepIt.');return;}
@@ -205,7 +212,6 @@ export function mountAppRepository({getLibrary}){
   const digest=await hashText(current.payload);
   const clean=!newFile&&digest===binding.digest;
   if(clean&&quiet&&Date.now()-lastRead<(app==='travelit'?15000:60000))return;
-  const cloud=await connected();
   if(!newFile&&cloud.scope!==binding.scope)throw Error('This file is linked to a different KeepIt folder.');
   if(clean){
    lastRead=Date.now();
@@ -226,14 +232,24 @@ export function mountAppRepository({getLibrary}){
   }
   client.syncStatus?.(contentLabel+' saved on this device · Syncing with KeepIt…');
   const result=await cloud.repo.save({key:binding.key,parent:binding.revision,title:current.title,payload:current.payload});
-  if(result.envelope)await remember(cloud.scope,result.envelope);
   if(result.conflict){
+   if(result.envelope)await remember(cloud.scope,result.envelope);
    status.textContent='KeepIt has a newer or conflicting version. Your local edits are intact. Refresh files to review, or save as a new file.';
    client.syncStatus?.(folder+' needs a sync review. Open '+folder+' files.');
    return;
   }
   if(!cloud.isCurrent())throw Error('The selected KeepIt folder changed.');
   saveBinding({...binding,revision:result.envelope.revision,digest,localSaveSession:saveSession,localSaveRevision:result.envelope.revision});
+  await remember(cloud.scope,result.envelope);
+  // A save acknowledgement covers exactly the captured payload. Edits that
+  // arrive during an upload must get another pass before we report all saved.
+  let latest;try{latest=await client.capture();}catch{}
+  if(!latest||latest.identity!==current.identity||await hashText(latest.payload)!==digest){
+   status.textContent='Latest changes saved on this device · KeepIt sync pending.';
+   client.syncStatus?.(status.textContent);
+   if(latest)resyncRequested=true;
+   return;
+  }
   status.textContent=`Saved and verified in KeepIt / ${folder}.`;
   client.syncStatus?.(contentLabel+' saved in KeepIt.');
  }
@@ -289,7 +305,7 @@ export function mountAppRepository({getLibrary}){
   if(document.hidden)return;
   if(!navigator.onLine){adapter()?.syncStatus?.('Saved on this device · Waiting for a connection to sync.');return;}
   if(syncTravelCalendar)void syncTravelCalendar(force);
-  if(getLibrary()?.isCloud){const pending=run(()=>sync({quiet:true}),{quiet:true});if(mapsPending)void pending.then(()=>run(backupMaps,{quiet:true}));}
+  if(getLibrary()?.isCloud){const pending=run(()=>sync({quiet:true}),{quiet:true,retry:true});if(mapsPending)void pending.then(()=>run(backupMaps,{quiet:true}));}
   else if(['signin','choose-folder','error'].includes(window.keepItConnectionState?.phase))adapter()?.syncStatus?.('Saved on this device · Connect your KeepIt library to sync.');
  }
  const resume=()=>{lastRead=0;auto(true);};
