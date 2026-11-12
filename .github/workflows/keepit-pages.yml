@@ -155,9 +155,11 @@ jobs:
               for rel,digest in owner['files'].items():
                   if rel.startswith('/') or '..' in Path(rel).parts or not Path(rel).is_file() or hashlib.sha256(Path(rel).read_bytes()).hexdigest()!=digest:
                       raise SystemExit('Owner artifact mismatch: '+rel)
-                  target=Path('_site')/rel
-                  target.parent.mkdir(parents=True,exist_ok=True)
-                  shutil.copyfile(rel,target)
+                  # Source/build receipts remain in Git; only runtime files enter the site.
+                  if rel.startswith(('assets/','partners/','thinkit/','auth/')) or rel in ('index.html','manifest.webmanifest','sw.js'):
+                      target=Path('_site')/rel
+                      target.parent.mkdir(parents=True,exist_ok=True)
+                      shutil.copyfile(rel,target)
               shutil.copyfile('partners/connected/owner-auth-callback.html','_site/auth/callback/index.html')
               shutil.copyfile('ops/ui/owner-entry.html','_site/index.html')
               shutil.copyfile('ops/ui/owner-root.webmanifest','_site/manifest.webmanifest')
