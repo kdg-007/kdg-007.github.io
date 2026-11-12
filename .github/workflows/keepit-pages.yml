@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: "22"
       - name: Check save continuity before publishing
-        run: node --test partners/connected/app-repository-sync.test.mjs partners/connected/app-repository-store.test.mjs
+        run: node --test partners/connected/app-repository-sync.test.mjs partners/connected/app-repository-store.test.mjs partners/connected/onedrive-recovery.test.mjs
       - name: Restore validated compiled site from private build transfer
         shell: bash
         run: |

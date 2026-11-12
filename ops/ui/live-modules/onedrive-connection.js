@@ -796,9 +796,10 @@ var ve = class {
       let c = new URL(location.href).searchParams.get("connected-app");
       sessionStorage.setItem("keepit-owner-return-app", ["liveit", "keepit", "thinkit", "travelit"].includes(c) ? c : "keepit"), await this.prepareAuth(), await this.auth.signIn();
     }), l("onedrive-retry").onclick = () => this.work(async () => {
-      await this.start({ force: true }) ? l("onedrive-dialog").close() : this.fs && await this.browse();
+      if(this.selecting&&this.fs&&!this.auth.reconnectRequired)await this.browse();
+      else await this.start({ force: true, interactive: true });
     }), l("onedrive-up").onclick = () => this.work(async () => {
-      this.stack.length > 1 && (this.stack.pop(), await this.browse());
+      if(this.stack.length>1)await this.browse(this.stack.slice(0,-1));
     }), l("onedrive-use").onclick = () => this.work(() => this.choose());
     let u = document.createElement("button");
     if (u.id = "onedrive-change-folder", u.type = "button", u.className = "secondary", u.textContent = "Choose another folder", u.hidden = true, u.onclick = () => this.work(async () => {
@@ -809,13 +810,13 @@ var ve = class {
       this.qaCreateButton = c, c.type = "button", c.id = "onedrive-create-qa", c.textContent = "Create or open disposable QA folder", c.hidden = true, c.onclick = () => this.work(async () => {
         if (!this.canChange()) throw new Error("Finish your current edit before changing libraries.");
         let f = await ie(this.fs);
-        this.stack = [this.stack[0], f], await this.browse(), await this.choose();
+        await this.browse([this.stack[0], f]), await this.choose();
       }), l("onedrive-browser").append(c);
     }
     l("onedrive-disconnect").onclick = () => this.work(async () => {
       if (!this.canChange()) throw new Error("Finish your current edit before disconnecting.");
       let c = S();
-      await this.pause(), await this.auth.signOut(), c && (await this.catalogCache.remove(c), await new O().clearScope([c.homeId, c.driveId, c.rootId])), this.fs = null, this.stack = [];
+      await this.pause(), await this.auth.signOut(), c && (await this.catalogCache.remove(c), await new O().clearScope([c.homeId, c.driveId, c.rootId])), this.fs = null, this.stack = [], this.listedFolderId = null;
       try {
         localStorage.removeItem(Q), localStorage.setItem(M, "local");
       } catch {
@@ -843,7 +844,7 @@ var ve = class {
       } finally {
         this.pending = false;
         for (let t of this.$("onedrive-dialog").querySelectorAll("button")) t.disabled = false;
-        this.$("onedrive-up").disabled = this.stack.length < 2, this.$("onedrive-use").disabled = this.stack.length < 2;
+        this.$("onedrive-up").disabled = this.stack.length < 2, this.$("onedrive-use").disabled = this.stack.length < 2 || this.listedFolderId !== this.stack.at(-1)?.id;
       }
     }
   }
@@ -920,6 +921,7 @@ var ve = class {
         } catch {
         }
       }
+      if(this.auth.reconnectRequired)this.publish('signin','Reconnect Microsoft · local edits retained');
       return false;
     }
   }
@@ -940,6 +942,10 @@ var ve = class {
             const token=await this.auth.token(this.fs?.homeId||this.auth.account()?.homeAccountId);
             const headers=new Headers(options.headers);headers.set('Authorization','Bearer '+token);
             response=await fetch(input,{...options,headers,signal:controller.signal});
+            if(response.status===401){
+              this.auth.reconnectRequired=true;
+              this.publish('signin','Reconnect Microsoft · local edits retained');
+            }
           }
           if(response.ok&&this.transportWaiting&&this.bound){this.transportWaiting=false;this.publish('connected','OneDrive / '+(S()?.path||'KeepIt')+' connected');}
           return response;
@@ -948,7 +954,7 @@ var ve = class {
       finally{options.signal?.removeEventListener('abort',abort);}
     };
     const fs=new _(this.auth,{onProgress:this.progress,fetcher}),root=await fs.initialize();
-    fs.qaDriveRootId=root.id;this.fs=fs;this.stack=[root];this.status();
+    fs.qaDriveRootId=root.id;this.fs=fs;this.stack=[root];this.listedFolderId=null;this.status();
   }
   async waitForChange(){
     const deadline=Date.now()+2000;
@@ -960,18 +966,23 @@ var ve = class {
   async show(){
     if(this.startTask){this.present();return this.startTask;}
     // Viewing an existing connection never switches libraries or signs out.
-    if(this.bound&&this.fs){this.present();this.$('onedrive-browser').hidden=true;this.note('Connected to OneDrive / '+(S()?.path||'your library')+'.');return true;}
+    if(this.bound&&this.fs&&!this.auth.reconnectRequired&&!this.transportWaiting){this.present();this.$('onedrive-browser').hidden=true;this.note('Connected to OneDrive / '+(S()?.path||'your library')+'.');return true;}
     try{await this.waitForChange();this.present();return this.start({force:true,interactive:true});}
     catch(error){this.progress({error:error.message});return false;}
   }
-  async browse() {
-    let e = this.$, t = this.stack.at(-1);
+  async browse(stack=this.stack) {
+    const fs=this.fs,t=stack.at(-1),e=this.$;
+    if(!fs||!t)throw Error('Reconnect OneDrive before choosing a library folder.');
+    // Commit navigation only after its listing succeeds. A failed request keeps
+    // the previous path and buttons usable, and cannot enable an unseen folder.
+    const i=(await fs.children(t.id)).filter(s=>s.folder&&!s.remoteItem).sort((s,r)=>s.name.localeCompare(r.name));
+    if(this.fs!==fs)throw Error('The OneDrive connection changed. Reopen the folder picker.');
+    this.stack=[...stack];this.listedFolderId=t.id;
     this.selecting = true, e("onedrive-browser").hidden = false, e("onedrive-path").textContent = "OneDrive / " + this.stack.slice(1).map((s) => s.name).join(" / "), e("onedrive-folders").replaceChildren(), q && (this.qaCreateButton.hidden = this.stack.length !== 1);
-    let i = (await this.fs.children(t.id)).filter((s) => s.folder && !s.remoteItem).sort((s, r) => s.name.localeCompare(r.name));
     for (let s of i) {
       let r = document.createElement("button");
       r.type = "button", r.className = "onedrive-folder", r.textContent = "\u25B1  " + s.name + "  \u203A", r.onclick = () => this.work(async () => {
-        this.stack.push(s), await this.browse();
+        await this.browse([...this.stack,s]);
       }), e("onedrive-folders").append(r);
     }
     if (!i.length) {
@@ -983,6 +994,7 @@ var ve = class {
   async choose() {
     if (!this.canChange()) throw new Error("Save or close the current edit before changing libraries.");
     if (this.stack.length < 2) throw new Error("Open the folder you want to use first.");
+    if(this.listedFolderId!==this.stack.at(-1).id)throw Error('Load this folder before selecting it. Retry the folder request.');
     let e = this.stack.at(-1), t = this.stack.slice(1).map((i) => i.name).join(" / ");
     return this.note("Opening and verifying this library folder\u2026"), this.start({ selected: { root: e, path: t } });
   }

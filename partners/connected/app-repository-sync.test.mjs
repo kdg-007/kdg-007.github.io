@@ -84,7 +84,7 @@ test('an edit made during upload receives another pass before the saved status',
  const pending=t.run(()=>t.sync({quiet:true}),{quiet:true,retry:true});await g.wait;
  t.state.payload='latest edit';t.state.revision++;g.release();await pending;
  assert.match(t.messages.at(-1),/pending/);
- for(let i=0;i<20;i++){await drain();if(!t.env.task)break;}
+ await drain();await t.env.task;
  assert.equal((await f.repo.openSingle(first.key)).version.payload,'latest edit');
  assert.equal(t.env.followups,1);assert.match(t.messages.at(-1),/saved in KeepIt/);
 });
@@ -92,7 +92,7 @@ test('many save notifications during an operation coalesce into one follow-up',a
  const f=fixture();await seed(f);const t=tab(f),g=gate();
  const pending=t.run(async()=>{g.enter();await g.hold;});await g.wait;
  for(let i=0;i<10;i++)t.run(()=>t.sync({quiet:true}),{quiet:true,retry:true});
- g.release();await pending;for(let i=0;i<10;i++)await drain();
+ g.release();await pending;await drain();await t.env.task;
  assert.equal(t.env.followups,1);assert.equal(t.env.task,null);
 });
 test('network interruption leaves the baseline intact and retries without losing local edits',async()=>{

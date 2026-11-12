@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import {test} from 'node:test';
+const source=readFileSync(new URL('../../ops/ui/live-modules/onedrive-connection.js',import.meta.url),'utf8');
+const classSource=source.slice(source.indexOf('var ve = class {')+9,source.indexOf('\nexport {',source.indexOf('var ve = class {'))).replace(/;\s*$/,'');
+function fixture(){
+ const nodes=new Map();
+ const node=()=>({hidden:false,disabled:false,textContent:'',children:[],open:false,append(child){this.children.push(child);},replaceChildren(){this.children=[];},before(){},setAttribute(){},addEventListener(){},querySelectorAll(){return [...nodes.values()];},close(){this.open=false;},showModal(){this.open=true;}});
+ const get=id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id);};
+ let requests=0,responses=[];
+ class Auth{constructor(){this.reconnectRequired=false;this.invalidations=0;}account(){return {homeAccountId:'owner'};}invalidateToken(){this.invalidations++;}async token(){return 'renewed';}}
+ class FS{constructor(auth,{fetcher}){this.fetcher=fetcher;this.homeId='owner';}async initialize(){return {id:'root',name:'OneDrive'};}}
+ const env={x:class{},ae:Auth,ne:'id',q:false,O:class{},S:()=>({homeId:'owner',path:'KeepIt'}),H:error=>error.message,
+ window:{addEventListener(){},dispatchEvent(){}},document:{getElementById:get,createElement:node,querySelector:()=>null},
+ location:{href:'https://example.test/partners/connected/?connected-app=thinkit',origin:'https://example.test'},
+ sessionStorage:{setItem(){}},URL,Headers,AbortController,Response,Date,setTimeout,clearTimeout,
+ re:async work=>work(),_:FS,fetch:async()=>{requests++;return new Response('',{status:responses.shift()??200});}};
+ const Connection=vm.runInNewContext('('+classSource+')',env),c=new Connection({ready:async()=>{},pause:async()=>{},canChange:()=>true,progress(){},disconnected:async()=>{}});
+ c.publish=(phase,message)=>{c.phase=phase;c.message=message;};c.stack=[{id:'root',name:'OneDrive'}];
+ return {c,get,env,setResponses:value=>responses=value,get requests(){return requests;}};
+}
+test('failed navigation keeps the last loaded path and lets the user retry it',async()=>{
+ const {c,get}=fixture();let fail=false;
+ const folder={id:'docs',name:'Documents',folder:{}};
+ c.fs={async children(id){if(fail)throw Error('Temporary network interruption');return id==='root'?[folder]:[];}};
+ await c.browse();const button=get('onedrive-folders').children[0];
+ fail=true;await button.onclick();assert.equal(c.stack.at(-1).id,'root');assert.equal(get('onedrive-path').textContent,'OneDrive / ');
+ assert.equal(get('onedrive-folders').children[0],button);assert.equal(get('onedrive-use').disabled,true);
+ fail=false;await button.onclick();assert.equal(c.stack.at(-1).id,'docs');assert.equal(c.listedFolderId,'docs');assert.equal(get('onedrive-use').disabled,false);
+});
+test('failed Up navigation retains the current loaded folder',async()=>{
+ const {c,get}=fixture();c.stack.push({id:'docs',name:'Documents'});c.fs={children:async()=>[]};await c.browse();
+ c.fs.children=async()=>{throw Error('OneDrive unavailable');};await get('onedrive-up').onclick();
+ assert.equal(c.stack.at(-1).id,'docs');assert.match(get('onedrive-path').textContent,/Documents/);assert.equal(get('onedrive-use').disabled,false);
+});
+test('Retry reloads the current picker folder without reconnecting or resetting selection',async()=>{
+ const {c,get}=fixture();c.stack.push({id:'docs',name:'Documents'});let listed;
+ c.fs={children:async id=>{listed=id;return [];}};c.selecting=true;c.start=async()=>{throw Error('Unexpected library reconnect');};
+ await get('onedrive-retry').onclick();assert.equal(listed,'docs');assert.equal(c.listedFolderId,'docs');
+});
+test('an unlisted folder cannot be selected, including after a failed initial request',async()=>{
+ const {c}=fixture();c.stack.push({id:'unread',name:'Unread'});c.fs={children:async()=>{throw Error('offline');}};
+ await assert.rejects(()=>c.browse(),/offline/);await assert.rejects(()=>c.choose(),/Load this folder/);
+});
+test('an outdated listing cannot replace a newer connection',async()=>{
+ const {c}=fixture();let finish;const wait=new Promise(resolve=>finish=resolve);
+ c.fs={children:async()=>wait};const pending=c.browse();c.fs={children:async()=>[]};finish([]);
+ await assert.rejects(()=>pending,/connection changed/);assert.equal(c.listedFolderId,undefined);
+});
+test('expired access is renewed once and a successful retry preserves the connection',async()=>{
+ const f=fixture();await f.c.connectFiles();f.c.bound=true;f.c.transportWaiting=true;f.setResponses([401,200]);
+ const result=await f.c.fs.fetcher('https://graph.microsoft.com/v1.0/me/drive',{headers:{Authorization:'Bearer expired'}});
+ assert.equal(result.status,200);assert.equal(f.requests,2);assert.equal(f.c.auth.invalidations,1);assert.equal(f.c.phase,'connected');assert.equal(f.c.auth.reconnectRequired,false);
+});
+test('a second rejection requests sign-in without further automatic retries',async()=>{
+ const f=fixture();await f.c.connectFiles();f.c.bound=true;f.setResponses([401,401]);
+ const result=await f.c.fs.fetcher('https://graph.microsoft.com/v1.0/me/drive');
+ assert.equal(result.status,401);assert.equal(f.requests,2);assert.equal(f.c.phase,'signin');assert.equal(f.c.auth.reconnectRequired,true);
+ let starts=0;f.c.start=async()=>{starts++;return false;};await f.c.show();assert.equal(starts,1);assert.doesNotMatch(f.get('onedrive-message').textContent,/^Connected to/);
+});
+test('opening a healthy connection only shows details and does not restart it',async()=>{
+ const {c}=fixture();c.bound=true;c.fs={};c.start=async()=>{throw Error('Unexpected reconnect');};assert.equal(await c.show(),true);
+});
