@@ -1,0 +1,14 @@
+#bmcFrame {
+  display: none;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: var(--paper);
+}
+
+body.bmc-active #bmcFrame { display: block; }
+body.bmc-active:not(.di-no-tabs) :is(.canvas-wrap, .statusbar, .editor-toolbar, .left-sidebar, .inspector,
+  #t22ViewBar, #t22OutlinePanel, #diMobilePanelBackdrop, #mobileMenu, #btnCommand, #btnUndo, #btnRedo, #diInspectorToggle) { display: none !important; }
+body.bmc-active .page-tabs { flex-shrink: 0; }

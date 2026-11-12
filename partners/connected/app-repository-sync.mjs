@@ -2,7 +2,7 @@ import {APP_FOLDERS,createAppRepository,hashText,newFileKey,travelWorkspaceKey,f
 import {mountTravelCalendar} from './travel-calendar.mjs?v=1';
 
 const FRAMES={
- thinkit:'/thinkit/36f8901ec722db162bcf/index.html',
+ thinkit:'/thinkit/40791585175d0e8d51c4/index.html',
  liveit:'/partners/liveit/thinkit/connected-w18e-c15396/index.html',
  travelit:'/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html'
 };
@@ -31,8 +31,9 @@ export function mountAppRepository({getLibrary}){
  const saveBinding=value=>localStorage.setItem(settingsKey,JSON.stringify(value));
  const scopeKey=`${settingsKey}:scope`;
  const appFrame=()=>{
-  const frame=[...document.querySelectorAll('iframe')].find(node=>new URL(node.src,location.href).pathname===FRAMES[app]);
-  try{if(frame?.contentWindow.location.origin===location.origin&&frame.contentWindow.location.pathname===FRAMES[app])return frame;}catch{}
+  const accepted=new Set([FRAMES[app],...(app==='thinkit'?['/thinkit/36f8901ec722db162bcf/index.html']:[])]);
+  const frame=[...document.querySelectorAll('iframe')].find(node=>accepted.has(new URL(node.src,location.href).pathname));
+  try{if(frame?.contentWindow.location.origin===location.origin&&accepted.has(frame.contentWindow.location.pathname))return frame;}catch{}
   return null;
  };
  const adapter=()=>appFrame()?.contentWindow?.keepItAppFiles;

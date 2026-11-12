@@ -1,0 +1,12 @@
+
+#bubbleFrame{display:none;flex:1;width:100%;min-width:0;min-height:0;border:0;background:#f7f7f3}body.bubble-active #bubbleFrame{display:block!important}body.bubble-active .canvas-wrap,body.bubble-active .statusbar,body.bubble-active .editor-toolbar,body.bubble-active .left-sidebar,body.bubble-active .inspector{display:none!important}body.bubble-active #bubbleModeTop,body.bubble-active #bubbleOpenTop{display:inline-flex!important}body.bubble-active .editor-shell{width:100%;flex:1}body.bubble-active .workspace{display:flex}body.bubble-active .page-tabs{flex-shrink:0}
+@media(max-width:730px){body.bubble-active #bubbleModeTop{font-size:10px;padding:6px}}
+
+/* Raise legibility of secondary labels, borders, inactive tabs and controls. */
+:root{--muted:#4f6471;--border:#afc0c9;--outline:#91aab6;--grid-dot:#b6c6cf}
+body[data-theme="dark"]{--muted:#bed0da;--border:#58707f;--outline:#7895a3;--grid-dot:#617885}
+.page-tab,.sidebar-bottom-note,.tiny-hint,.field-note,.notice{color:var(--muted)}
+.page-tab.active{color:var(--teal)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+body[data-theme="dark"] .page-tabs{background:var(--surface2)}
+body[data-theme="dark"] .page-tab.active{background:var(--surface);color:#8de7d6}

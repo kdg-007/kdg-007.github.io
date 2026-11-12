@@ -1,7 +1,7 @@
 import { readCalendarNotes } from "/partners/connected/liveit-calendar-read.mjs?v=1";
 import { CALENDAR_SOURCE as ft, CALENDAR_TAG as mt, eventRecord as Qe, eventSignature as Fe, eventNoteId as Mt, eventEnvelope as $i, readEventEnvelope as $t } from "/partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1";
 import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=2";
-import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=trip-sync-1";
+import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=hierarchy-1";
 import { a as qt } from "./chunk-W72KRQYW.js";
 import { b as Ri, c as pt } from "./chunk-C6CZGXK7.js";
 import { b as Dt } from "./chunk-I45DYT36.js";
@@ -422,7 +422,7 @@ function Ji({ getLibrary: e, getTarget: t, getNoteUI: i, hostWindow: o = window,
     }), f.append(k, x);
   }
   let l = d.createElement("iframe");
-  l.src = "/thinkit/36f8901ec722db162bcf/index.html?v=keepit-files-1", l.title = "ThinkIt diagramming and Mind Map workspace", l.referrerPolicy = "no-referrer", l.style.cssText = "border:0;flex:1;width:100%;min-height:0;", m.append(f, l), d.body.append(m);
+  l.src = "/thinkit/40791585175d0e8d51c4/index.html?v=hierarchy-1", l.title = "ThinkIt diagramming and Mind Map workspace", l.referrerPolicy = "no-referrer", l.style.cssText = "border:0;flex:1;width:100%;min-height:0;", m.append(f, l), d.body.append(m);
   let c = false, w = /* @__PURE__ */ new Map(), v = /* @__PURE__ */ new Map(), N = (k) => {
     if (c || k.origin !== o.location.origin || k.source !== l.contentWindow || k.data?.channel !== Ve) return;
     let x = k.data;

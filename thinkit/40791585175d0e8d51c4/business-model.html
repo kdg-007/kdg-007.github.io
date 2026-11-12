@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ThinkIt · Business Model Canvas</title>
+<style>
+:root{color-scheme:light;--ink:#17374b;--muted:#435b69;--bg:#e6edf0;--paper:#fff;--line:#8ba4b3;--accent:#0b6566;--focus:#ad6b0c}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,select,input{font:inherit}button{cursor:pointer;background:#fff;border:1px solid #708d9e;color:var(--ink);border-radius:6px;padding:6px 9px;font-weight:650}
+button:hover{background:#dcefee}button:focus-visible,select:focus-visible,[contenteditable]:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.toolbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f7fafb;border-bottom:1px solid var(--line);padding:9px 14px}
+.toolbar .name{font-weight:800;margin-right:8px}.toolbar .hint{font-size:12px;color:var(--muted)}
+.toolbar .push{flex:1}.toolbar select{border:1px solid #708d9e;border-radius:6px;background:white;color:var(--ink);padding:6px}
+.toolbar button[aria-pressed=true]{background:#b9e6dc;color:#17374b;border-color:#0b6566}
+#status{font-size:12px;min-width:145px;color:var(--muted)}#status[data-error]{color:#9e2525;font-weight:750}
+.work{padding:15px;overflow:auto}
+.sheet{background:var(--paper);border:1px solid var(--line);box-shadow:0 5px 24px #0d293323;margin:0 auto;padding:9mm;width:420mm;min-height:297mm;color:#17374b}
+.heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:5mm}.heading h1{margin:0;font-size:19pt;overflow-wrap:anywhere}.heading small{color:#415967;font-size:10pt}
+.canvas{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));grid-template-rows:minmax(0,1fr) minmax(0,1fr) minmax(0,.75fr);gap:2mm;height:260mm}
+.block{border:1.3px solid #536e7c;display:flex;min-width:0;min-height:0;flex-direction:column;background:#fff;overflow:hidden}
+.block h2{flex:none;display:flex;gap:6px;align-items:center;justify-content:space-between;margin:0;padding:7px 8px;background:#eaf2f5;border-bottom:1px solid #9aadb6;font-size:11.5pt;line-height:1.2}
+.block h2 span{font-size:9pt;font-weight:600;color:#3e5665}
+.block .editor{flex:1;overflow:auto;min-height:35px;padding:8px 9px;outline-offset:-3px;overflow-wrap:anywhere;white-space:normal}
+.block .editor:empty:before{content:"Add ideas, assumptions, evidence or notes…";color:#60737e;font-style:italic}
+.editor p{margin:4px 0}.editor ul,.editor ol{padding-left:19px}.editor img{max-width:100%;height:auto;display:block;margin:5px auto}
+.editor table{border-collapse:collapse;width:100%;margin:5px 0;font-size:11px;table-layout:fixed}
+.editor td,.editor th{border:1px solid #8da3b0;padding:3px;overflow-wrap:anywhere;min-width:22px}
+.editor .bmc-note{display:block;border-left:4px solid #c47f16;background:#fff1c8;color:#3e310c;padding:8px;margin:5px 0;border-radius:3px}
+[data-key=partners]{grid-column:1/3;grid-row:1/3}[data-key=activities]{grid-column:3/5;grid-row:1}
+[data-key=resources]{grid-column:3/5;grid-row:2}[data-key=value]{grid-column:5/7;grid-row:1/3}
+[data-key=relationships]{grid-column:7/9;grid-row:1}[data-key=channels]{grid-column:7/9;grid-row:2}
+[data-key=segments]{grid-column:9/11;grid-row:1/3}[data-key=costs]{grid-column:1/6;grid-row:3}
+[data-key=revenue]{grid-column:6/11;grid-row:3}
+.sheet-footer{margin-top:3mm;display:flex;gap:10px;justify-content:space-between;color:#435c6a;font-size:10px}
+.notice{max-width:420mm;margin:8px auto;color:var(--muted);font-size:12px}
+body[data-theme=dark]{--ink:#e7f0f5;--muted:#b8cbd6;--bg:#121c23;--line:#527180;--accent:#72d0c4;color-scheme:dark}
+body[data-theme=dark] #status[data-error]{color:#ff9f9f}
+body[data-theme=dark] .toolbar{background:#1c2c37}body[data-theme=dark] button,body[data-theme=dark] select{color:#eef4f7;background:#273e49;border-color:#7294a5}
+body[data-theme=dark] button:hover{background:#365563}
+body[data-theme=dark] .sheet{background:#1d2d38;color:#edf3f7;border-color:#67838f}
+body[data-theme=dark] .block{background:#233945;border-color:#89aab7;color:#e5f1f5}
+body[data-theme=dark] .block h2{background:#30505e;border-color:#88a8b6}
+body[data-theme=dark] .block h2 span{color:#d4e2e9}
+body[data-theme=dark] .block .editor:empty:before{color:#acc6d2}
+body[data-theme=dark] .sheet-footer,body[data-theme=dark] .heading small{color:#c6d6df}
+body[data-theme=dark] .editor td,body[data-theme=dark] .editor th{border-color:#89aab7}
+body[data-theme=dark] .editor .bmc-note{background:#4b3b22;color:#ffe7ad;border-color:#e7b35e}
+.print-proof{position:absolute!important;left:-10000px;top:0;visibility:hidden;pointer-events:none;border:0}
+@media screen and (max-width:900px){
+ .work{padding:9px;overflow:visible}
+ .sheet:not(.print-proof){width:100%!important;min-height:0!important;padding:12px}
+ .sheet:not(.print-proof) .heading{display:block}
+ .sheet:not(.print-proof) .canvas{display:flex;flex-direction:column;height:auto!important}
+ .sheet:not(.print-proof) .editor{min-height:84px;overflow:visible}
+ .toolbar{gap:5px;padding:6px 8px}
+ .toolbar button,.toolbar select{min-height:34px}
+ .toolbar .name,.toolbar .hint{display:none}
+}
+@media screen and (max-width:480px){
+ .toolbar{position:static}
+ #status{min-width:0;flex-basis:100%}
+}
+@page{size:420mm 297mm;margin:0}
+@media print{
+ html,body{width:420mm!important;height:297mm!important;overflow:hidden!important;margin:0!important;background:white!important}
+ .toolbar,.notice,.print-proof{display:none!important}
+ .work{margin:0;padding:0;overflow:visible}
+ .sheet{box-shadow:none;border:0;width:420mm;min-height:297mm;max-height:297mm;margin:0;page-break-inside:avoid;break-inside:avoid}
+ .block .editor{overflow:hidden}
+ .block .editor:empty:before{content:""}
+ body,.sheet,.block,.block h2,.editor,.sheet-footer{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ body[data-theme=dark] .sheet{background:white!important;color:#17374b!important}
+ body[data-theme=dark] .block{background:white!important;color:#17374b!important;border-color:#536e7c!important}
+ body[data-theme=dark] .block h2{background:#eaf2f5!important;color:#17374b!important}
+ body[data-theme=dark] .block h2 span,body[data-theme=dark] .heading small,body[data-theme=dark] .sheet-footer{color:#435c6a!important}
+ body[data-theme=dark] .editor .bmc-note{background:#fff1c8!important;color:#3e310c!important}
+}
+</style>
+<style id="printSize"></style>
+</head>
+<body>
+<header class="toolbar" aria-label="Business Model Canvas editing tools">
+ <strong class="name">Business Model Canvas</strong><span class="hint">Select a block, then edit in place</span>
+ <button type="button" data-cmd="undo">Undo</button>
+ <button type="button" data-cmd="redo">Redo</button>
+ <button type="button" data-cmd="bold" aria-label="Bold" title="Bold selection">B</button>
+ <button type="button" data-cmd="italic" aria-label="Italic" title="Italic selection"><em>I</em></button>
+ <button type="button" data-cmd="underline" aria-label="Underline" title="Underline selection"><u>U</u></button>
+ <button type="button" data-cmd="insertUnorderedList" title="Bulleted list">• List</button>
+ <button type="button" data-cmd="insertOrderedList" title="Numbered list">1. List</button>
+ <button type="button" data-cmd="formatBlock" data-value="h3">Heading</button>
+ <button type="button" data-cmd="formatBlock" data-value="p">Paragraph</button>
+ <button type="button" id="addNote">+ Note</button>
+ <button type="button" id="addTable">+ Table</button>
+ <button type="button" id="addRow">+ Row</button>
+ <button type="button" id="addColumn">+ Column</button>
+ <button type="button" id="addImage">+ Picture</button>
+ <label>Print <select id="paper"><option value="A3">A3 landscape</option><option value="A4">A4 landscape</option></select></label>
+ <button type="button" id="print">Print / PDF</button>
+ <span class="push"></span><span role="status" aria-live="polite" id="status">Local project editing</span>
+</header>
+<div class="work"><main class="sheet" id="sheet"><div class="heading"><h1 id="canvasTitle">Business model</h1><small>Versioned working hypothesis · ThinkIt</small></div>
+<div id="canvas" class="canvas">
+<section class="block" data-key="partners"><h2>Key Partners <span>01</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Key Partners" aria-multiline="true"></div></section>
+<section class="block" data-key="activities"><h2>Key Activities <span>02</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Key Activities" aria-multiline="true"></div></section>
+<section class="block" data-key="resources"><h2>Key Resources <span>03</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Key Resources" aria-multiline="true"></div></section>
+<section class="block" data-key="value"><h2>Value Propositions <span>04</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Value Propositions" aria-multiline="true"></div></section>
+<section class="block" data-key="relationships"><h2>Customer Relationships <span>05</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Customer Relationships" aria-multiline="true"></div></section>
+<section class="block" data-key="channels"><h2>Channels <span>06</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Channels" aria-multiline="true"></div></section>
+<section class="block" data-key="segments"><h2>Customer Segments <span>07</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Customer Segments" aria-multiline="true"></div></section>
+<section class="block" data-key="costs"><h2>Cost Structure <span>08</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Cost Structure" aria-multiline="true"></div></section>
+<section class="block" data-key="revenue"><h2>Revenue Streams <span>09</span></h2><div class="editor" contenteditable="true" role="textbox" aria-label="Revenue Streams" aria-multiline="true"></div></section>
+</div><footer class="sheet-footer"><span>Use each block for ideas, evidence, alternatives and assumptions.</span><span>Adapted from Strategyzer AG’s Business Model Canvas · CC BY-SA 3.0</span></footer>
+</main></div>
+<p class="notice">Edits are included in the parent ThinkIt project JSON and its local autosave. Pictures are embedded in that JSON; export a backup. Print at 100% scale without "Fit to page" for physical A3/A4 dimensions. Verify a test print against a physical ruler.</p>
+<input id="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+<script src="/thinkit/40791585175d0e8d51c4/assets/business-model.js?v=bmc-1"></script>
+</body></html>

@@ -24,7 +24,7 @@
   "productionAccepted": false,
   "existingCrossOriginDataMigrated": false,
   "publicationStatus": "Owner live-library connection enabled in the shared collection. Microsoft sign-in and cloud roundtrip pending owner.",
-  "asOf": "2026-11-08",
+  "asOf": "2026-11-12",
   "travelItMacAcceptance": {
     "reportedByOwner": true,
     "date": "2026-11-08",
@@ -53,5 +53,11 @@
     "scopeVisibility": "Work + Personal events",
     "storage": "One native KeepIt note per event; local pending receipts retained offline",
     "crossDeviceOwnerVerified": false
+  },
+  "thinkitHierarchy": {
+    "enabled": true,
+    "frame": "/thinkit/40791585175d0e8d51c4/index.html",
+    "release": "H5 integrated",
+    "browserAcceptance": "Connected host: actual Lapuz 385 nodes, 16-stage collapse, save/reload retained; 92 hierarchy checks passed"
   }
 }

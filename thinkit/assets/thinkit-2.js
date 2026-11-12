@@ -53,7 +53,7 @@ const mindSettings=()=>({...DEFAULT_MIND_LAYOUT,...(page?.mindLayout||{})});
 const allAnnotations=()=>page.annotations||(page.annotations=[]);
 const annoById=id=>allAnnotations().find(a=>a.id===id)||null;
 function annotation(label='Add annotation',parentId=null){return{id:uid(),label,html:esc(label),parentId,side:'bottom',dx:0,dy:16,x:190,y:190,w:208,h:82,fontFamily:'sans',fontSize:14,fontWeight:400,italic:false,underline:false,strike:false,textColor:'#173B50',highlight:'none',textAlign:'left',vAlign:'middle',fill:'transparent',stroke:'#0D7475',strokeWidth:0,strokeStyle:'solid',padding:12,opacity:1,autoTextColor:true};}
-function annoPosition(a){const n=a.parentId?byId(a.parentId):null;if(!n)return{x:a.x,y:a.y};const p=nodePos(n),cx=p.x+p.w/2,cy=p.y+p.h/2;const side=a.side||'bottom';let x=cx-a.w/2,y=p.y+p.h+16;if(side==='top')y=p.y-a.h-16;else if(side==='left'){x=p.x-a.w-20;y=cy-a.h/2;}else if(side==='right'){x=p.x+p.w+20;y=cy-a.h/2;}return{x:x+(a.dx||0),y:y+(a.dy||0)};}
+function annoPosition(a,lookup=byId){const n=a.parentId?lookup(a.parentId):null;if(!n)return{x:a.x,y:a.y};const p=nodePos(n),cx=p.x+p.w/2,cy=p.y+p.h/2;const side=a.side||'bottom';let x=cx-a.w/2,y=p.y+p.h+16;if(side==='top')y=p.y-a.h-16;else if(side==='left'){x=p.x-a.w-20;y=cy-a.h/2;}else if(side==='right'){x=p.x+p.w+20;y=cy-a.h/2;}return{x:x+(a.dx||0),y:y+(a.dy||0)};}
 function plainOfHtml(html){const d=document.createElement('div');d.innerHTML=html;return d.innerText||d.textContent||'';}
 
 const DEFAULT_SIZE={terminator:[156,58],process:[168,68],decision:[176,104],data:[168,68],document:[172,73],subprocess:[178,68],database:[165,72],note:[165,74],person:[176,82],department:[183,75],team:[172,72],vacancy:[166,75],topic:[167,65],subtopic:[155,57],idea:[152,63],milestone:[145,59]};
@@ -73,57 +73,128 @@ p2.orgLayout={...DEFAULT_ORG_LAYOUT};const p3={id:uid(),name:'Project ideas',mod
 return {format:'DIAGRAMIT',version:3,id:uid(),name:'DiagramIt Workspace',pages:[p1,p2,p3],activePageId:p1.id,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}
 function getPage(){return doc.pages.find(p=>p.id===doc.activePageId)||doc.pages[0];}
 const byId=id=>page?.nodes.find(n=>n.id===id)||null;
+// H2: a disposable visual graph. Original node IDs, edges, and WBS dependencies
+// remain the sole source of truth for every edit, export and cloud transaction.
+let flowRenderPlan=null;
+// Focus is intentionally transient view state; JSON retains every node/edge.
+const flowFocusByPage=new Map();
+function flowFocusId(){
+ if(page?.mode!=='flow')return null;
+ const id=flowFocusByPage.get(page.id);
+ return id&&byId(id)?id:null;
+}
+function flowGraphPlan(){
+ if(page?.mode!=='flow')return null;
+ if(!window.ThinkItFlowHierarchy?.plan)throw Error('Flowchart hierarchy module unavailable');
+ const complete=window.ThinkItFlowHierarchy.plan(page);
+ const id=flowFocusId();
+ return id?window.ThinkItFlowFocus.scope(page,complete,id):complete;
+}
+function flowSetFocus(id){
+ if(page.mode!=='flow')return;
+ if(id!==null&&!byId(id)){toast('Unknown subprocess');return;}
+ if(id&&!page.nodes.some(n=>n.outlineParentId===id)){toast('Focus requires a subprocess with activities.');return;}
+ flowFocusByPage.set(page.id,id);
+ flowRenderPlan=null;t22VisibleCache=null;
+ if(id){
+  const ancestors=[id,...flowHiddenAncestorIds(id)],toOpen=ancestors.filter(k=>byId(k)?.collapsed);
+  if(toOpen.length)transact(()=>{for(const key of toOpen)byId(key).collapsed=false;});
+  else render();
+  selected=new Set([id]);edgeSelected=null;selectedAnnotation=null;
+ }else{render();}
+ render(); // Update Outline and inspector after selection/focus settle.
+ if(!t22IsOutline()){fitView();focusCanvas();}
+}
+function flowSetLevel(level){
+ if(page.mode!=='flow')return;
+ const edits=window.ThinkItFlowFocus.collapseAtLevel(page,flowFocusId(),level);
+ if(!Object.keys(edits).length)return;
+ transact(()=>{for(const [id,collapsed]of Object.entries(edits))byId(id).collapsed=collapsed;
+  flowRenderPlan=null;t22VisibleCache=null;
+  // Repair newly displayed managed subtrees in the same undoable operation.
+  h3Repair(flowFocusId());
+  const shown=new Set(flowGraphPlan().visibleNodeIds);
+  if(selected.size&&!Array.from(selected).some(id=>shown.has(id))){
+   let current=byId([...selected][0]);
+   while(current&&!shown.has(current.id))current=byId(current.outlineParentId);
+   selected=new Set(current?[current.id]:[]);
+  }
+ });
+}
+function flowWrapSelected(){
+ if(page.mode!=='flow'||selected.size<2){toast('Select at least two activities to create a subprocess.');return;}
+ let plan,newShape;
+ try{
+  newShape=node('subprocess',0,0,'New subprocess',{fill:'teal'});
+  plan=window.ThinkItFlowFocus.wrapSelection(page,[...selected],newShape.id);
+  newShape.x=plan.x;newShape.y=plan.y;newShape.w=plan.w;newShape.h=plan.h;
+  newShape.outlineParentId=plan.parentId;newShape.outlineOrder=plan.outlineOrder;
+  newShape.wbsCodeOverride=null;newShape.dependencies=[];
+  const moving=new Set(plan.childIds),shadow={...page,nodes:[
+   ...page.nodes.map(n=>moving.has(n.id)?{...n,outlineParentId:newShape.id}:n),newShape
+  ]};
+  // Preflight before any real mutation: transact() does not roll back exceptions.
+  window.ThinkItOutline.auditPage(shadow);
+ }catch(err){toast('Cannot make subprocess: '+err.message);return;}
+ transact(()=>{
+  const moving=new Set(plan.childIds);
+  page.nodes.push(newShape);
+  for(const n of page.nodes)if(moving.has(n.id))n.outlineParentId=newShape.id;
+  selected=new Set([newShape.id]);edgeSelected=null;selectedAnnotation=null;
+  flowRenderPlan=null;t22VisibleCache=null;
+ });
+ toast('Subprocess created. All original activities, arrows and predecessors are retained.');
+}
+function flowRenderFocusBar(){
+ const bar=$('flowFocusBar');if(!bar)return;
+ bar.hidden=page.mode!=='flow';if(bar.hidden)return;
+ const crumbs=$('flowFocusCrumbs');crumbs.replaceChildren();
+ const make=(id,label,last=false)=>{
+  const b=dom('button','',label,crumbs);b.type='button';
+  b.title=label;b.setAttribute('aria-label',id===null?'Show all Flowchart activities':'Focus on '+label);
+  if(last)b.setAttribute('aria-current','location');
+  b.onclick=()=>flowSetFocus(id);
+ };
+ const id=flowFocusId(),chain=id?window.ThinkItFlowFocus.breadcrumbs(page,id):[];
+ make(null,'All activities',!id);
+ for(let i=0;i<chain.length;i++){
+  dom('span','flow-focus-separator','›',crumbs).setAttribute('aria-hidden','true');
+  make(chain[i].id,chain[i].label,i===chain.length-1);
+ }
+ const wrap=$('flowWrapSelection');
+ wrap.hidden=selected.size<2;wrap.title='Only selected Flowchart activities with the same WBS parent can be grouped';
+ const level=$('flowFocusLevel');if(level.value!=='')level.value='';
+}
+function flowSnapshot(){return flowRenderPlan||flowGraphPlan();}
+function flowCollapsedIds(){return new Set(page.nodes.filter(n=>n.collapsed===true).map(n=>n.id));}
+function flowHiddenAncestorIds(id){
+ if(page?.mode!=='flow')return [];
+ const ancestors=[],seen=new Set([id]);let n=byId(id);
+ while(n?.outlineParentId){
+  const parent=byId(n.outlineParentId);
+  if(!parent||seen.has(parent.id))break;
+  seen.add(parent.id);if(parent.collapsed)ancestors.push(parent.id);n=parent;
+ }
+ return ancestors;
+}
+function flowRevealAncestors(id){
+ const ids=flowHiddenAncestorIds(id);
+ if(ids.length)transact(()=>{for(const id of ids)byId(id).collapsed=false;t22VisibleCache=null;});
+}
+function flowOutlineDescendants(id){
+ const children=new Map();
+ for(const n of page.nodes)if(n.outlineParentId){if(!children.has(n.outlineParentId))children.set(n.outlineParentId,[]);children.get(n.outlineParentId).push(n.id);}
+ const out=new Set(),stack=[...(children.get(id)||[])];
+ while(stack.length){const next=stack.pop();if(out.has(next))continue;out.add(next);stack.push(...(children.get(next)||[]));}
+ return out;
+}
+function flowProjectedEdge(id){
+ return page?.mode==='flow'?flowSnapshot()?.edgeViews.find(e=>e.id===id&&e.displayProjection)||null:null;
+}
 const findEdge=id=>page?.edges.find(e=>e.id===id)||(id?.startsWith('tree_')?effectiveEdges().find(e=>e.id===id):null)||null;
 function treeChildren(parentId){return page.nodes.filter(n=>n.parentId===parentId);}
 // TH-L1: Build a per-traversal parent index. Do not cache across transactions:
 // reparent/undo/redo edit the same page and must never reuse stale descendants.
-
-// Sibling sequence is the existing node-array order, shared by Outline,
-// Mind Map layout and exports. Moving a branch never changes parent IDs or notes.
-function mindSiblingPosition(id){
- const node=byId(id);if(page?.mode!=='mind'||!node)return {siblings:[],index:-1};
- const siblings=page.nodes.filter(n=>(n.parentId||null)===(node.parentId||null));
- return {siblings,index:siblings.findIndex(n=>n.id===id)};
-}
-function canMoveMindTopic(id,delta){const {siblings,index}=mindSiblingPosition(id);return index>=0&&index+delta>=0&&index+delta<siblings.length;}
-function moveMindTopic(id,delta){
- if(!canMoveMindTopic(id,delta))return false;
- const {siblings,index}=mindSiblingPosition(id),other=siblings[index+delta],moving=byId(id);
- let arranged=true;
- transact(()=>{
-  const from=page.nodes.indexOf(moving),to=page.nodes.indexOf(other);
-  [page.nodes[from],page.nodes[to]]=[page.nodes[to],page.nodes[from]];
-  const settings={...mindSettings(),order:'manual'};page.mindLayout=settings;
-  let next=null;const parent=moving.parentId?byId(moving.parentId):null;
-  try{
-   next=proposeMindLayout(settings,parent?.id||null);
-   if(parent&&next[parent.id]){const dx=parent.x-next[parent.id].x,dy=parent.y-next[parent.id].y;
-    for(const point of Object.values(next)){point.x+=dx;point.y+=dy;}}
-   // Collapsed descendants follow their nearest arranged ancestor so that
-   // expanding the moved branch later reveals its children in the same place.
-   for(const n of page.nodes)if(!next[n.id]&&!n.pinned){
-    let ancestor=n.parentId?byId(n.parentId):null;const seen=new Set([n.id]);
-    while(ancestor&&!seen.has(ancestor.id)){
-     seen.add(ancestor.id);
-     if(next[ancestor.id]){next[n.id]={x:n.x+next[ancestor.id].x-ancestor.x,y:n.y+next[ancestor.id].y-ancestor.y};break;}
-     ancestor=ancestor.parentId?byId(ancestor.parentId):null;
-    }
-   }
-   if(Object.values(next).some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))next=null;
-  }catch{next=null;}
-  if(next){for(const n of page.nodes)if(next[n.id]){n.x=Math.round(next[n.id].x);n.y=Math.round(next[n.id].y);}}
-  else arranged=false;
- });
- toast('Topic moved '+(delta<0?'earlier':'later')+'.'+(arranged?' Use Undo to restore the previous sequence.':' Sequence saved; arrange the canvas separately.'));
- return true;
-}
-function updateMindOrderControls(){
- for(const [suffix,delta] of [['Earlier',-1],['Later',1]]){
-  const button=$('outlineOrder'+suffix);if(!button)continue;
-  button.hidden=page.mode!=='mind';button.disabled=selected.size!==1||!canMoveMindTopic([...selected][0],delta);
- }
-}
-
 function hierarchyIndex(nodes=page.nodes){
   const ids=new Set(nodes.map(n=>n.id)),children=new Map(),roots=[];
   for(const n of nodes){
@@ -148,7 +219,7 @@ function ancestors(id){let n=byId(id),a=[];const seen=new Set();while(n?.parentI
 // cached ancestry may outlive a reparent, collapse, undo or redo transaction.
 // For valid Mind Maps this is linear, including 5,000-deep hierarchies.
 function visibleNodes(){
- if(page.mode==='flow')return page.nodes;
+ if(page.mode==='flow'){const state=flowSnapshot(),visible=new Set(state.visibleNodeIds);return page.nodes.filter(n=>visible.has(n.id));}
  if(page.mode!=='mind')return page.nodes.filter(n=>!ancestors(n.id).some(a=>byId(a)?.collapsed));
  const nodesById=new Map(page.nodes.map(n=>[n.id,n])),memo=new Map();
  for(const start of page.nodes){
@@ -175,7 +246,21 @@ function getWorldSize(){const r=canvas.getBoundingClientRect();return {w:r.width
 function screenPoint(evt){const r=canvas.getBoundingClientRect();return{x:evt.clientX-r.left,y:evt.clientY-r.top};}
 function worldPoint(evt){const p=screenPoint(evt);return{x:(p.x-view.x)/view.k,y:(p.y-view.y)/view.k};}
 function centroid(ids){const arr=[...ids].map(byId).filter(Boolean);return{x:arr.reduce((a,n)=>a+n.x+n.w/2,0)/(arr.length||1),y:arr.reduce((a,n)=>a+n.y+n.h/2,0)/(arr.length||1)};}
-function bounds(nodes=visibleNodes()){const xs=[],ys=[];for(const n of nodes){const p=nodePos(n);xs.push(p.x,p.x+n.w);ys.push(p.y,p.y+n.h);}for(const e of page?.edges||[]){if(isFreeEdge(e)){xs.push(e.start.x,e.end.x);ys.push(e.start.y,e.end.y);}}for(const a of page?.annotations||[]){if(a.parentId&&!visibleNodes().some(n=>n.id===a.parentId))continue;const p=annoPosition(a);xs.push(p.x,p.x+a.w);ys.push(p.y,p.y+a.h);}if(!xs.length)return{x:0,y:0,w:900,h:550};const minX=Math.min(...xs),minY=Math.min(...ys),maxX=Math.max(...xs),maxY=Math.max(...ys);return{x:minX,y:minY,w:Math.max(10,maxX-minX),h:Math.max(10,maxY-minY)};}
+function bounds(nodes=visibleNodes()){
+ let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+ const include=(x,y)=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);};
+ const visibleIds=new Set(nodes.map(n=>n.id));
+ const index=new Map((page?.nodes||[]).map(n=>[n.id,n]));
+ for(const n of nodes){const p=nodePos(n);include(p.x,p.y);include(p.x+n.w,p.y+n.h);}
+ for(const e of page?.edges||[]){if(!flowFocusId()&&isFreeEdge(e)){include(e.start.x,e.start.y);include(e.end.x,e.end.y);}}
+ for(const a of page?.annotations||[]){
+  if(page.mode==='flow'&&flowFocusId()&&!a.parentId)continue;
+   if(a.parentId&&!visibleIds.has(a.parentId))continue;
+  const p=annoPosition(a,id=>index.get(id));include(p.x,p.y);include(p.x+a.w,p.y+a.h);
+ }
+ if(minX===Infinity)return{x:0,y:0,w:900,h:550};
+ return{x:minX,y:minY,w:Math.max(10,maxX-minX),h:Math.max(10,maxY-minY)};
+}
 
 function ensureVisibleNode(n){const size=getWorldSize(),m=58,p=nodePos(n);let changed=false;const l=p.x*view.k+view.x,r=(p.x+p.w)*view.k+view.x,t=p.y*view.k+view.y,b=(p.y+p.h)*view.k+view.y;
 if(r>size.w-m){view.x-=r-(size.w-m);changed=true;}else if(l<m){view.x+=m-l;changed=true;}
@@ -186,13 +271,13 @@ if(changed)renderCanvas();}
 function fitView(options={}){if(page?.mode==='bmc')return;const b=bounds(),c=getWorldSize(),margin=clamp(Math.min(c.w,c.h)*.09,48,110);
  const automatic=options?.initial===true,compact=window.matchMedia('(max-width:850px)').matches;
  const hasContent=!!page&&(page.nodes.length>0||(page.edges||[]).length>0||(page.annotations||[]).length>0);
- const ideal=clamp(Math.min((c.w-margin*2)/Math.max(b.w,1),(c.h-margin*2)/Math.max(b.h,1)),.22,1.6);
+ const ideal=clamp(Math.min((c.w-margin*2)/Math.max(b.w,1),(c.h-margin*2)/Math.max(b.h,1)),automatic?.22:.005,1.6);
  if(automatic&&!hasContent){view.k=1;view.x=c.w/2-450;view.y=c.h/2-275;}
  else if(automatic&&compact&&ideal<.8&&page.nodes.length){const root=visibleNodes()[0]||page.nodes[0];view.k=.8;view.x=c.w/2-(root.x+root.w/2)*view.k;view.y=c.h/2-(root.y+root.h/2)*view.k;}
  else{view.k=ideal;view.x=(c.w-b.w*ideal)/2-b.x*ideal;view.y=(c.h-b.h*ideal)/2-b.y*ideal;}
  render();diP3UpdateNav();}
 
-function zoomAt(scale,p){const k=clamp(view.k*scale,.16,3.6);const wx=(p.x-view.x)/view.k,wy=(p.y-view.y)/view.k;view.x=p.x-wx*k;view.y=p.y-wy*k;view.k=k;render();}
+function zoomAt(scale,p){const k=clamp(view.k*scale,page?.mode==='flow'?.005:.16,3.6);const wx=(p.x-view.x)/view.k,wy=(p.y-view.y)/view.k;view.x=p.x-wx*k;view.y=p.y-wy*k;view.k=k;render();}
 function fillFor(n){return Object.fromEntries(COLORS)[n.fill]||n.fill||'#fff';}
 function isDark(){return theme==='dark';}
 function styleStroke(n){return n.stroke|| (n.fill==='teal'?'#0D7475':n.fill==='amber'?'#A8792B':'#416077');}
@@ -215,13 +300,20 @@ const start={x:pa.x+source.w,y:pa.y+source.h/2},end={x:pb.x,y:pb.y+target.h/2},t
 return{d:roundedPolylinePath(pts,7),points:pts,label:{x:(pts[1].x+pts[2].x)/2,y:(pts[1].y+pts[2].y)/2-8},a:pts[0],b:pts.at(-1)};}
 if(isFreeEdge(e)){const a=e.start,b=e.end,dx=b.x-a.x,dy=b.y-a.y;if(e.route==='orthogonal'){const mx=(a.x+b.x)/2+(e.bendOffset??e.parallelOffset??0);const pts=[a,{x:mx,y:a.y},{x:mx,y:b.y},b];return{d:roundedPolylinePath(pts),points:pts,trunk:{x:mx,y:(a.y+b.y)/2,axis:'x',base:(a.x+b.x)/2},label:{x:mx+10,y:(a.y+b.y)/2-9},a,b};}if(e.route==='curve'){const o=e.parallelOffset||0,c1={x:a.x+dx*.48,y:a.y+o},c2={x:b.x-dx*.48,y:b.y+o};return{d:`M${a.x} ${a.y} C${c1.x} ${c1.y},${c2.x} ${c2.y},${b.x} ${b.y}`,label:{x:(a.x+b.x)/2,y:(a.y+b.y)/2+o*.75-10},a,b};}return{d:`M${a.x} ${a.y} L${b.x} ${b.y}`,label:{x:(a.x+b.x)/2,y:(a.y+b.y)/2-9},a,b};}
 const{a,b,fromPort,toPort}=connAnchors(e,source,target),off=e.bendOffset??e.parallelOffset??0;
+// Collapsed Flowchart activities must not act as invisible routing obstacles.
+const routingNodes=page.mode==='flow'?visibleNodes():page.nodes;
+const countFlowObstacles=page.mode==='flow'&&window.ThinkItFlowRouteLanes?.obstacleCounter?
+ window.ThinkItFlowRouteLanes.obstacleCounter(routingNodes.map(nodePos)):null;
+const routingLanes=axis=>page.mode==='flow'&&window.ThinkItFlowRouteLanes?.candidates?
+ window.ThinkItFlowRouteLanes.candidates(routingNodes,a,b,axis):
+ routingNodes.slice(0,30).flatMap(n=>axis==='x'?[n.x-26,n.x+n.w+26]:[n.y-26,n.y+n.h+26]);
 if(e.route==='straight')return{d:`M${a.x} ${a.y} L${b.x} ${b.y}`,label:{x:(a.x+b.x)/2,y:(a.y+b.y)/2-9},a,b};
 if(e.route==='curve'){const dx=b.x-a.x,dy=b.y-a.y,horizontal=(fromPort==='left'||fromPort==='right'),c1=horizontal?{x:a.x+dx*.48,y:a.y}:{x:a.x,y:a.y+dy*.45},c2=horizontal?{x:b.x-dx*.48,y:b.y}:{x:b.x,y:b.y-dy*.45};return{d:`M${a.x} ${a.y} C${c1.x} ${c1.y},${c2.x} ${c2.y},${b.x} ${b.y}`,label:{x:(a.x+3*c1.x+3*c2.x+b.x)/8,y:(a.y+3*c1.y+3*c2.y+b.y)/8-8},a,b};}
 const vectors={right:[1,0],left:[-1,0],top:[0,-1],bottom:[0,1]},sv=vectors[fromPort],tv=vectors[toPort],gap=28,
 sa={x:a.x+sv[0]*gap,y:a.y+sv[1]*gap},tb={x:b.x+tv[0]*gap,y:b.y+tv[1]*gap};
 const horizontal=sv[0]!==0,finishHorizontal=tv[0]!==0,candidates=[];
 const put=(pts,axis,base,pos)=>candidates.push({pts,axis,base,pos});
-if(horizontal&&finishHorizontal){const base=(sa.x+tb.x)/2;for(const x of (e.bendOffset!=null?[base+off]:[base+off,Math.max(sa.x,tb.x)+38,Math.min(sa.x,tb.x)-38,...page.nodes.slice(0,30).flatMap(n=>[n.x-26,n.x+n.w+26])]))put([a,sa,{x,y:sa.y},{x,y:tb.y},tb,b],'x',base,x);
+if(horizontal&&finishHorizontal){const base=(sa.x+tb.x)/2;for(const x of (e.bendOffset!=null?[base+off]:[base+off,Math.max(sa.x,tb.x)+38,Math.min(sa.x,tb.x)-38,...routingLanes('x')]))put([a,sa,{x,y:sa.y},{x,y:tb.y},tb,b],'x',base,x);
 // A long row-wrap connector may need to travel between the two rows, not through their nodes.
 // This is an additional candidate only: never override a user-specified bend offset.
 if(page.mode==='flow'&&e.bendOffset==null&&Math.abs(a.x-b.x)>Math.max(source.w,target.w)*1.5){
@@ -238,7 +330,7 @@ if((fromPort==='right'&&toPort==='left'&&sa.x>tb.x)||(fromPort==='left'&&toPort=
 const minY=Math.min(source.y,target.y)-55,maxY=Math.max(source.y+source.h,target.y+target.h)+55;
 for(const y of (e.bendOffset!=null&&e.bendAxis==='y'?[(sa.y+tb.y)/2+off]:[minY,maxY]))put([a,sa,{x:sa.x,y},{x:tb.x,y},tb,b],'y',(sa.y+tb.y)/2,y);
 }}
-else if(!horizontal&&!finishHorizontal){const base=(sa.y+tb.y)/2;for(const y of(e.bendOffset!=null?[base+off]:[base+off,Math.max(sa.y,tb.y)+38,Math.min(sa.y,tb.y)-38,...page.nodes.slice(0,30).flatMap(n=>[n.y-26,n.y+n.h+26])]))put([a,sa,{x:sa.x,y},{x:tb.x,y},tb,b],'y',base,y);
+else if(!horizontal&&!finishHorizontal){const base=(sa.y+tb.y)/2;for(const y of(e.bendOffset!=null?[base+off]:[base+off,Math.max(sa.y,tb.y)+38,Math.min(sa.y,tb.y)-38,...routingLanes('y')]))put([a,sa,{x:sa.x,y},{x:tb.x,y},tb,b],'y',base,y);
 if((fromPort==='bottom'&&toPort==='top'&&sa.y>tb.y)||(fromPort==='top'&&toPort==='bottom'&&sa.y<tb.y)){
 const minX=Math.min(source.x,target.x)-55,maxX=Math.max(source.x+source.w,target.x+target.w)+55;
 for(const x of (e.bendOffset!=null&&e.bendAxis==='x'?[(sa.x+tb.x)/2+off]:[minX,maxX]))put([a,sa,{x,y:sa.y},{x,y:tb.y},tb,b],'x',(sa.x+tb.x)/2,x);
@@ -247,11 +339,11 @@ else{if(horizontal){put([a,sa,{x:tb.x,y:sa.y},tb,b],null,0,0);put([a,sa,{x:sa.x,
 if(e.bendOffset!=null){const base=(sa.x+tb.x)/2,mid=base+off;put([a,sa,{x:mid,y:sa.y},{x:mid,y:tb.y},tb,b],'x',base,mid);}}
 const intersects=(p,q,n)=>{const x1=n.x-9,x2=n.x+n.w+9,y1=n.y-9,y2=n.y+n.h+9;if(Math.abs(p.y-q.y)<.001){const y=p.y;return y>y1&&y<y2&&Math.max(Math.min(p.x,q.x),x1)<Math.min(Math.max(p.x,q.x),x2);}if(Math.abs(p.x-q.x)<.001){const x=p.x;return x>x1&&x<x2&&Math.max(Math.min(p.y,q.y),y1)<Math.min(Math.max(p.y,q.y),y2);}return true;};
 let best=null,bestScore=Infinity;
-for(const candidate of candidates){const pts=candidate.pts.filter((p,i,arr)=>i===0||Math.abs(p.x-arr[i-1].x)+Math.abs(p.y-arr[i-1].y)>.1);let score=0,bends=0;for(let i=1;i<pts.length;i++){const p=pts[i-1],q=pts[i],len=Math.abs(p.x-q.x)+Math.abs(p.y-q.y);score+=len*.2;for(const n of page.nodes){if(n.id===source.id&&i===1||n.id===target.id&&i===pts.length-1)continue;if(intersects(p,q,nodePos(n)))score+=1600;}if(i>1){const prev=pts[i-2],prevHorizontal=Math.abs(prev.y-p.y)<.001,currHorizontal=Math.abs(p.y-q.y)<.001;if(prevHorizontal!==currHorizontal)bends++;}}score+=bends*12;if(e.bendOffset!=null&&candidate.axis===e.bendAxis)score-=2500;if(score<bestScore){bestScore=score;best={...candidate,pts};}}
+for(const candidate of candidates){const pts=candidate.pts.filter((p,i,arr)=>i===0||Math.abs(p.x-arr[i-1].x)+Math.abs(p.y-arr[i-1].y)>.1);let score=0,bends=0;for(let i=1;i<pts.length;i++){const p=pts[i-1],q=pts[i],len=Math.abs(p.x-q.x)+Math.abs(p.y-q.y);score+=len*.2;if(countFlowObstacles)score+=1600*countFlowObstacles(p,q,i===1?source.id:null,i===pts.length-1?target.id:null);else for(const n of routingNodes){if(n.id===source.id&&i===1||n.id===target.id&&i===pts.length-1)continue;if(intersects(p,q,nodePos(n)))score+=1600;}if(i>1){const prev=pts[i-2],prevHorizontal=Math.abs(prev.y-p.y)<.001,currHorizontal=Math.abs(p.y-q.y)<.001;if(prevHorizontal!==currHorizontal)bends++;}}score+=bends*12;if(e.bendOffset!=null&&candidate.axis===e.bendAxis)score-=2500;if(score<bestScore){bestScore=score;best={...candidate,pts};}}
 const pts=best?.pts||[a,b],mid=pts[Math.max(0,Math.floor((pts.length-1)/2))],next=pts[Math.min(pts.length-1,Math.floor((pts.length-1)/2)+1)],label={x:(mid.x+next.x)/2+7,y:(mid.y+next.y)/2-9},trunk=best?.axis?{x:best.axis==='x'?best.pos:(mid.x+next.x)/2,y:best.axis==='y'?best.pos:(mid.y+next.y)/2,axis:best.axis,base:best.base}:null;
 return{d:roundedPolylinePath(pts),points:pts,label,trunk,a,b,fromPort,toPort};}
 function effectiveEdges(){
- if(page.mode==='flow')return page.edges;
+ if(page.mode==='flow')return flowSnapshot().edgeViews;
  // The Mind Map's previously repeated node/edge scans were quadratic in its size.
  if(page.mode==='mind'){
   const ids=new Set(page.nodes.map(n=>n.id)),saved=new Map();
@@ -278,7 +370,7 @@ if(e.label){const t=el('text',{x:geom.label.x,y:geom.label.y,'text-anchor':'midd
 /* Editing handles are rendered in overlayLayer, after all nodes, so their hit targets cannot be hidden by shape geometry. */
 }
 
-function drawSelectedEdgeHandles(layer){if(!edgeSelected)return;const e=findEdge(edgeSelected);if(!e)return;const free=isFreeEdge(e),a=free?null:byId(e.from),b=free?null:byId(e.to),geom=getEdgeGeom(e,a,b);const group=el('g',{'data-edge-id':e.id,class:'edge-handles'},layer);if(free){for(const which of ['start','end']){const pt=e[which];el('circle',{cx:pt.x,cy:pt.y,r:7,class:'edge-endpoint','data-edge-id':e.id,'data-edge-handle':which},group);}}else{for(const [which,pt] of [['from',geom.a],['to',geom.b]])el('circle',{cx:pt.x,cy:pt.y,r:8,class:'edge-endpoint','data-edge-id':e.id,'data-edge-handle':which},group);}if(geom.trunk)el('rect',{x:geom.trunk.x-6,y:geom.trunk.y-6,width:12,height:12,rx:3,class:'edge-bend-handle','data-edge-id':e.id,'data-edge-handle':'bend'},group);}
+function drawSelectedEdgeHandles(layer){if(!edgeSelected||flowProjectedEdge(edgeSelected))return;if(page.mode==='flow'&&!flowSnapshot().edgeViews.some(e=>e.id===edgeSelected))return;const e=findEdge(edgeSelected);if(!e)return;const free=isFreeEdge(e),a=free?null:byId(e.from),b=free?null:byId(e.to),geom=getEdgeGeom(e,a,b);const group=el('g',{'data-edge-id':e.id,class:'edge-handles'},layer);if(free){for(const which of ['start','end']){const pt=e[which];el('circle',{cx:pt.x,cy:pt.y,r:7,class:'edge-endpoint','data-edge-id':e.id,'data-edge-handle':which},group);}}else{for(const [which,pt] of [['from',geom.a],['to',geom.b]])el('circle',{cx:pt.x,cy:pt.y,r:8,class:'edge-endpoint','data-edge-id':e.id,'data-edge-handle':which},group);}if(geom.trunk)el('rect',{x:geom.trunk.x-6,y:geom.trunk.y-6,width:12,height:12,rx:3,class:'edge-bend-handle','data-edge-id':e.id,'data-edge-handle':'bend'},group);}
 function shapeElement(g,n){const p=nodePos(n),x=p.x,y=p.y,w=p.w,h=p.h,common={fill:fillFor(n),stroke:styleStroke(n),'stroke-width':n.strokeWidth??1.7,'stroke-dasharray':n.strokeStyle==='dashed'?'7 5':n.strokeStyle==='dotted'?'2 4':null,class:'node-shape'};
 switch(n.shape){case 'terminator':case 'topic':case 'subtopic':el('rect',{x,y,width:w,height:h,rx:n.shape==='terminator'?h/2:n.shape==='topic'?19:14,...common},g);break;
 case 'decision':el('polygon',{points:`${x+w/2},${y} ${x+w},${y+h/2} ${x+w/2},${y+h} ${x},${y+h/2}`,...common},g);break;
@@ -298,7 +390,7 @@ if(n.groupId)el('rect',{x:x+4,y:y+4,width:6,height:6,rx:2,fill:'#0D7475',opacity
 function wrapText(text,maxWidth,fontSize=13,maxRows=4){const lines=[];for(const raw of String(text||'').split('\n')){const words=raw.trim().split(/\s+/).filter(Boolean);let line='';const maxChars=Math.max(9,Math.floor(maxWidth/(fontSize*.57)));for(const word of words){if((line+' '+word).trim().length>maxChars&&line){lines.push(line);line=word;}else line=(line+' '+word).trim();}if(line)lines.push(line);if(!words.length)lines.push('');}return lines.slice(0,maxRows).map((s,i)=>i===maxRows-1&&lines.length>maxRows-1&&s.length>8?s.slice(0,-1)+'…':s);}
 function drawText(g,n,exportMode=false){const p=nodePos(n),centerX=p.x+p.w/2;const isOrg=page.mode==='org';const sub=isOrg?(n.data?.role||''):'';let text=n.label;const font=Math.max(10,Math.min(n.fontSize||13,22));let w=p.w-(n.shape==='decision'?58:30);if(n.shape==='data')w-=18;const lines=wrapText(text,w,font,3);let labelHeight=lines.length*(font+4);let ty=p.y+p.h/2-(labelHeight/2)+(font*.82);if(sub)ty-=7;
 const t=el('text',{x:n.textAlign==='left'?p.x+15:n.textAlign==='right'?p.x+p.w-15:centerX,y:ty,'text-anchor':n.textAlign==='left'?'start':n.textAlign==='right'?'end':'middle',fill:n.textColor||'#173B50','font-size':font,'font-weight':n.fontWeight??600,'font-family':n.fontFamily==='serif'?'Georgia,serif':n.fontFamily==='mono'?'monospace':'Arial,sans-serif','font-style':n.italic?'italic':'normal',class:'node-text'},g);if(exportMode)t.setAttribute('font-family',n.fontFamily==='serif'?'Georgia,serif':n.fontFamily==='mono'?'monospace':'Arial,sans-serif');for(let i=0;i<lines.length;i++){const span=el('tspan',{x:n.textAlign==='left'?p.x+15:n.textAlign==='right'?p.x+p.w-15:centerX,dy:i===0?0:font+4},t);setText(span,lines[i]);}if(sub){const t2=el('text',{x:centerX,y:ty+labelHeight+4,'text-anchor':'middle',fill:'#6D7E87','font-size':10,class:'node-text'},g);setText(t2,short(sub));if(exportMode)t2.setAttribute('font-family','Arial,sans-serif');}
-if(n.collapsed&&page.mode!=='flow'&&treeChildren(n.id).length){el('rect',{x:p.x+p.w-22,y:p.y+p.h-5,width:29,height:18,rx:9,fill:'#0D7475'},g);const t3=el('text',{x:p.x+p.w-7.5,y:p.y+p.h+7,'text-anchor':'middle','font-size':10,fill:'#fff','font-weight':700,class:'node-text'},g);setText(t3,'+'+descendants(n.id).size);}}
+if(n.collapsed&&(page.mode==='flow'?!!flowSnapshot()?.descendantCount.get(n.id):treeChildren(n.id).length)){el('rect',{x:p.x+p.w-22,y:p.y+p.h-5,width:29,height:18,rx:9,fill:'#0D7475'},g);const t3=el('text',{x:p.x+p.w-7.5,y:p.y+p.h+7,'text-anchor':'middle','font-size':10,fill:'#fff','font-weight':700,class:'node-text'},g);setText(t3,'+'+(page.mode==='flow'?flowSnapshot().descendantCount.get(n.id):descendants(n.id).size));}}
 
 /* First-class annotations: visual text boxes, optionally anchored to a shape. */
 function annotationTextRuns(a){const root=document.createElement('div');root.innerHTML=a.html||esc(a.label||'');const runs=[];const visit=(n,fmt={})=>{if(n.nodeType===3){if(n.textContent)runs.push({text:n.textContent,...fmt});return;}if(n.nodeType!==1)return;const tag=n.tagName.toLowerCase();if(tag==='script'||tag==='style'||tag==='iframe')return;const f={...fmt};if(['strong','b'].includes(tag))f.bold=true;if(['i','em'].includes(tag))f.italic=true;if(tag==='u')f.underline=true;if(['s','strike','del'].includes(tag))f.strike=true;const css=n.style;if(css.fontWeight&&(css.fontWeight==='bold'||Number(css.fontWeight)>=600))f.bold=true;if(css.fontStyle==='italic')f.italic=true;if(css.textDecorationLine?.includes('underline'))f.underline=true;if(css.textDecorationLine?.includes('line-through'))f.strike=true;if(css.color)f.color=css.color;if(css.backgroundColor&&css.backgroundColor!=='transparent')f.highlight=css.backgroundColor;if(tag==='font'&&n.getAttribute('color'))f.color=n.getAttribute('color');if(tag==='br'){runs.push({text:'\n',...f});return;}if(['div','p'].includes(tag)&&runs.length&&!runs.at(-1).text.endsWith('\n'))runs.push({text:'\n',...f});for(const c of n.childNodes)visit(c,f);};for(const c of root.childNodes)visit(c);return runs.length?runs:[{text:a.label||'',bold:false}];}
@@ -331,7 +423,7 @@ const commit=dom('button','rich-action','✓ Save',toolbar),cancel=dom('button',
 function sanitizeAnnotationMarkup(div){const permitted=new Set(['B','STRONG','I','EM','U','S','STRIKE','DIV','P','BR','SPAN','FONT']);const keep=tag=>{if(tag.nodeType===3)return document.createTextNode(tag.nodeValue);if(tag.nodeType!==1)return document.createTextNode('');if(!permitted.has(tag.tagName)){const fragment=document.createDocumentFragment();for(const c of [...tag.childNodes])fragment.appendChild(keep(c));return fragment;}const t=document.createElement(tag.tagName.toLowerCase());for(const cssKey of ['color','backgroundColor','fontWeight','fontStyle','textDecorationLine']){const val=tag.style[cssKey];if(val&&val.length<80&&!/url|expression|var\(/i.test(val))t.style[cssKey]=val;}if(tag.tagName==='FONT'&&/^#[a-f0-9]{6}$/i.test(tag.getAttribute('color')||''))t.setAttribute('color',tag.getAttribute('color'));for(const c of [...tag.childNodes])t.appendChild(keep(c));return t;};const clean=document.createElement('div');for(const child of [...div.childNodes])clean.appendChild(keep(child));return clean.innerHTML.slice(0,30000);}
 
 function drawNode(layer,n,exportMode=false){const g=el('g',{'data-node-id':n.id,class:'node-g'+(selected.has(n.id)&&!exportMode?' selected':'')},layer);shapeElement(g,n);drawText(g,n,exportMode);const p=nodePos(n);
-if(page.mode!=='flow'&&treeChildren(n.id).length&&!exportMode){const hidden=descendants(n.id).size;const cx=p.x+p.w+15,cy=p.y+13;const cg=el('g',{'data-collapse-node':n.id,class:'branch-toggle','role':'button','aria-label':n.collapsed?'Expand '+hidden+' descendants':'Collapse branch'},g);el('circle',{cx,cy,r:10.5,fill:n.collapsed?'#0D7475':'var(--surface)',stroke:'#0D7475','stroke-width':1.7,'data-collapse-node':n.id},cg);setText(el('text',{x:cx,y:cy+3.8,'text-anchor':'middle','font-size':14,'font-weight':700,fill:n.collapsed?'#fff':'#0D7475','pointer-events':'none'},cg),n.collapsed?'+':'−');if(n.collapsed){setText(el('text',{x:cx+15,y:cy+3.5,'font-size':10,fill:'var(--ink)','pointer-events':'none'},cg),String(hidden));}}
+if((page.mode==='flow'?!!flowSnapshot()?.descendantCount.get(n.id):treeChildren(n.id).length)&&!exportMode){const hidden=page.mode==='flow'?flowSnapshot().descendantCount.get(n.id):descendants(n.id).size;const cx=p.x+p.w+15,cy=p.y+13;const cg=el('g',{'data-collapse-node':n.id,class:'branch-toggle','role':'button','aria-label':n.collapsed?'Expand '+hidden+' descendants':'Collapse branch'},g);el('circle',{cx,cy,r:10.5,fill:n.collapsed?'#0D7475':'var(--surface)',stroke:'#0D7475','stroke-width':1.7,'data-collapse-node':n.id},cg);setText(el('text',{x:cx,y:cy+3.8,'text-anchor':'middle','font-size':14,'font-weight':700,fill:n.collapsed?'#fff':'#0D7475','pointer-events':'none'},cg),n.collapsed?'+':'−');if(n.collapsed){setText(el('text',{x:cx+15,y:cy+3.5,'font-size':10,fill:'var(--ink)','pointer-events':'none'},cg),String(hidden));}}
 if(selected.has(n.id)&&!exportMode){el('rect',{x:p.x-4,y:p.y-4,width:p.w+8,height:p.h+8,rx:8,class:'selection-box'},g);for(const [port,v] of Object.entries(pointsFor(n)))el('circle',{cx:v.x,cy:v.y,r:6.5,class:'port','data-node-id':n.id,'data-port':port},g);for(const [corner,cx,cy] of [['nw',p.x-4,p.y-4],['ne',p.x+p.w+4,p.y-4],['sw',p.x-4,p.y+p.h+4],['se',p.x+p.w+4,p.y+p.h+4]])el('rect',{x:cx-4,y:cy-4,width:8,height:8,rx:1.4,class:'resize-handle','data-node-id':n.id,'data-resize':corner},g);
 const x=page.mode==='mind'?p.x+p.w+23:p.x+p.w+19,y=page.mode==='mind'?p.y+p.h/2:p.y+p.h+18;el('circle',{cx:x,cy:y,r:11,class:'quick-add','data-action':'quick-child','data-node-id':n.id},g);setText(el('text',{x,y:y+4,'text-anchor':'middle','font-size':16,fill:'var(--teal)','pointer-events':'none'},g),'+');}
 return g;}
@@ -388,6 +480,7 @@ function mindEdgeInViewport(e,rect,nodesById){
 }
 let visibleIdSet=new Set();
 function renderCanvas(){if(!page||page.mode==='bmc')return;
+ flowRenderPlan=page.mode==='flow'?flowGraphPlan():null;
  const allVisible=visibleNodes(),wh=getWorldSize(),viewport=mindViewportRect(wh);
  visibleIdSet=new Set(allVisible.map(n=>n.id));
  const paintedNodes=viewport?allVisible.filter(n=>selected.has(n.id)||mindNodeInViewport(n,viewport)):allVisible;
@@ -396,16 +489,457 @@ function renderCanvas(){if(!page||page.mode==='bmc')return;
  if(preview){for(const n of paintedNodes){const p=preview[n.id];if(p&&(Math.abs(p.x-n.x)+Math.abs(p.y-n.y)>1||orgPreviewSizes[n.id]&&(orgPreviewSizes[n.id].w!==n.w||orgPreviewSizes[n.id].h!==n.h)))el('rect',{x:p.x-5,y:p.y-5,width:(orgPreviewSizes[n.id]?.w||n.w)+10,height:(orgPreviewSizes[n.id]?.h||n.h)+10,rx:8,class:'preview-box'},previewLayer);}}
  for(const e of effectiveEdges())if(!viewport||mindEdgeInViewport(e,viewport,nodesById))drawEdge(edgeLayer,e);
  for(const n of paintedNodes)drawNode(nodeLayer,n);
- for(const a of allAnnotations())if(!viewport||mindAnnotationInViewport(a,viewport))drawAnnotation(nodeLayer,a);
+ for(const a of allAnnotations())if((page.mode!=='flow'||(flowFocusId()?!!a.parentId&&visibleIdSet.has(a.parentId):!a.parentId||visibleIdSet.has(a.parentId)))&&(!viewport||mindAnnotationInViewport(a,viewport)))drawAnnotation(nodeLayer,a);
  drawSelectedEdgeHandles(overlayLayer);
 if(gesture?.type==='connect'||connectSource){const src=gesture?.source||connectSource?.id,n=byId(src),port=gesture?.port||connectSource?.port||'auto';if(n){const anchor=port!=='auto'?pointsFor(n)[port]:{x:n.x+n.w/2,y:n.y+n.h/2},p=gesture?.current||anchor;el('circle',{cx:anchor.x,cy:anchor.y,r:6,fill:'var(--teal)','pointer-events':'none'},overlayLayer);if(gesture?.type==='connect')el('path',{d:`M${anchor.x} ${anchor.y} L${p.x} ${p.y}`,stroke:'var(--teal)','stroke-width':2,'stroke-dasharray':'5 3','pointer-events':'none'},overlayLayer);}}
 if(gesture?.type==='edge-reanchor'){const ed=findEdge(gesture.edgeId),src=byId(ed?.from),dst=byId(ed?.to);if(ed&&src&&dst){const geom=getEdgeGeom(ed,src,dst),p=gesture.current||gesture.start,from=gesture.which==='from'?p:geom.a,to=gesture.which==='to'?p:geom.b;el('path',{d:`M${from.x} ${from.y} L${to.x} ${to.y}`,stroke:'var(--teal)','stroke-width':2.5,'stroke-dasharray':'5 4','pointer-events':'none'},overlayLayer);}}
 if(gesture?.type==='arrow-draw'){const a=gesture.startWorld,b=gesture.current||a;el('path',{d:`M${a.x} ${a.y} L${b.x} ${b.y}`,stroke:'var(--teal)','stroke-width':2,'marker-end':'url(#diagramitArrow_filled)','pointer-events':'none'},overlayLayer);}
 
 if(gesture?.type==='marquee'){const a=gesture.startWorld,b=gesture.current||a;el('rect',{x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),width:Math.abs(b.x-a.x),height:Math.abs(b.y-a.y),class:'marquee'},overlayLayer);}}
-function renderUI(){if(!page)return;$('btnMindNotes').hidden=page.mode!=='mind';$('btnDepartment').hidden=page.mode!=='org';$('docName').value=doc.name;$('modePill').textContent='Diagram: '+MODES[page.mode].name+'  ▾';$('modePill').setAttribute('aria-label','Diagram: '+MODES[page.mode].name+'; click to change or create');renderPageTabs();$('statusCounts').textContent=page.mode==='mind'?`${page.nodes.length} topics · ${page.nodes.filter(n=>n.noteHtml?.trim()||n.keepitLink?.itemId).length} topic notes · ${effectiveEdges().length} links`:`${page.nodes.length} nodes · ${(page.annotations||[]).length} notes · ${effectiveEdges().length} links`;$('statusMode').textContent=`${MODES[page.mode].name} · ${page.name}`;$('modeNote').textContent=connectSource?'Arrow source chosen · Click a second node (Esc cancels)':tool==='arrow'?'Click-drag anywhere to draw a free arrow':page.mode==='flow'?'Tab child · Enter sibling · ⌥Arrow directional child':page.mode==='org'?'Tab child · Enter sibling · ⌥Arrow child · ⌥⇧Arrow parent':'Tab child · Enter sibling · ⌥Arrow directional branch';$('emptyHint').hidden=page.nodes.length!==0;diUpdateMobileStarter();diP3UpdateNav();$('selectionToolbar').hidden=selected.size===0&&edgeSelected===null&&selectedAnnotation===null;$('selectionCount').textContent=selected.size?`${selected.size} selected`:selectedAnnotation?'Text selected':'Link selected';$('floatChild').style.display=selected.size===1?'':'none';$('floatEdit').style.display=selected.size===1||edgeSelected||selectedAnnotation?'':'none';$('btnUndo').disabled=!history.undo.length;$('btnRedo').disabled=!history.redo.length;$('btnGroup').disabled=selected.size<2;$('btnUngroup').disabled=![...selected].some(id=>byId(id)?.groupId);$('btnGrid').style.color=showGrid?'var(--teal)':'';$('btnFormatPainter').classList.toggle('active',paintActive);$('btnFormatPainter').disabled=selected.size!==1&&!paintStyle;updatePanelButtons();canvas.dataset.tool=tool;$('btnConnect').classList.toggle('active',tool==='connect');$('btnArrow').classList.toggle('active',tool==='arrow');renderPages();renderShapeLibrary();renderOutline();renderInspector();updateMindOrderControls();}
+function renderUI(){if(!page)return;updateMindOrderControls();flowRenderFocusBar();$('btnMindNotes').hidden=page.mode!=='mind';$('btnDepartment').hidden=page.mode!=='org';$('docName').value=doc.name;$('modePill').textContent='Diagram: '+MODES[page.mode].name+'  ▾';$('modePill').setAttribute('aria-label','Diagram: '+MODES[page.mode].name+'; click to change or create');renderPageTabs();$('statusCounts').textContent=page.mode==='mind'?`${page.nodes.length} topics · ${page.nodes.filter(n=>n.noteHtml?.trim()||n.keepitLink?.itemId).length} topic notes · ${effectiveEdges().length} links`:`${page.nodes.length} nodes · ${(page.annotations||[]).length} notes · ${effectiveEdges().length} links`;$('statusMode').textContent=`${MODES[page.mode].name} · ${page.name}`;$('modeNote').textContent=connectSource?'Arrow source chosen · Click a second node (Esc cancels)':tool==='arrow'?'Click-drag anywhere to draw a free arrow':page.mode==='flow'?'Tab child · Enter sibling · ⌥Arrow directional child':page.mode==='org'?'Tab child · Enter sibling · ⌥Arrow child · ⌥⇧Arrow parent':'Tab child · Enter sibling · ⌥Arrow directional branch';$('emptyHint').hidden=page.nodes.length!==0;diUpdateMobileStarter();diP3UpdateNav();$('selectionToolbar').hidden=selected.size===0&&edgeSelected===null&&selectedAnnotation===null;$('selectionCount').textContent=selected.size?`${selected.size} selected`:selectedAnnotation?'Text selected':'Link selected';$('floatChild').style.display=selected.size===1?'':'none';$('floatEdit').style.display=selected.size===1||edgeSelected||selectedAnnotation?'':'none';$('btnUndo').disabled=!history.undo.length;$('btnRedo').disabled=!history.redo.length;$('btnGroup').disabled=selected.size<2;$('btnUngroup').disabled=![...selected].some(id=>byId(id)?.groupId);$('btnGrid').style.color=showGrid?'var(--teal)':'';$('btnFormatPainter').classList.toggle('active',paintActive);$('btnFormatPainter').disabled=selected.size!==1&&!paintStyle;updatePanelButtons();canvas.dataset.tool=tool;$('btnConnect').classList.toggle('active',tool==='connect');$('btnArrow').classList.toggle('active',tool==='arrow');renderPages();renderShapeLibrary();renderOutline();renderInspector();}
+
+// T22-B · main-workspace Outline table. Pure Outline/WBS calculations are in
+// outline-wbs.js. Only the existing ThinkIt document is mutated via transact().
+// KeepIt editor, notes, accounts, outbox and cloud modules are out of scope.
+const t22PageView=new Map(),t22Collapsed=new Map(),t22PageSearch=new Map();
+// Flowchart Outline and canvas share the stored node.collapsed state; other
+// modes keep their existing per-view Outline collapse preferences.
+function t22CollapsedForPage(){return page?.mode==='flow'?flowCollapsedIds():new Set(t22Collapsed.get(page.id)||[]);}
+let t22Filter='',t22CurrentRows=[],t22Revealing=null,t22LastIssue='';
+let t22ActivePageId=null,t22VisibleCache=null;
+const T22_ROW_HEIGHT=44;
+function t22IsOutline(){return !!page&&!['bubble','bmc'].includes(page.mode)&&!diNoTabs()&&t22PageView.get(page.id)==='outline';}
+function t22SyncWorkspace(){
+ const available=!!page&&!['bubble','bmc'].includes(page.mode)&&!diNoTabs(),isOutline=available&&t22IsOutline();
+ $('t22ViewBar').hidden=!available;$('t22OutlinePanel').hidden=!isOutline;
+ $('canvasWrap').hidden=isOutline;
+ $('t22DiagramBtn').setAttribute('aria-pressed',String(!isOutline));
+ $('t22OutlineBtn').setAttribute('aria-pressed',String(isOutline));
+}
+function t22SwitchView(which){
+ if(!page||['bubble','bmc'].includes(page.mode))return;
+ if(which==='outline'&&!window.ThinkItOutline){toast('Outline model unavailable; diagram preserved.');return;}
+ t22PageView.set(page.id,which);
+ if(which==='outline'){
+  t22Revealing=[...selected][0]||null;
+  t22Filter=t22PageSearch.get(page.id)||'';$('t22Search').value=t22Filter;
+ }
+ render();
+ if(which==='diagram')focusCanvas();
+}
+function t22UiIssue(msg){t22LastIssue=msg;const el=$('t22OutlineStatus');el.textContent=msg;el.dataset.severity='warning';toast(msg);}
+function t22ClearIssue(){t22LastIssue='';const el=$('t22OutlineStatus');el.dataset.severity='';}
+function t22CheckedPlan(p){const a=window.ThinkItOutline.auditPage(p);return a;}
+function t22SelectedNode(){return selected.size===1?byId([...selected][0]):null;}
+function t22ParentKey(n){return page.mode==='flow'?(n.outlineParentId??null):(n.parentId??null);}
+function t22EditNode(id,changes){
+ const source=byId(id);if(!source)return false;
+ const altered={...source,...changes};
+ const shadow={...page,nodes:page.nodes.map(n=>n.id===id?altered:n)};
+ try{
+  const before=t22CheckedPlan(page),after=t22CheckedPlan(shadow);
+  const severe=new Set(['DEPENDENCY_CYCLE','SELF_DEPENDENCY','DUPLICATE_DEPENDENCY','DUPLICATE_WBS_CODE']);
+  const prior=new Set(before.warnings.filter(w=>severe.has(w.code)).map(w=>w.code+'|'+w.nodeId+'|'+(w.relatedId||'')));
+  const introduced=after.warnings.find(w=>severe.has(w.code)&&!prior.has(w.code+'|'+w.nodeId+'|'+(w.relatedId||'')));
+  if(introduced)throw Error('Invalid WBS edit: '+introduced.code);
+ }catch(err){t22UiIssue(err.message);return false;}
+ transact(()=>{Object.assign(source,changes);
+   if(page.mode==='flow'&&flowFocusId()&&Object.prototype.hasOwnProperty.call(changes,'outlineParentId')){
+     const stillInside=window.ThinkItFlowFocus.index(page).descendants(flowFocusId()).has(id);
+     if(!stillInside){flowFocusByPage.set(page.id,null);flowRenderPlan=null;t22VisibleCache=null;}
+   }
+  });t22ClearIssue();return true;
+}
+function t22EditDependencies(id,raw){
+ try{
+  const planned=window.ThinkItOutline.parseDependencyText(page,id,raw);
+  return t22EditNode(id,{dependencies:planned.dependencies});
+ }catch(err){t22UiIssue(err.message);return false;}
+}
+function t22OpenPredecessorPicker(id){
+ const activity=byId(id);if(!activity||page.mode==='org')return;
+ const openedPage=page.id,items=(activity.dependencies||[]).map(x=>({id:x.id,type:x.type||'FS'}));
+ const body=modal('Predecessors · '+(activity.label||'Activity'),'',[
+  {text:'Cancel'},
+  {text:'Apply predecessors',primary:true,action:()=>{
+   if(page?.id!==openedPage){t22UiIssue('Diagram changed. Reopen the predecessor editor.');return false;}
+   try{const patch=window.ThinkItOutline.previewDependencies(page,id,items);
+    if(!t22EditNode(id,{dependencies:patch.dependencies}))return false;
+    return true;
+   }catch(err){t22UiIssue(err.message);return false;}
+  }}]);
+ body.classList.add('t22-picker');
+ dom('p','field-note','Add predecessors by stable item ID. Diagram arrows remain independent.',body);
+ const search=dom('input','t22-picker-search',undefined,body);search.type='search';search.placeholder='Search code or activity name';search.setAttribute('aria-label','Find predecessor');
+ const pickLine=dom('div','t22-picker-controls',undefined,body);
+ const choices=dom('select','',undefined,pickLine);choices.setAttribute('aria-label','Predecessor activity');
+ const kind=dom('select','',undefined,pickLine);kind.setAttribute('aria-label','Dependency type');
+ for(const type of ['FS','SS','FF','SF']){const o=dom('option','',type,kind);o.value=type;}
+ const add=dom('button','inspector-btn','Add predecessor',pickLine);add.type='button';
+ const selectedList=dom('div','t22-picker-selected',undefined,body);
+ const redraw=()=>{
+  selectedList.replaceChildren();
+  if(!items.length)dom('p','field-note','No predecessors selected.',selectedList);
+  const codes=new Map(window.ThinkItOutline.auditPage(page).rows.map(r=>[r.id,r.code+' · '+(r.label||'')]));
+  items.forEach((item,i)=>{
+   const line=dom('div','t22-picker-entry',undefined,selectedList);
+   dom('span','',((codes.get(item.id)||'#'+item.id)+' ['+item.type+']'),line);
+   const remove=dom('button','inspector-btn','Remove',line);remove.type='button';
+   remove.onclick=()=>{items.splice(i,1);redraw();};
+  });
+ };
+ const refresh=()=>{
+  choices.replaceChildren();
+  const options=window.ThinkItOutline.dependencyChoices(page,id,search.value,100);
+  for(const entry of options){const o=dom('option','',entry.code+' · '+(entry.label||'')+' ('+entry.id+')',choices);o.value=entry.id;}
+  add.disabled=!options.length;
+ };
+ search.addEventListener('input',refresh);
+ add.onclick=()=>{
+  const target=choices.value;if(!target)return;
+  if(items.some(x=>x.id===target)){t22UiIssue('Predecessor already selected');return;}
+  try{window.ThinkItOutline.previewDependencies(page,id,[...items,{id:target,type:kind.value}]);
+   items.push({id:target,type:kind.value});redraw();
+  }catch(err){t22UiIssue(err.message);}
+ };
+ refresh();redraw();search.focus();
+}
+function t22OpenFlowGrouping(){
+ if(page.mode!=='flow')return;
+ const item=t22SelectedNode();if(!item){t22UiIssue('Select an activity first.');return;}
+ const openedPage=page.id;
+ const body=modal('WBS group · '+(item.label||'Activity'),'',[
+  {text:'Cancel'},
+  {text:'Apply grouping',primary:true,action:()=>{
+   if(page?.id!==openedPage){t22UiIssue('Diagram changed. Reopen WBS grouping.');return false;}
+   try{
+    const next=select.value||null;
+    const patch=window.ThinkItOutline.previewFlowGrouping(page,item.id,next);
+    const siblings=page.nodes.filter(n=>n.id!==item.id&&(n.outlineParentId??null)===next);
+    const order=1+Math.max(0,...siblings.map(n=>n.outlineOrder||0));
+    return t22EditNode(item.id,{outlineParentId:patch.outlineParentId,outlineOrder:order});
+   }catch(err){t22UiIssue(err.message);return false;}
+  }}]);
+ body.classList.add('t22-picker');
+ dom('p','field-note','WBS grouping is independent of flowchart arrows. Moving an activity does not reroute connectors.',body);
+ const select=dom('select','t22-picker-search',undefined,body);select.setAttribute('aria-label','Choose WBS parent group');
+ const root=dom('option','','Top level / ungrouped',select);root.value='';
+ const plan=window.ThinkItOutline.auditPage(page);
+ for(const row of plan.rows){
+  if(row.id===item.id)continue;
+  try{window.ThinkItOutline.previewFlowGrouping(page,item.id,row.id);}
+  catch{continue;}
+  const o=dom('option','',row.code+' · '+(row.label||''),select);o.value=row.id;
+ }
+ select.value=item.outlineParentId||'';
+}
+
+function t22MoveRow(id,dir){
+ const audit=t22CheckedPlan(page);const r=audit.rows.find(x=>x.id===id);if(!r)return;
+ const siblings=audit.rows.filter(x=>x.parentId===r.parentId);const at=siblings.findIndex(x=>x.id===id),target=at+dir;
+ if(target<0||target>=siblings.length)return;
+ const reordered=siblings.slice();[reordered[at],reordered[target]]=[reordered[target],reordered[at]];
+ transact(()=>reordered.forEach((row,i)=>{byId(row.id).outlineOrder=i+1;}));t22Revealing=id;
+}
+function t22ChangeDepth(id,dir){
+ const audit=t22CheckedPlan(page),rows=audit.rows,r=rows.find(x=>x.id===id);if(!r)return;
+ const current=byId(id),prop=page.mode==='flow'?'outlineParentId':'parentId';let next=null;
+ if(dir>0){
+  const index=rows.findIndex(x=>x.id===id);
+  for(let i=index-1;i>=0;i--){if(rows[i].depth===r.depth&&rows[i].parentId===r.parentId){next=rows[i].id;break;}}
+  if(!next){t22UiIssue('No earlier sibling to indent beneath.');return;}
+ }else{
+  if(!r.parentId){t22UiIssue('Item is already at the top level.');return;}
+  next=byId(r.parentId)?.[prop]??null;
+ }
+ const order=Math.max(0,...page.nodes.filter(n=>n.id!==id&&t22ParentKey(n)===next).map(n=>n.outlineOrder||0))+1;
+ if(t22EditNode(id,{[prop]:next,outlineOrder:order}))t22Revealing=id;
+}
+function t22Add(isChild){
+ if(page.mode==='flow'&&flowFocusId()&&!isChild){t22UiIssue('Exit focused subprocess before adding a top-level activity.');return;}
+ const source=t22SelectedNode(),parent=isChild?source:null;
+ if(isChild&&!parent){t22UiIssue('Select one item before adding a subitem.');return;}
+ const shape=page.mode==='flow'?'process':page.mode==='org'?'person':'topic',size=initialShapeSize(shape,source);
+ const parentId=parent?.id??null,prop=page.mode==='flow'?'outlineParentId':'parentId';
+ const order=Math.max(0,...page.nodes.filter(n=>t22ParentKey(n)===parentId).map(n=>n.outlineOrder||0))+1;
+ const preferred=page.mode==='org'?{x:(parent?.x??100)+30,y:(parent?.y??100)+75}:parent?defaultChildPosition(parent,false,size):{x:130,y:175};
+ const n=node(shape,preferred.x,preferred.y,page.mode==='org'?'New position':page.mode==='mind'?'New topic':'New activity',
+    ['mind','flow'].includes(page.mode)?{w:size.w,h:size.h}:{});
+ n[prop]=parentId;n.outlineOrder=order;n.dependencies=[];n.wbsCodeOverride=null;
+ transact(()=>{page.nodes.push(n);if(['flow','mind'].includes(page.mode)&&parent?.collapsed)parent.collapsed=false;
+   arrangeInserted(n,preferred,page.mode==='mind'&&parent&&preferred.x<parent.x?'left':page.mode==='mind'?'right':'down');
+   selected=new Set([n.id]);edgeSelected=null;
+ if(parent?.id&&['mind','flow'].includes(page.mode)){h3BranchReflow(parent.id);h3Repair(n.id);}
+ });t22Revealing=n.id;
+}
+function t22SetPreset(value){
+ const draft={...page.outlineSettings,preset:value};
+ // Presets explicitly reset template fields; customization can follow in T22-E.
+ for(const field of ['prefix','padding','separator'])delete draft[field];
+ try{window.ThinkItOutline.settingsFor(page.mode,draft);window.ThinkItOutline.auditPage({...page,outlineSettings:draft});}
+ catch(err){t22UiIssue(err.message);return;}
+ transact(()=>{page.outlineSettings=draft;});t22ClearIssue();
+}
+function t22RenderWorkspace(scrollOnly=false){
+ if(!t22IsOutline())return;
+ const host=$('t22OutlineScroll'),body=$('t22OutlineRows');
+ if(t22ActivePageId!==page.id){
+  t22ActivePageId=page.id;t22Filter=t22PageSearch.get(page.id)||'';
+  $('t22Search').value=t22Filter;t22VisibleCache=null;
+ }
+ let audit,all,visible,lookup,hasChildren,collapsed,matchCount=0;
+ // Scrolling moves only the DOM window. It must not re-run the entire WBS
+ // hierarchy/numbering/dependency validator on every trackpad event.
+ if(scrollOnly&&t22VisibleCache?.pageId===page.id){
+  ({audit,all,visible,lookup,hasChildren,collapsed,matchCount}=t22VisibleCache);
+ }else{
+  try{audit=t22CheckedPlan(page);}catch(err){body.replaceChildren();t22UiIssue('Cannot display outline: '+err.message);return;}
+  all=page.mode==='flow'&&flowFocusId()?window.ThinkItFlowFocus.scopedRows(page,audit.rows,flowFocusId()):audit.rows;
+   lookup=new Map(all.map(r=>[r.id,r]));
+  collapsed=t22CollapsedForPage();
+  hasChildren=new Set(all.map(r=>r.parentId).filter(x=>x!==null&&x!==undefined));
+  // Switching from the canvas to a selected topic must reveal its full path.
+  // Search temporarily ignores collapses but never persists that expansion.
+  if(page.mode!=='flow'&&t22Revealing&&lookup.has(t22Revealing)&&!t22Filter.trim()){
+   collapsed=window.ThinkItOutline.expandedPath(all,t22Revealing,collapsed);
+   t22Collapsed.set(page.id,collapsed);
+  }
+  const visibility=window.ThinkItOutline.visibleRows(all,{query:t22Filter,collapsed});
+  visible=visibility.rows;matchCount=visibility.matchCount;
+  t22VisibleCache={pageId:page.id,audit,all,visible,lookup,hasChildren,collapsed,matchCount};
+ }
+ t22CurrentRows=visible;
+ const chosen=t22SelectedNode(),beforeScroll=host.scrollTop;
+ const selectedIndex=visible.findIndex(r=>r.id===t22Revealing);
+ if(t22Revealing&&selectedIndex>=0){
+  const y=selectedIndex*T22_ROW_HEIGHT;
+  if(y<beforeScroll||y+T22_ROW_HEIGHT>beforeScroll+(host.clientHeight||480))host.scrollTop=y;
+  t22Revealing=null;
+ }
+ const scroll=host.scrollTop,screen=host.clientHeight||480;
+ const start=Math.max(0,Math.floor(scroll/T22_ROW_HEIGHT)-8),end=Math.min(visible.length,Math.ceil((scroll+screen)/T22_ROW_HEIGHT)+8);
+ body.style.height=(visible.length*T22_ROW_HEIGHT)+'px';body.replaceChildren();
+ $('t22GroupFlow').hidden=page.mode!=='flow';
+ $('t22CodeHead').textContent=audit.settings.codeLabel;
+ $('t22CodeLabel').value=audit.settings.codeLabel;
+ $('t22NameHead').textContent=page.mode==='org'?'Position / Unit':'Item / Activity Name';
+ $('t22DepsHead').textContent=page.mode==='org'?'Department':'Dependencies';
+ $('t22ParentHead').textContent=page.mode==='org'?'Reports to':'Parent / Group';
+ $('t22Preset').value=audit.settings.preset;
+ $('t22ShowDeps').checked=audit.settings.showDependencies;
+ $('t22ShowParent').checked=audit.settings.showParent;
+ $('t22OutlinePanel').classList.toggle('t22-hide-deps',!audit.settings.showDependencies);
+ $('t22OutlinePanel').classList.toggle('t22-hide-parent',!audit.settings.showParent);
+ host.setAttribute('aria-rowcount',String(visible.length));
+ for(let i=start;i<end;i++){
+  const r=visible[i],n=byId(r.id);
+  const row=dom('div','t22-outline-row'+(selected.has(r.id)?' is-selected':''),undefined,body);
+  row.id='t22-visible-row-'+i;
+  row.dataset.rowId=r.id;row.dataset.index=String(i);row.style.top=(i*T22_ROW_HEIGHT)+'px';
+  row.setAttribute('role','row');row.setAttribute('aria-rowindex',String(i+1));row.setAttribute('aria-level',String(r.depth+1));row.setAttribute('aria-selected',String(selected.has(r.id)));
+  if(hasChildren.has(r.id))row.setAttribute('aria-expanded',String(!collapsed.has(r.id)||!!t22Filter.trim()));
+  const first=dom('div','t22-code',undefined,row);first.setAttribute('role','gridcell');
+  first.style.paddingLeft=Math.min(14+r.depth*14,100)+'px';
+  const branch=hasChildren.has(r.id);
+  const caret=dom(branch?'button':'span','t22-caret',branch?(collapsed.has(r.id)&&!t22Filter.trim()?'▸':'▾'):'•',first);
+  if(branch){
+   caret.type='button';caret.dataset.collapseId=r.id;
+   caret.setAttribute('aria-label',(collapsed.has(r.id)&&!t22Filter.trim()?'Expand ':'Collapse ')+(r.label||r.code));
+  }else caret.setAttribute('aria-hidden','true');
+  const code=dom('span','',r.code,first);code.title=r.code;
+  const editCode=dom('button','t22-code-edit','✎',first);editCode.type='button';editCode.dataset.codeOverride=r.id;
+  editCode.title='Edit WBS code · automatic '+r.autoCode;editCode.setAttribute('aria-label','Edit WBS code for '+r.label);
+  if(r.manualCode)dom('small','','manual',first);
+  const title=dom('div','',undefined,row);title.setAttribute('role','gridcell');
+  const input=dom('input','',undefined,title);input.type='text';input.value=n.label||'';input.dataset.field='label';input.dataset.nodeId=r.id;input.setAttribute('aria-label','Item name '+r.code);input.maxLength=500;
+  const deps=dom('div','',undefined,row);deps.setAttribute('role','gridcell');
+  if(page.mode==='org')dom('span','t22-parent',n.data?.department||'—',deps);
+  else{
+   deps.classList.add('t22-predecessor-cell');
+   const depInput=dom('input','',undefined,deps);depInput.type='text';depInput.dataset.field='dependencies';depInput.dataset.nodeId=r.id;depInput.value=r.dependencies.map(d=>(d.displayCode||'#'+d.id)+(d.type!=='FS'?' ['+d.type+']':'')).join(', ');depInput.placeholder='e.g. 1.1, 1.2';depInput.setAttribute('aria-label','Predecessors for '+r.code);
+   const pick=dom('button','t22-pick-predecessor','Choose',deps);pick.type='button';pick.dataset.pickPredecessors=r.id;pick.setAttribute('aria-label','Choose predecessors for '+r.code);
+  }
+  const parent=dom('div','t22-parent',r.parentId?(lookup.get(r.parentId)?.code||'#'+r.parentId):'—',row);parent.setAttribute('role','gridcell');
+ }
+ const selectedOnPage=!!chosen,at=selectedOnPage?visible.findIndex(r=>r.id===chosen.id):-1;
+ if(at>=start&&at<end)host.setAttribute('aria-activedescendant','t22-visible-row-'+at);
+ else host.removeAttribute('aria-activedescendant');
+ $('t22AddChild').disabled=!selectedOnPage;
+ $('t22Indent').disabled=at<=0;$('t22Outdent').disabled=!selectedOnPage||!lookup.get(chosen.id)?.parentId;
+ $('t22MoveUp').disabled=at<=0;$('t22MoveDown').disabled=at<0||at>=visible.length-1;
+ $('t22Delete').disabled=!selectedOnPage;
+ $('t22OutlineStatus').textContent=t22LastIssue||`${visible.length} of ${all.length} items${t22Filter.trim()?` · ${matchCount} matches with ancestor paths`:''} · ${audit.warnings.length} model warning${audit.warnings.length===1?'':'s'} · ${page.mode==='flow'?'Flow arrows are NOT dependencies':'Diagram and outline share the same node IDs'}`;
+ $('t22OutlineStatus').dataset.severity=(t22LastIssue||audit.warnings.length)?'warning':'';
+ t22RenderIssues(audit.warnings,lookup);
+}
+function t22RenderIssues(warnings,lookup){
+ const wrap=$('t22Issues'),list=$('t22IssueRows');
+ wrap.hidden=!warnings.length;list.replaceChildren();
+ $('t22IssuesSummary').textContent=warnings.length+' WBS issue'+(warnings.length===1?'':'s')+' · review';
+ const labels={MISSING_PREDECESSOR:'Missing predecessor',SELF_DEPENDENCY:'Self dependency',DUPLICATE_DEPENDENCY:'Repeated predecessor',DEPENDENCY_CYCLE:'Circular predecessors',DUPLICATE_WBS_CODE:'Duplicate WBS code',WBS_DEPTH_ABBREVIATED:'Deep WBS number shortened'};
+ for(const w of warnings.slice(0,25)){
+  const label=labels[w.code]||w.code;
+  const item=dom('button','t22-issue',label+' · '+(lookup.get(w.nodeId)?.code||'#'+w.nodeId)+(w.relatedId?' · '+(lookup.get(w.relatedId)?.code||'#'+w.relatedId):''),list);
+  item.type='button';item.setAttribute('aria-label','Show '+label+' at '+w.nodeId);
+  item.onclick=()=>t22SelectOutline(w.nodeId);
+ }
+ if(warnings.length>25)dom('span','field-note','… '+(warnings.length-25)+' additional issues. Export the project to retain all affected IDs.',list);
+}
+function t22SelectOutline(id){
+ if(page.mode==='flow')flowRevealAncestors(id);
+ if(!id||!byId(id))return;
+ selected=new Set([id]);edgeSelected=null;selectedAnnotation=null;
+ t22Revealing=id;render();
+ $('t22OutlineScroll').focus({preventScroll:true});
+}
+function t22ToggleBranch(id,force){
+ if(!id)return;
+ if(page.mode==='flow'){toggleCollapse(id,force);return;}
+ const collapsed=t22CollapsedForPage();
+ const collapse=force===undefined?!collapsed.has(id):force;
+ if(collapse){
+  collapsed.add(id);
+  // When closing a branch, return selection to the visible ancestor.
+  const audit=t22VisibleCache?.pageId===page.id?t22VisibleCache.audit:t22CheckedPlan(page);
+  const parents=new Map(audit.rows.map(r=>[r.id,r.parentId]));
+  let cursor=[...selected][0],guard=0;
+  while(cursor&&parents.has(cursor)&&guard++<=audit.rows.length){
+   if(cursor===id)break;
+   cursor=parents.get(cursor);
+   if(cursor===id){selected=new Set([id]);t22Revealing=id;break;}
+  }
+ }else collapsed.delete(id);
+ t22Collapsed.set(page.id,collapsed);t22VisibleCache=null;t22RenderWorkspace();
+}
+function t22CodeOverrideDialog(id){
+ const n=byId(id);if(!n)return;
+ const audit=t22CheckedPlan(page),row=audit.rows.find(r=>r.id===id);if(!row)return;
+ modal('WBS code · '+n.label,`<p class="modal-subtext">Automatic: <strong>${esc(row.autoCode)}</strong>. Leave blank to restore automatic numbering. Other activities and dependencies retain their permanent IDs.</p><label>Manual code <input id="t22ManualCodeDraft" type="text" maxlength="96" autocomplete="off" placeholder="Automatic code" /></label>`,[
+  {text:'Cancel',action:()=>{}},
+  {text:'Apply code',primary:true,action:()=>{
+   const value=$('t22ManualCodeDraft')?.value??'';
+   try{const patch=window.ThinkItOutline.previewCodeOverride(page,id,value);t22EditNode(id,{wbsCodeOverride:patch.wbsCodeOverride});}
+   catch(err){t22UiIssue(err.message);}
+  }}
+ ]);
+ $('t22ManualCodeDraft').value=n.wbsCodeOverride??'';
+}
+function t22NumberingDialog(){
+ const settings=t22CheckedPlan(page).settings;
+ const description='Settings apply to this diagram page. Existing manual codes remain unchanged; automatic codes update without changing activity IDs or dependencies.';
+ // Use DOM-created controls so user values cannot be interpreted as HTML.
+ modal('Numbering options',`<p class="modal-subtext">${description}</p><div id="t22NumberingForm" class="t22-numbering-form"></div>`,[
+  {text:'Cancel',action:()=>{}},
+  {text:'Apply numbering',primary:true,action:()=>{
+   const get=id=>$('t22opt_'+id)?.value;
+   const patch={preset:'custom',prefix:get('prefix'),separator:get('separator'),padding:Number(get('padding')),startAt:Number(get('startAt'))};
+   try{const validated=window.ThinkItOutline.previewSettings(page,patch);transact(()=>{page.outlineSettings=validated;});t22ClearIssue();}
+   catch(err){t22UiIssue(err.message);}
+  }}
+ ]);
+ const form=$('t22NumberingForm');
+ for(const [key,label,type,min,max] of [['prefix','Prefix','text'],['separator','Separator','text'],['padding','Digits per level','number',0,6],['startAt','First top-level number','number',1,999999]]){
+  const wrap=dom('label','',label,form),field=dom('input','',undefined,wrap);field.id='t22opt_'+key;field.type=type;field.value=String(settings[key]);
+  if(type==='number'){field.min=min;field.max=max;field.step=1;}
+  if(key==='separator')field.maxLength=1;if(key==='prefix')field.maxLength=24;
+ }
+}
+function t22ExportWholeCsv(){
+ try{const csv=window.ThinkItOutline.exportCsv(page);downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),baseName()+'-'+page.mode+'-wbs.csv');toast('Full outline exported · '+page.nodes.length+' items');}
+ catch(err){t22UiIssue('Export failed: '+err.message);}
+}
+function t22PrintWholeOutline(){
+ let snapshot;
+ try{snapshot=window.ThinkItOutline.exportRows(page);}catch(err){t22UiIssue(err.message);return;}
+ // Open a dedicated same-origin document, which renders ALL rows rather than
+ // only the currently virtualized grid window. No credentials or note bodies.
+ const popup=window.open('/thinkit/outline-print.html','_blank');
+ if(!popup){t22UiIssue('Pop-up blocked; allow this site to open a print preview.');return;}
+ const origin=location.origin,requestId=crypto.randomUUID();
+ const payload={channel:'thinkit-outline-print-v1',type:'data',requestId,title:doc.name+' · '+page.name,mode:page.mode,
+  codeLabel:snapshot.settings.codeLabel,rows:snapshot.rows.map(({code,label,dependencies,parent,id})=>({code,label,dependencies,parent,id}))};
+ let sent=false;
+ const handler=event=>{
+  if(event.source!==popup||event.origin!==origin||event.data?.channel!=='thinkit-outline-print-v1'||event.data?.type!=='ready')return;
+  if(sent)return;sent=true;window.removeEventListener('message',handler);popup.postMessage(payload,origin);
+ };
+ window.addEventListener('message',handler);
+ // Page may be blocked or closed; fail closed and drop the transient listener.
+ setTimeout(()=>window.removeEventListener('message',handler),30000);
+}
+function t22BindWorkspace(){
+ $('t22DiagramBtn').onclick=()=>t22SwitchView('diagram');$('t22OutlineBtn').onclick=()=>t22SwitchView('outline');
+ $('flowFocusLevel').onchange=e=>{if(e.target.value){const val=e.target.value==='all'?'all':Number(e.target.value);flowSetLevel(val);e.target.value='';}};
+ $('flowWrapSelection').onclick=flowWrapSelected;
+ $('t22OutlineScroll').addEventListener('scroll',()=>{if(t22IsOutline())t22RenderWorkspace(true);},{passive:true});
+ $('t22OutlineScroll').addEventListener('click',e=>{
+  const override=e.target.closest('[data-code-override]');if(override){t22CodeOverrideDialog(override.dataset.codeOverride);return;}
+  const pick=e.target.closest('[data-pick-predecessors]');if(pick){t22OpenPredecessorPicker(pick.dataset.pickPredecessors);return;}
+  const caret=e.target.closest('[data-collapse-id]');if(caret){t22ToggleBranch(caret.dataset.collapseId);return;}
+  if(e.target.closest('input,button'))return;
+  const row=e.target.closest('[data-row-id]');if(row)t22SelectOutline(row.dataset.rowId);
+ });
+ $('t22OutlineScroll').addEventListener('change',e=>{
+  const input=e.target.closest('input[data-field][data-node-id]');if(!input)return;
+  const id=input.dataset.nodeId;
+  if(input.dataset.field==='label'){const value=input.value.trim();if(value)t22EditNode(id,{label:value});else{t22UiIssue('Item name cannot be blank.');t22RenderWorkspace();}}
+  else if(input.dataset.field==='dependencies'){if(!t22EditDependencies(id,input.value))t22RenderWorkspace();}
+ });
+ $('t22OutlineScroll').addEventListener('keydown',e=>{
+  // Text fields keep native editing keys; navigation keys operate on the grid.
+  if(e.target.closest('input,button'))return;
+  const rows=t22CurrentRows,ids=rows.map(r=>r.id),current=ids.indexOf([...selected][0]);
+  const at=current<0?0:current;let next=null;
+  if(e.key==='ArrowDown')next=Math.min(ids.length-1,at+(current<0?0:1));
+  else if(e.key==='ArrowUp')next=Math.max(0,at-1);
+  else if(e.key==='Home')next=0;
+  else if(e.key==='End')next=ids.length-1;
+  else if(e.key==='PageDown'||e.key==='PageUp'){
+   const perPage=Math.max(1,Math.floor(($('t22OutlineScroll').clientHeight||480)/T22_ROW_HEIGHT)-1);
+   next=Math.max(0,Math.min(ids.length-1,at+(e.key==='PageDown'?perPage:-perPage)));
+  }else if(e.key==='ArrowLeft'&&current>=0){
+   const collapsed=t22CollapsedForPage();
+   const hasChild=t22VisibleCache?.hasChildren.has(ids[current]);
+   if(hasChild&&!collapsed.has(ids[current])&&!t22Filter.trim()){e.preventDefault();t22ToggleBranch(ids[current],true);return;}
+   const parent=rows[current].parentId;
+   next=ids.indexOf(parent);
+  }else if(e.key==='ArrowRight'&&current>=0){
+   const collapsed=t22CollapsedForPage();
+   if(t22VisibleCache?.hasChildren.has(ids[current])&&collapsed.has(ids[current])&&!t22Filter.trim()){
+    e.preventDefault();t22ToggleBranch(ids[current],false);return;
+   }
+   next=rows.findIndex(r=>r.parentId===ids[current]);
+  }else if((e.key==='Enter'||e.key==='F2')&&current>=0){
+   e.preventDefault();const field=$('t22OutlineRows').querySelector(`[data-node-id="${CSS.escape(ids[current])}"][data-field="label"]`);field?.focus();field?.select();return;
+  }
+  if(next!==null){e.preventDefault();if(next>=0&&ids[next])t22SelectOutline(ids[next]);}
+ });
+ $('t22GroupFlow').onclick=t22OpenFlowGrouping;
+ $('t22AddRoot').onclick=()=>t22Add(false);$('t22AddChild').onclick=()=>t22Add(true);
+ $('t22Indent').onclick=()=>{const n=t22SelectedNode();if(n)t22ChangeDepth(n.id,1);};
+ $('t22Outdent').onclick=()=>{const n=t22SelectedNode();if(n)t22ChangeDepth(n.id,-1);};
+ $('t22MoveUp').onclick=()=>{const n=t22SelectedNode();if(n)t22MoveRow(n.id,-1);};
+ $('t22MoveDown').onclick=()=>{const n=t22SelectedNode();if(n)t22MoveRow(n.id,1);};
+ $('t22Delete').onclick=()=>{if(selected.size===1)removeSelection();};
+ $('t22Search').addEventListener('input',e=>{t22Filter=e.target.value;t22PageSearch.set(page.id,t22Filter);const sc=$('t22OutlineScroll');sc.scrollTop=0;t22VisibleCache=null;t22RenderWorkspace();});
+ $('t22NumberingOptions').onclick=t22NumberingDialog;
+ $('t22ExportCsv').onclick=t22ExportWholeCsv;
+ $('t22PrintOutline').onclick=t22PrintWholeOutline;
+ for(const [id,key] of [['t22ShowDeps','showDependencies'],['t22ShowParent','showParent']])$(id).onchange=e=>{
+  try{const validated=window.ThinkItOutline.previewSettings(page,{[key]:e.target.checked});transact(()=>{page.outlineSettings=validated;});t22ClearIssue();}
+  catch(err){t22UiIssue(err.message);t22RenderWorkspace();}
+ };
+ $('t22Preset').onchange=e=>t22SetPreset(e.target.value);
+ $('t22CodeLabel').onchange=e=>{
+  const next=e.target.value.trim();
+  const settings={...page.outlineSettings,codeLabel:next};
+  try{window.ThinkItOutline.settingsFor(page.mode,settings);}
+  catch(err){t22UiIssue(err.message);$('t22CodeLabel').value=page.outlineSettings?.codeLabel||'WBS';return;}
+  transact(()=>{page.outlineSettings=settings;});t22ClearIssue();
+ };
+}
 const businessModel=mountThinkItBusinessModel({getDocument:()=>doc,getPage:()=>page,makeSession:uid,markDirty});
-function render(){if(!projectIsReady)return;document.body.classList.toggle('bubble-active',page.mode==='bubble'&&!diNoTabs());document.body.classList.toggle('bmc-active',page.mode==='bmc'&&!diNoTabs());renderCanvas();renderUI();if(page.mode==='bubble')activateBubblePage();businessModel.activate();}
+function render(){if(!projectIsReady)return;flowRenderPlan=null;document.body.classList.toggle('bubble-active',page.mode==='bubble'&&!diNoTabs());document.body.classList.toggle('bmc-active',page.mode==='bmc'&&!diNoTabs());t22SyncWorkspace();if(!t22IsOutline())renderCanvas();renderUI();if(t22IsOutline())t22RenderWorkspace();if(page.mode==='bubble')activateBubblePage();businessModel.activate();}
 const BUBBLE_HTML=null;
 let bubbleReady=false,bubbleActivePageId=null;
 function bubbleFrame(){return $('bubbleFrame');}
@@ -413,7 +947,7 @@ function activateBubblePage(){if(!bubbleFrame().getAttribute('src')){bubbleFrame
 function bubbleExport(kind){if(bubbleReady&&page.mode==='bubble')bubbleFrame().contentWindow.postMessage({channel:'diagramit-bubble-v06',type:'export',kind},location.origin);}
 window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==bubbleFrame()?.contentWindow||event.data?.channel!=='diagramit-bubble-v06')return;const msg=event.data;if(msg.type==='save'){persist();return;}if(msg.type==='ready'){bubbleReady=true;bubbleActivePageId=null;if(page?.mode==='bubble')activateBubblePage();}else if(msg.type==='changed'){const p=doc?.pages.find(x=>x.id===msg.pageId&&x.mode==='bubble');if(!p||!msg.model||!Array.isArray(msg.model.spaces)||typeof msg.model.relations!=='object')return;p.bubbleData=msg.model;markDirty();}},false);
 
-function renderFast(){if(framePending)return;framePending=true;requestAnimationFrame(()=>{framePending=false;if(projectIsReady)renderCanvas();});}
+function renderFast(){if(framePending)return;framePending=true;requestAnimationFrame(()=>{framePending=false;if(projectIsReady&&!t22IsOutline())renderCanvas();});}
 let diClosedTabs=new Set(),diTabProjectId='',diHasSavedProject=false;
 function diTabKey(){return 'ThinkIt_v094_tabs_'+(doc?.id||'none');}
 function diLoadTabState(){if(!doc||diTabProjectId===doc.id)return;diTabProjectId=doc.id;diClosedTabs=new Set();try{const raw=JSON.parse(localStorage.getItem(diTabKey())||'[]');if(Array.isArray(raw))diClosedTabs=new Set(raw.filter(id=>doc.pages.some(p=>p.id===id)));}catch{}}
@@ -502,20 +1036,20 @@ function diRenderOutlineWindow(root,rows){
     if(diOutlineHasChildren.has(n.id))dom('span','outline-toggle',n.collapsed?'▸':'▾',row).dataset.collapseId=n.id;
     else dom('span','indent','',row);
     dom('span','outline-icon',n.shape==='person'?'▣':'◦',row);dom('span','outline-label',n.label,row);
-    if(n.noteHtml?.trim()||n.keepitLink?.itemId)dom('span','mind-has-note','▤',row).title='Topic has a note';
+    if(page.mode==='mind'&&(n.noteHtml?.trim()||n.keepitLink?.itemId))dom('span','mind-has-note','▤',row).title='Topic has a note';
   }
   if(range.bottom)dom('div','di-virtual-spacer',undefined,root).style.height=range.bottom+'px';
 }
 let diOutlinePageId=null,diOutlineRows=[],diOutlineHasChildren=new Set(),diOutlineScrollBound=false;
 function renderOutline(){const root=$('outlineTree');if(!page.nodes.length){root.classList.remove('is-virtual');root.replaceChildren();dom('p','field-note','No nodes yet. Add one to get started.',root);return;}
-  if(page.mode==='mind'&&page.nodes.length>150){
+  if((page.mode==='mind'||page.mode==='org')&&page.nodes.length>150){
     const oldPage=diOutlinePageId;diOutlinePageId=page.id;
     if(oldPage!==page.id)root.scrollTop=0;
     // Generate complete rows for every model change; scrolling uses this snapshot.
     diOutlineRows=mindNavigationRows(mindOutlineRows());
     diOutlineHasChildren=new Set(page.nodes.map(n=>n.parentId).filter(Boolean));
     root.classList.add('is-virtual');
-    if(!diOutlineScrollBound){root.addEventListener('scroll',()=>{if(page?.mode==='mind'&&root.classList.contains('is-virtual'))diRenderOutlineWindow(root,diOutlineRows);},{passive:true});diOutlineScrollBound=true;}
+    if(!diOutlineScrollBound){root.addEventListener('scroll',()=>{if((page?.mode==='mind'||page?.mode==='org')&&root.classList.contains('is-virtual'))diRenderOutlineWindow(root,diOutlineRows);},{passive:true});diOutlineScrollBound=true;}
     diRenderOutlineWindow(root,diOutlineRows);return;
   }
   root.classList.remove('is-virtual');root.replaceChildren();diOutlinePageId=page.id;
@@ -548,7 +1082,46 @@ const r2=dom('div','prop-two',undefined,sec);r2.append(field('Font weight',mixed
 const italicRow=dom('label','checkbox-row',undefined,sec),italic=dom('input',undefined,undefined,italicRow);italic.type='checkbox';italic.checked=nodes.every(n=>!!n.italic);italic.indeterminate=nodes.some(n=>!!n.italic)&&!italic.checked;italic.dataset.prop='italic';dom('span','','Italic labels',italicRow);
 const paint=dom('button','inspector-btn full','♧ Copy style / Format painter',sec);paint.dataset.action='format-painter';paint.title='Copy appearance, then click another shape (⌘⌥C)';paint.style.marginTop='12px';};
 if(selectedAnnotation){const a=annoById(selectedAnnotation);if(a){$('inspectorType').textContent='Annotation · '+short(a.label);let sec=propSection('ANNOTATION');const edit=dom('button','inspector-btn full primary','Edit formatted text',sec);edit.dataset.action='edit-annotation';const attach=dom('button','inspector-btn full',a.parentId?'Detach from shape':'Attach to selected shape',sec);attach.dataset.action=a.parentId?'detach-annotation':'attach-annotation';if(!a.parentId)attach.textContent='Attach to a shape…';sec.append(field('Position relative to shape',a.side||'bottom','anno_side','select',{choices:[['top','Above'],['bottom','Below'],['left','Left'],['right','Right']]}));root.append(sec);sec=propSection('TEXT & TYPOGRAPHY');for(const [label,key,type,opts] of [['Font family','fontFamily','select',{choices:[['sans','DiagramIt Sans'],['serif','Serif'],['mono','Monospace']]}],['Font size','fontSize','number',{}],['Font weight','fontWeight','select',{choices:[['400','Regular'],['600','Semibold'],['700','Bold']]}],['Text align','textAlign','select',{choices:[['left','Left'],['center','Center'],['right','Right']]}],['Vertical align','vAlign','select',{choices:[['top','Top'],['middle','Middle'],['bottom','Bottom']]}],['Text color','textColor','color',{}],['Highlight','highlight','color',{}]])sec.append(field(label,key==='highlight'&&a[key]==='none'?'#fff0a9':a[key],`anno_${key}`,type,opts));for(const [key,title] of [['italic','Italic'],['underline','Underline'],['strike','Strikethrough']]){const row=dom('label','checkbox-row',undefined,sec),chk=dom('input',undefined,undefined,row);chk.type='checkbox';chk.checked=!!a[key];chk.dataset.prop='anno_'+key;dom('span','',title,row);}dom('div','field-note','For mixed formatting, click Edit formatted text, select a word or phrase, then use B / I / U / S, Text or Highlight.',sec);root.append(sec);sec=propSection('TEXT BOX APPEARANCE');for(const [lbl,k,type] of [['Fill','fill','color'],['Border color','stroke','color'],['Border thickness','strokeWidth','number'],['Border style','strokeStyle','select'],['Opacity (0–1)','opacity','number']]){const opt=k==='strokeStyle'?{choices:[['solid','Solid'],['dashed','Dashed'],['dotted','Dotted']]}:{};sec.append(field(lbl,k==='fill'&&a.fill==='transparent'?'#ffffff':a[k],`anno_${k}`,type,opt));}const tr=dom('button','inspector-btn full','Transparent fill',sec);tr.dataset.action='anno-transparent';const br=dom('button','inspector-btn full','No border',sec);br.dataset.action='anno-noborder';root.append(sec);sec=propSection('SIZE & OFFSET');for(const [lbl,k] of [['Width','w'],['Height','h'],[a.parentId?'Horizontal offset':'X','x'],[a.parentId?'Vertical offset':'Y','y']])sec.append(field(lbl,(a.parentId&&k==='x'?(a.dx||0):a.parentId&&k==='y'?(a.dy||0):a[k]),'anno_'+k,'number'));root.append(sec);sec=propSection('ACTIONS');const del=dom('button','inspector-btn full destructive','Delete annotation',sec);del.dataset.action='delete-annotation';root.append(sec);}}else if(single){const n=nodes[0];$('inspectorType').textContent='Shape · '+n.label;let sec=propSection('TEXT');sec.append(field('Label',n.label,'label','textarea'));dom('div','field-note','Tip: Select this shape and start typing to replace the label. Double-click to edit within the text.',sec);if(page.mode==='org'){sec.append(field('Role / subtitle',n.data?.role||'','role'));sec.append(field('Department',n.data?.department||'','department'));}root.append(sec);
-if(page.mode!=='flow'){sec=propSection('HIERARCHY');sec.append(field('Primary parent',n.parentId||'','parentId','select',{choices:[['','Root / top level'],...page.nodes.filter(a=>a.id!==n.id&&!descendants(n.id).has(a.id)).map(a=>[a.id,a.label])]}));if(treeChildren(n.id).length){const b=dom('button','inspector-btn full',n.collapsed?'Expand branch':'Collapse branch',sec);b.dataset.action='toggle-collapse';}root.append(sec);}
+if(['mind','flow'].includes(page.mode)&&h3LastConstraints.get(page.id)?.anchorId===n.id){
+   const issues=h3LastConstraints.get(page.id).conflicts;
+   if(issues.length){
+     sec=propSection('AUTO-ARRANGE CONSTRAINTS');
+     dom('div','field-note',issues.length+' branch constraint(s): pinned, manually positioned, shared-predecessor or overlapping subprocess activities were retained in place. Existing work was not overwritten.',sec);
+     root.append(sec);
+   }
+ }
+ if(page.mode==='flow'){
+  const meta=window.ThinkItFlowFocus.activityDetails(n),audit=t22CheckedPlan(page),codes=new Map(audit.rows.map(r=>[r.id,r.code+' · '+r.label]));
+  sec=propSection('ACTIVITY DETAILS');
+  for(const [label,key,type] of [
+   ['Responsible stakeholder','responsible','text'],
+   ['Participating stakeholders','participants','textarea'],
+   ['Required inputs','inputs','textarea'],
+   ['Expected outputs / deliverables','outputs','textarea'],
+   ['Approvals / sign-offs','approvals','textarea'],
+   ['Handoffs / remarks','remarks','textarea']
+  ])sec.append(field(label,meta[key]||'','flowActivity_'+key,type));
+  root.append(sec);
+  sec=propSection('WORKFLOW DEPENDENCIES');
+  const prior=(n.dependencies||[]).map(d=>(codes.get(d.id)||'#'+d.id)+(d.type&&d.type!=='FS'?' ['+d.type+']':''));
+  const following=page.nodes.filter(x=>Array.isArray(x.dependencies)&&x.dependencies.some(d=>d.id===n.id)).map(x=>codes.get(x.id)||'#'+x.id);
+  dom('div','field-note','Predecessors: '+(prior.join('; ')||'None'),sec);
+  dom('div','field-note','Successors: '+(following.join('; ')||'None'),sec);
+  dom('div','field-note','WBS dependencies are not the same as graphical flow arrows. Editing predecessors preserves permanent activity IDs.',sec);
+  const pick=dom('button','inspector-btn full','Edit predecessors…',sec);pick.dataset.action='flow-predecessors';
+  root.append(sec);
+  if(page.nodes.some(child=>child.outlineParentId===n.id)){
+   sec=propSection('SUBPROCESS');
+   dom('div','field-note',String(flowSnapshot().descendantCount.get(n.id))+' subordinate activities · collapse hides detail, not records.',sec);
+   const b=dom('button','inspector-btn full',n.collapsed?'Expand subprocess':'Collapse subprocess',sec);b.dataset.action='toggle-collapse';
+   const focus=dom('button','inspector-btn full','Focus inside this subprocess',sec);focus.dataset.action='flow-focus';
+   root.append(sec);
+  }
+  sec=propSection('WBS GROUPING');
+  const wbs=dom('button','inspector-btn full','Set parent / WBS group…',sec);wbs.dataset.action='flow-group';
+  root.append(sec);
+}
+ if(page.mode!=='flow'){sec=propSection('HIERARCHY');sec.append(field('Primary parent',n.parentId||'','parentId','select',{choices:[['','Root / top level'],...page.nodes.filter(a=>a.id!==n.id&&!descendants(n.id).has(a.id)).map(a=>[a.id,a.label])]}));if(treeChildren(n.id).length){const b=dom('button','inspector-btn full',n.collapsed?'Expand branch':'Collapse branch',sec);b.dataset.action='toggle-collapse';}root.append(sec);}
 if(page.mode==='mind'){
   sec=propSection('TOPIC NOTES & FILES');const editNote=dom('button','inspector-btn full primary',n.keepitLink?.itemId?'Manage linked note and files':'Open note options for this topic',sec);editNote.dataset.action='mind-notes';
   const addFile=dom('button','inspector-btn full','+ Add KeepIt file reference',sec);addFile.dataset.action='mind-add-keepit-reference';
@@ -566,8 +1139,8 @@ if(page.mode==='org'){sec=propSection('BRANCH ARRANGEMENT');sec.append(field('Ch
 sec=propSection('APPEARANCE');addAppearance(sec);root.append(sec);
 sec=propSection('SIZE & POSITION');const r1=dom('div','prop-two',undefined,sec);r1.append(field('X',Math.round(n.x),'x','number'),field('Y',Math.round(n.y),'y','number'));const r2=dom('div','prop-two',undefined,sec);r2.append(field('Width',Math.round(n.w),'w','number'),field('Height',Math.round(n.h),'h','number'));const pin=dom('label','checkbox-row',undefined,sec),cb=dom('input',undefined,undefined,pin);cb.type='checkbox';cb.checked=!!n.pinned;cb.dataset.prop='pinned';dom('span','','Lock position for auto-layout',pin);root.append(sec);
 sec=propSection('QUICK ACTIONS');for(const [title,action] of [...(page.mode==='org'?[['＋ Add department under this','add-department']]:[]),['＋ Add connected child','add-child'],['Duplicate shape','duplicate'],['Delete shape','delete']]){const b=dom('button','inspector-btn full'+(action==='delete'?' destructive':''),title,sec);b.dataset.action=action;b.style.marginTop='6px';}root.append(sec);
-}else if(multiple){$('inspectorType').textContent=`${nodes.length} shapes selected`;let sec=propSection('FORMAT ALL SELECTED SHAPES');addAppearance(sec,true);root.append(sec);sec=propSection('SELECTION ACTIONS');for(const [title,action] of [['Group selection','group'],['Duplicate selection','duplicate'],['Delete selected shapes','delete']]){const b=dom('button','inspector-btn full',title,sec);b.dataset.action=action;b.style.marginTop='7px';}root.append(sec);
-}else if(edgeSelected){const e=findEdge(edgeSelected);$('inspectorType').textContent='Arrow / Connector';if(e){let sec=propSection('CONNECTOR');sec.append(field('Label',e.label||'','edgeLabel'));if(e.kind!=='primary')sec.append(field('Relationship',e.kind,'kind','select',{choices:[['flow','Process flow'],['secondary','Dotted-line relationship'],['reference','Reference link'],['annotation','Annotation arrow']]}));sec.append(field('Route',e.route,'route','select',{choices:[['orthogonal','Right-angle / elbow'],['straight','Straight'],['curve','Curved']]}));
+}else if(multiple){$('inspectorType').textContent=`${nodes.length} shapes selected`;let sec=propSection('FORMAT ALL SELECTED SHAPES');addAppearance(sec,true);root.append(sec);sec=propSection('SELECTION ACTIONS');if(page.mode==='flow'){const create=dom('button','inspector-btn full primary','Convert selection to subprocess',sec);create.dataset.action='flow-wrap';}for(const [title,action] of [['Group selection','group'],['Duplicate selection','duplicate'],['Delete selected shapes','delete']]){const b=dom('button','inspector-btn full',title,sec);b.dataset.action=action;b.style.marginTop='7px';}root.append(sec);
+}else if(edgeSelected){const e=findEdge(edgeSelected);$('inspectorType').textContent='Arrow / Connector';if(e){let sec=propSection('CONNECTOR');if(flowProjectedEdge(edgeSelected))dom('div','field-note','Boundary projection only: the actual connector remains attached to its original hidden activities. Expand the subprocess to inspect or adjust its endpoints.',sec);sec.append(field('Label',e.label||'','edgeLabel'));if(e.kind!=='primary')sec.append(field('Relationship',e.kind,'kind','select',{choices:[['flow','Process flow'],['secondary','Dotted-line relationship'],['reference','Reference link'],['annotation','Annotation arrow']]}));sec.append(field('Route',e.route,'route','select',{choices:[['orthogonal','Right-angle / elbow'],['straight','Straight'],['curve','Curved']]}));
 if(!isFreeEdge(e)){const sides=[['auto','Automatic'],['top','Top'],['right','Right'],['bottom','Bottom'],['left','Left']];dom('div','field-note','Connection sides can follow shape movement automatically, or be locked individually.',sec);const row=dom('div','prop-two',undefined,sec);row.append(field('From side',e.fromPort||'auto','fromPort','select',{choices:sides}),field('To side',e.toPort||'auto','toPort','select',{choices:sides}));const row2=dom('div','prop-two',undefined,sec);row2.append(field('From position %',Math.round((e.fromFraction??.5)*100),'fromFraction','number'),field('To position %',Math.round((e.toFraction??.5)*100),'toFraction','number'));const reset=dom('button','inspector-btn full','↻ Reset route to automatic',sec);reset.dataset.action='reset-route';}
 sec.append(field('Arrowhead at start',edgeHeads(e).start,'arrowStart','select',{choices:[['none','None'],['filled','Filled'],['open','Open'],['diamond','Diamond']]}));sec.append(field('Arrowhead at end',edgeHeads(e).end,'arrowEnd','select',{choices:[['none','None'],['filled','Filled'],['open','Open'],['diamond','Diamond']]}));
 if(e.route==='orthogonal'){sec.append(field('Manual bend offset',e.bendOffset??'','bendOffset','number'));dom('div','field-note','Select the connector and drag its square bend handle directly on the diagram.',sec);}
@@ -582,9 +1155,34 @@ function setSaveState(state,msg){const s=$('saveStatus');s.dataset.state=state;s
 const diWriterId='tab_'+(window.crypto?.randomUUID?.()||Math.random().toString(36).slice(2));
 const diShadowKey='ThinkIt_v094_shadow_'+diWriterId;
 let diExpectedRaw=null,diExpectedRevision=0,diSaveConflict=false;
+// T25: large documents exceed the emergency localStorage shadow threshold.
+// Stage an independent, per-tab draft in the EXISTING device-local IndexedDB;
+// never let these drafts silently replace the canonical 'current' project.
+const DI_EMERGENCY_SHADOW_LIMIT=1200000;
+let diEditSequence=0,diDraftQueue=Promise.resolve(),diPendingEmergencyDraft=null,diDraftPumpActive=false;
 function diSaveConflictError(){const e=new Error('Another tab saved a newer project version');e.code='THINKIT_CONCURRENT_EDIT';return e;}
-function diWriteEmergencyShadow(serial){try{if(serial.length<1200000)localStorage.setItem(diShadowKey,serial);}catch{}}
-function markDirty(){doc.updatedAt=new Date().toISOString();diWriteEmergencyShadow(JSON.stringify(doc));setSaveState(diSaveConflict?'error':'unsaved',diSaveConflict?'Editing conflict · Export JSON':'Unsaved local changes');clearTimeout(saveTimer);saveTimer=setTimeout(persist,350);}
+function diWriteEmergencyShadow(serial){try{if(serial.length<DI_EMERGENCY_SHADOW_LIMIT)localStorage.setItem(diShadowKey,serial);}catch{}}
+function diStageEmergencyDraft(serial){
+ const sequence=++diEditSequence;
+ if(serial.length<DI_EMERGENCY_SHADOW_LIMIT){diWriteEmergencyShadow(serial);return sequence;}
+ if(storageMode==='indexeddb'&&idb){
+   // Coalesce bursts of large document edits: preserve the newest full draft
+   // without queuing a multi-megabyte write for every keystroke.
+   diPendingEmergencyDraft={raw:serial,sequence,projectId:doc.id};
+   if(!diDraftPumpActive){
+     diDraftPumpActive=true;
+     diDraftQueue=diDraftQueue.catch(()=>{}).then(async()=>{
+       while(diPendingEmergencyDraft){
+         const pending=diPendingEmergencyDraft;diPendingEmergencyDraft=null;
+         try{await dbWriteEmergencyDraft(pending.raw,pending.sequence,pending.projectId);}
+         catch(err){console.warn('Large project emergency draft was not secured',err);setSaveState('error','Large-project recovery draft unavailable · Save or Export JSON');}
+       }
+     }).finally(()=>{diDraftPumpActive=false;});
+   }
+ }
+ return sequence;
+}
+function markDirty(){doc.updatedAt=new Date().toISOString();diStageEmergencyDraft(JSON.stringify(doc));setSaveState(diSaveConflict?'error':'unsaved',diSaveConflict?'Editing conflict · Export JSON':'Unsaved local changes');clearTimeout(saveTimer);saveTimer=setTimeout(persist,350);}
 function recordHistory(snapshot){if(snapshot===JSON.stringify(doc))return false;history.undo.push(snapshot);if(history.undo.length>65)history.undo.shift();history.redo=[];markDirty();return true;}
 function transact(fn){cancelPreview(false);const before=JSON.stringify(doc);try{fn();}catch(err){console.error(err);toast(`Edit failed: ${err.message}`);return;}if(recordHistory(before))render();}
 function undo(){if(!history.undo.length)return;const s=history.undo.pop();history.redo.push(JSON.stringify(doc));doc=JSON.parse(s);page=getPage();selected=new Set([...selected].filter(id=>byId(id)));edgeSelected=null;preview=null;markDirty();render();}
@@ -593,22 +1191,176 @@ let idb;
 function openStorage(){return new Promise((resolve,reject)=>{if(!('indexedDB'in window))return reject(new Error('IndexedDB unavailable'));const req=indexedDB.open('ThinkIt_v094',1);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('documents'))req.result.createObjectStore('documents');};req.onsuccess=()=>{idb=req.result;resolve();};req.onerror=()=>reject(req.error);});}
 function dbReadKey(key='current'){return new Promise((resolve,reject)=>{const tx=idb.transaction('documents','readonly');const req=tx.objectStore('documents').get(key);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
 function dbRead(){return dbReadKey('current');}
+// T28: A separate, stable, device-local entry per project ID. The legacy
+// 'current' slot remains authoritative for the active tab until KeepIt's
+// reviewed revision interface exists. No cloud or file-system binding implied.
+const DI_PROJECT_RECORD_PREFIX='pm_project_';
+const DI_LOCAL_PROJECT_PREFIX='ThinkIt_v094_pm_project_';
+function diProjectRecordKey(id){
+ if(typeof id!=='string'||!id.trim()||id.length>160)throw Error('Invalid project ID');
+ return DI_PROJECT_RECORD_PREFIX+encodeURIComponent(id);
+}
+function diLocalProjectKey(id){return DI_LOCAL_PROJECT_PREFIX+diProjectRecordKey(id).slice(DI_PROJECT_RECORD_PREFIX.length);}
+function diProjectRecord(raw){
+ if(typeof raw!=='string'||raw.length>48*1024*1024)throw Error('Project too large for local catalogue');
+ const value=JSON.parse(raw);
+ if(value?.format!=='DIAGRAMIT'||typeof value.id!=='string'||!Array.isArray(value.pages)||!value.pages.length)throw Error('Invalid project catalogue entry');
+ diProjectRecordKey(value.id);
+ return {projectId:value.id,name:String(value.name||'Untitled project').slice(0,180),updatedAt:value.updatedAt||null,savedAt:Date.now(),raw};
+}
+function dbWriteProjectRecord(raw,{guardCurrent=false}={}){return new Promise((resolve,reject)=>{
+ const record=diProjectRecord(raw),key=diProjectRecordKey(record.projectId);
+ const tx=idb.transaction('documents','readwrite'),store=tx.objectStore('documents');let conflict=false;
+ if(guardCurrent){
+  const current=store.get('current');current.onsuccess=()=>{
+   const meta=store.get('current_meta');meta.onsuccess=()=>{
+    if((current.result??null)!==diExpectedRaw||(Number(meta.result?.revision)||0)!==diExpectedRevision){conflict=true;tx.abort();return;}
+    store.put(record,key);
+   };
+  };
+ }else store.put(record,key);
+ tx.oncomplete=()=>resolve(record);tx.onerror=()=>reject(tx.error);
+ tx.onabort=()=>reject(conflict?diSaveConflictError():(tx.error||Error('Catalogue write aborted')));
+});}
+function dbListProjectRecords(){return new Promise((resolve,reject)=>{
+ const items=[],tx=idb.transaction('documents','readonly'),req=tx.objectStore('documents').openCursor();
+ req.onsuccess=()=>{const cur=req.result;if(!cur)return;
+  if(String(cur.key).startsWith(DI_PROJECT_RECORD_PREFIX)&&typeof cur.value?.raw==='string')items.push({...cur.value,key:String(cur.key)});
+  cur.continue();};
+ tx.oncomplete=()=>resolve(items);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+});}
+async function diReadSavedProject(id){
+ const key=diProjectRecordKey(id);
+ let result=null;
+ if(storageMode==='indexeddb'&&idb)result=await dbReadKey(key);
+ else if(storageMode==='localstorage'){
+  const raw=localStorage.getItem(diLocalProjectKey(id));
+  if(raw)result=diProjectRecord(raw);
+ }
+ if(!result)return null;
+ const parsed=validatedSnapshot(result.raw);
+ if(!parsed||parsed.id!==id)throw Error('Saved project failed integrity validation');
+ return {...result,projectId:id};
+}
+async function diWriteProjectRecord(raw,{guardCurrent=false}={}){
+ const record=diProjectRecord(raw),id=record.projectId;
+ if(storageMode==='indexeddb'&&idb)await dbWriteProjectRecord(raw,{guardCurrent});
+ else if(storageMode==='localstorage'){
+  const write=()=>{
+   if(guardCurrent&&localStorage.getItem('ThinkIt_v094_document')!==diExpectedRaw)throw diSaveConflictError();
+   localStorage.setItem(diLocalProjectKey(id),raw);
+   if(localStorage.getItem(diLocalProjectKey(id))!==raw)throw Error('Project catalogue readback mismatch');
+  };
+  if(guardCurrent){
+   if(!window.navigator?.locks?.request)throw Error('Exclusive local project lock unavailable');
+   await window.navigator.locks.request('thinkit-v094-current',{mode:'exclusive'},write);
+  }else write();
+ }else throw Error('Project catalogue unavailable: use Export JSON');
+ const verified=await diReadSavedProject(id);
+ if(!verified||verified.raw!==raw)throw Error('Project catalogue readback mismatch');
+ return verified;
+}
+async function diListSavedProjects(){
+ let entries=[];
+ if(storageMode==='indexeddb'&&idb)entries=await dbListProjectRecords();
+ else if(storageMode==='localstorage'){
+  for(let i=0;i<localStorage.length&&i<10000;i++){
+   const key=localStorage.key(i);
+   if(!key?.startsWith(DI_LOCAL_PROJECT_PREFIX))continue;
+   const raw=localStorage.getItem(key);
+   try{entries.push({...diProjectRecord(raw),key});}catch{}
+  }
+ }
+ // Do not list entries whose bytes cannot be safely reopened.
+ const valid=[];for(const item of entries){const parsed=validatedSnapshot(item.raw);
+  if(parsed&&parsed.id===item.projectId)valid.push(item);
+ }
+ return valid.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0)||a.name.localeCompare(b.name));
+}
+
 // Reads current and revision in one snapshot so initial load never pairs unrelated versions.
 function dbReadState(){return new Promise((resolve,reject)=>{const tx=idb.transaction('documents','readonly'),store=tx.objectStore('documents'),current=store.get('current'),meta=store.get('current_meta');tx.oncomplete=()=>resolve({raw:current.result??null,revision:Number(meta.result?.revision)||0});tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
 // The read/compare/write is inside ONE readwrite IndexedDB transaction, not separate awaits.
 // The old `current` string remains unchanged for portable JSON and recovery compatibility.
-function dbWrite(data,{manual=false}={}){return new Promise((resolve,reject)=>{const tx=idb.transaction('documents','readwrite'),store=tx.objectStore('documents');let conflict=false;
+function dbWrite(data,{manual=false}={}){return new Promise((resolve,reject)=>{const entry=diProjectRecord(data),tx=idb.transaction('documents','readwrite'),store=tx.objectStore('documents');let conflict=false;
  const old=store.get('current');old.onsuccess=()=>{const meta=store.get('current_meta');meta.onsuccess=()=>{
    const current=old.result??null,revision=Number(meta.result?.revision)||0;
    if(current!==diExpectedRaw||revision!==diExpectedRevision){conflict=true;tx.abort();return;}
    const stamp=store.get('checkpoint_meta');stamp.onsuccess=()=>{
      const validPrevious=typeof current==='string'&&current!==data&&isRecoverableSnapshot(current);
      if(validPrevious){store.put(current,'previous');if(!stamp.result||Date.now()-Number(stamp.result)>120000||manual){store.put(current,'checkpoint');store.put(Date.now(),'checkpoint_meta');}}
-     store.put(data,'current');store.put({revision:revision+1,writerId:diWriterId,saveId:Math.random().toString(36).slice(2),at:Date.now()},'current_meta');
+     store.put(data,'current');store.put(entry,diProjectRecordKey(entry.projectId));store.put({revision:revision+1,writerId:diWriterId,saveId:Math.random().toString(36).slice(2),at:Date.now()},'current_meta');
    };
  };};tx.oncomplete=()=>{diExpectedRaw=data;diExpectedRevision++;resolve(true);};tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(conflict?diSaveConflictError():(tx.error||new Error('Save aborted')));});}
 function dbWriteConflictDraft(serial){return new Promise((resolve,reject)=>{const tx=idb.transaction('documents','readwrite');tx.objectStore('documents').put(serial,'conflict_'+diWriterId);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
 function dbReadConflictDrafts(){return new Promise((resolve,reject)=>{const tx=idb.transaction('documents','readonly'),store=tx.objectStore('documents');const out=[];const req=store.openCursor();req.onsuccess=()=>{const cursor=req.result;if(!cursor)return;if(String(cursor.key).startsWith('conflict_')&&typeof cursor.value==='string')out.push({key:String(cursor.key),raw:cursor.value});cursor.continue();};tx.oncomplete=()=>resolve(out.slice(-12));tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
+// A large-document draft is durable only after the IDB transaction completes.
+// Its key is unique to this tab; an older queued write may not replace a newer edit.
+function dbWriteEmergencyDraft(raw,sequence,projectId){return new Promise((resolve,reject)=>{
+ const tx=idb.transaction('documents','readwrite'),store=tx.objectStore('documents'),key='emergency_'+diWriterId;
+ const previous=store.get(key);
+ previous.onsuccess=()=>{
+   if(Number(previous.result?.sequence||0)>sequence)return;
+   store.put({raw,sequence,projectId,at:Date.now()},key);
+ };
+ tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+});}
+// Delete ONLY the draft saved in this tab and at or before the verified
+// canonical snapshot; a later in-flight edit must remain recoverable.
+function dbClearEmergencyDraft(sequence,projectId){return new Promise((resolve,reject)=>{
+ const tx=idb.transaction('documents','readwrite'),store=tx.objectStore('documents'),key='emergency_'+diWriterId;
+ const previous=store.get(key);
+ previous.onsuccess=()=>{
+   const entry=previous.result;
+   if(entry&&entry.projectId===projectId&&Number(entry.sequence)<=sequence)store.delete(key);
+ };
+ tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+});}
+// T27: Each explicit project replacement must preserve an independently
+// readable snapshot of the outgoing project. This is NOT a multi-project cloud
+// library: these versions live only in this browser's recovery store.
+function dbArchiveProject(raw,projectId,reason){return new Promise((resolve,reject)=>{
+ const key='project_archive_'+uid(),tx=idb.transaction('documents','readwrite');
+ tx.objectStore('documents').put({raw,projectId,reason,at:Date.now()},key);
+ tx.oncomplete=()=>resolve(key);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+});}
+function dbReadProjectArchives(){return new Promise((resolve,reject)=>{
+ const out=[],tx=idb.transaction('documents','readonly'),req=tx.objectStore('documents').openCursor();
+ req.onsuccess=()=>{const cur=req.result;if(!cur)return;
+  if(String(cur.key).startsWith('project_archive_')&&typeof cur.value?.raw==='string')out.push({key:String(cur.key),...cur.value});
+  cur.continue();
+ };
+ tx.oncomplete=()=>resolve(out.sort((a,b)=>(b.at||0)-(a.at||0)).slice(0,30));
+ tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+});}
+async function diArchiveOutgoingProject(raw,reason){
+ const projectId=JSON.parse(raw).id;
+ if(storageMode==='indexeddb'&&idb){
+  const key=await dbArchiveProject(raw,projectId,reason);
+  const verified=await dbReadKey(key);
+  if(verified?.raw!==raw||verified?.projectId!==projectId)throw Error('Project protection could not be verified.');
+  return key;
+ }
+ if(storageMode==='localstorage'){
+  // A distinct key avoids overwriting the single previous-save slot.
+  const key='ThinkIt_v094_project_archive_'+uid();
+  localStorage.setItem(key,raw);
+  if(localStorage.getItem(key)!==raw)throw Error('Project protection could not be verified.');
+  return key;
+ }
+ throw Error('Local storage unavailable: cannot protect the outgoing project. Export JSON before switching.');
+}
+function dbReadEmergencyDrafts(){return new Promise((resolve,reject)=>{
+ const tx=idb.transaction('documents','readonly'),store=tx.objectStore('documents'),out=[];
+ const req=store.openCursor();req.onsuccess=()=>{
+   const cursor=req.result;if(!cursor)return;
+   const value=cursor.value;
+   if(String(cursor.key).startsWith('emergency_')&&value&&typeof value.raw==='string')out.push({key:String(cursor.key),raw:value.raw,at:value.at});
+   cursor.continue();
+ };
+ tx.oncomplete=()=>resolve(out.sort((a,b)=>(b.at||0)-(a.at||0)).slice(0,12));
+ tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+});}
 // Web Locks provide the exclusivity missing from localStorage's multiple independent keys.
 // Fail closed if unavailable: do not silently enable last-writer-wins writes.
 async function diFallbackWrite(data){const locks=window.navigator?.locks;
@@ -617,6 +1369,20 @@ async function diFallbackWrite(data){const locks=window.navigator?.locks;
    const previous=localStorage.getItem('ThinkIt_v094_document');
    if(previous!==diExpectedRaw)throw diSaveConflictError();
    localStorage.setItem('ThinkIt_v094_document',data);
+   // A storage API accepting setItem is not a verified receipt. Read back the
+   // exact bytes while the exclusive lock is still held, before advancing the
+   // tab's expected version or rotating its prior recovery snapshot.
+   if(localStorage.getItem('ThinkIt_v094_document')!==data){
+     const err=new Error('Browser storage did not return the saved project');
+     err.code='THINKIT_READBACK_MISMATCH';throw err;
+   }
+   if(typeof diProjectRecord==='function'){
+     const record=diProjectRecord(data);
+     localStorage.setItem(diLocalProjectKey(record.projectId),data);
+     if(localStorage.getItem(diLocalProjectKey(record.projectId))!==data){
+       const err=new Error('Project catalogue readback mismatch');err.code='THINKIT_READBACK_MISMATCH';throw err;
+     }
+   }
    diExpectedRaw=data;diExpectedRevision++;
    if(isRecoverableSnapshot(previous)&&previous!==data){try{localStorage.setItem('ThinkIt_v094_previous',previous);}catch(err){console.warn('Previous local recovery snapshot could not rotate',err);}}
    return true;
@@ -625,12 +1391,22 @@ function isRecoverableSnapshot(raw){try{const d=JSON.parse(raw);return !!d&&d.fo
 let saveQueue=Promise.resolve(),saveRequestId=0;
 function persist({manual=false}={}){
  if(!doc||storageMode==='pending')return Promise.resolve(false);
- const serial=JSON.stringify(doc),seq=++saveRequestId;
+ const serial=JSON.stringify(doc),seq=++saveRequestId,draftSequence=diEditSequence,projectId=doc.id;
  setSaveState('unsaved','Saving on this device…');
  // Serialized commits: the newest save can never be overwritten by a slower, older save.
  saveQueue=saveQueue.catch(()=>{}).then(async()=>{
    if(diSaveConflict){setSaveState('error','Editing conflict · Export JSON');return false;}
-   if(storageMode==='indexeddb')await dbWrite(serial,{manual});
+   if(storageMode==='indexeddb'){
+     // The pending emergency journal is independent of the canonical save.
+     await diDraftQueue;
+     await dbWrite(serial,{manual});
+     // A completed transaction alone is not a cold-storage readback. Verify the
+     // exact current bytes and revision before claiming a saved receipt.
+     const verified=await dbReadState();
+     if(verified.raw!==serial||verified.revision!==diExpectedRevision)throw diSaveConflictError();
+     if(typeof diReadSavedProject==='function'&&(await diReadSavedProject(projectId))?.raw!==serial)throw Error('Project catalogue readback mismatch');
+     try{await dbClearEmergencyDraft(draftSequence,projectId);}catch(err){console.warn('Saved project; emergency draft cleanup postponed',err);}
+   }
    else if(storageMode==='localstorage')await diFallbackWrite(serial);
    else{setSaveState('error','Local storage unavailable · export JSON');return false;}
    lastSaved=serial;
@@ -647,6 +1423,9 @@ function persist({manual=false}={}){
    }else if(err?.code==='THINKIT_NO_LOCK'){
      if(seq===saveRequestId)setSaveState('error','Storage lock unavailable · Export JSON');
      toast('Safe local saving unavailable in this browser. Export JSON.');
+   }else if(err?.code==='THINKIT_READBACK_MISMATCH'){
+     if(seq===saveRequestId)setSaveState('error','Local save could not be verified · Export JSON');
+     toast('Browser storage did not verify this project save. Export JSON before closing.');
    }else{console.error(err);if(seq===saveRequestId)setSaveState('error','Save failed · export JSON');toast('Local save failed. Export JSON to protect your work.');}
    return false;
  });
@@ -659,10 +1438,13 @@ function validatedSnapshot(raw){if(typeof raw!=='string'||!raw)return null;try{r
 async function getLocalRecoveryEntries(){const found=[];if(storageMode==='indexeddb'){
  for(const key of ['previous','checkpoint']){try{found.push({key,raw:await dbReadKey(key)});}catch(e){console.warn('Recovery read failed',key,e);}}
  try{found.push(...await dbReadConflictDrafts());}catch(e){console.warn('Conflict recovery scan failed',e);}
+ try{found.push(...await dbReadEmergencyDrafts());}catch(e){console.warn('Large-project emergency recovery scan failed',e);}
+ try{found.push(...await dbReadProjectArchives());}catch(e){console.warn('Archived-project recovery scan failed',e);}
  // Legacy global shadow is never used to silently overwrite a valid canonical save.
  try{found.push({key:'shadow',raw:localStorage.getItem('ThinkIt_v094_shadow')});}catch{}
  }else if(storageMode==='localstorage'){
  for(const [key,item] of [['previous','ThinkIt_v094_previous'],['shadow','ThinkIt_v094_shadow']])try{found.push({key,raw:localStorage.getItem(item)});}catch{}
+ try{for(let i=0;i<localStorage.length&&i<10000;i++){const key=localStorage.key(i);if(key?.startsWith('ThinkIt_v094_project_archive_'))found.push({key,raw:localStorage.getItem(key)});}}catch{}
  }
  // Per-tab emergency copies also remain available when IDB storage fails.
  try{for(let i=0;i<localStorage.length&&i<10000;i++){const key=localStorage.key(i);if(key?.startsWith('ThinkIt_v094_shadow_tab_'))found.push({key,raw:localStorage.getItem(key)});}}catch{}
@@ -672,18 +1454,28 @@ async function openLocalRecovery(){const candidates=await getLocalRecoveryEntrie
  if(!unique.length){modal('Restore local version','<p>No earlier valid local version is available in this browser. Use <strong>File → Open Project</strong> to import a portable JSON backup.</p>',[{text:'Close'}]);return;}
  const body=modal('Restore local version',`<p class="modal-subtext">Choose an earlier locally saved version. This restores the <strong>entire project</strong>, not only the active diagram. Export your current project as JSON first if you may need it later.</p><div id="diRecoveryVersions"></div><p class="modal-subtext">These browser copies are not independent backups and can be lost if site data is cleared.</p>`,[{text:'Cancel'}]);
  const parent=body.querySelector('#diRecoveryVersions');for(const candidate of unique){const parsed=validatedSnapshot(candidate.raw);if(!parsed)continue;
-  const btn=dom('button','di-recovery-row',undefined,parent);const heading=dom('strong','',`${candidate.key==='previous'?'Previous save':candidate.key==='checkpoint'?'Older checkpoint':candidate.key.startsWith('conflict_')?'Unsaved editing conflict':'Emergency tab draft'} · ${parsed.name||'Untitled'}`,btn);dom('span','',`${parsed.pages.length} diagram(s) · ${parsed.updatedAt?new Date(parsed.updatedAt).toLocaleString():'Date unknown'}`,btn);
-  btn.onclick=()=>{const current=activeModal;current?.close();modal('Confirm project restore',`<p>Restore <strong>${esc(parsed.name||'Untitled')}</strong> from the selected local version? This replaces the active project. Export a JSON backup first if needed.</p>`,[{text:'Cancel'},{text:'Restore version',primary:true,action:()=>{
-    const before=JSON.stringify(doc);doc=validatedSnapshot(candidate.raw);if(!doc){toast('Snapshot failed validation.');return;}
-    page=getPage();diTabProjectId='';diLoadTabState();diClosedTabs.clear();diSaveTabState();selected.clear();edgeSelected=null;selectedAnnotation=null;preview=null;
-    history={undo:[before],redo:[]};bubbleActivePageId=null;
-    if(candidate.key.startsWith('conflict_')||candidate.key.startsWith('ThinkIt_v094_shadow_tab_'))diSaveConflict=true;
-    markDirty();render();diHideStart();if(!diSaveConflict)persist({manual:true});
-    toast(diSaveConflict?'Conflict draft opened read-only for saving. Export its JSON and compare before resolving.':'Earlier local project restored. Use Undo to return to the prior in-memory project.');
+  const btn=dom('button','di-recovery-row',undefined,parent);const heading=dom('strong','',`${candidate.key==='previous'?'Previous save':candidate.key==='checkpoint'?'Older checkpoint':candidate.key.startsWith('conflict_')?'Unsaved editing conflict':candidate.key.startsWith('emergency_')?'Large-project emergency draft':candidate.key.startsWith('project_archive_')||candidate.key.startsWith('ThinkIt_v094_project_archive_')?'Protected previous project':'Emergency tab draft'} · ${parsed.name||'Untitled'}`,btn);dom('span','',`${parsed.pages.length} diagram(s) · ${parsed.updatedAt?new Date(parsed.updatedAt).toLocaleString():'Date unknown'}`,btn);
+  btn.onclick=()=>{const current=activeModal;current?.close();modal('Confirm project restore',`<p>Restore <strong>${esc(parsed.name||'Untitled')}</strong> from the selected local version? The active project will first receive an independently verified local recovery archive. These copies are device-local; export a JSON backup for independent protection.</p>`,[{text:'Cancel'},{text:'Restore version',primary:true,action:()=>{
+    const dialog=activeModal;
+    for(const button of $('modalRoot').querySelectorAll('button'))button.disabled=true;
+    diCommitProjectSwitch(validatedSnapshot(candidate.raw),'Restore local version').then(ok=>{
+      if(ok){
+        if(candidate.key.startsWith('conflict_')||candidate.key.startsWith('ThinkIt_v094_shadow_tab_')){
+          diSaveConflict=true;setSaveState('error','Conflict draft opened · Export JSON before saving');
+          clearTimeout(saveTimer);
+        }
+        toast(diSaveConflict?'Conflict draft opened for review. Export JSON and resolve the conflict.':'Local project restored. The previous active project is in Restore Local Version.');
+      }
+      if(activeModal===dialog)dialog.close();
+    });
+    return false;
    }}]);};
  }
 }
 let recoverySource=null;
+// Project imports and switches must wait for the authoritative local storage
+// target to finish opening; the HTML and file picker become interactive first.
+let diStorageReady=Promise.resolve();
 async function initStorage(){let saved=null;try{await openStorage();storageMode='indexeddb';const state=await dbReadState();saved=state.raw;diExpectedRaw=saved;diExpectedRevision=state.revision;}catch(err){try{localStorage.setItem('DiagramIt_storage_probe','ok');localStorage.removeItem('DiagramIt_storage_probe');storageMode='localstorage';saved=localStorage.getItem('ThinkIt_v094_document');diExpectedRaw=saved;}catch{storageMode='none';}}
  let loaded=validatedSnapshot(saved),shadow=null;try{shadow=validatedSnapshot(localStorage.getItem('ThinkIt_v094_shadow'));}catch{}
  // An emergency shadow cannot automatically supersede an otherwise valid authoritative save:
@@ -691,7 +1483,7 @@ async function initStorage(){let saved=null;try{await openStorage();storageMode=
  if(shadow&&!loaded){loaded=shadow;recoverySource='shadow';}
  if(!loaded){for(const entry of await getLocalRecoveryEntries()){
   // Conflicting/other-tab drafts require explicit recovery and must never silently become current.
-  if(entry.key.startsWith('conflict_')||entry.key.startsWith('ThinkIt_v094_shadow_tab_'))continue;
+  if(entry.key.startsWith('conflict_')||entry.key.startsWith('ThinkIt_v094_shadow_tab_')||entry.key.startsWith('emergency_')||entry.key.startsWith('project_archive_')||entry.key.startsWith('ThinkIt_v094_project_archive_'))continue;
   const candidate=validatedSnapshot(entry.raw);if(candidate){loaded=candidate;recoverySource=entry.key;break;}}}
  if(loaded){doc=loaded;recoveryNotice=recoverySource?`Recovered from ${recoverySource} · Export JSON backup`:'Restored from this device';}
  else {doc=blankDiagramIt('flow');freshInstall=true;recoveryNotice=saved?'Saved project invalid · Open JSON backup':'Ready · create a project';}
@@ -702,14 +1494,67 @@ async function initStorage(){let saved=null;try{await openStorage();storageMode=
 }
 function pref(key,v){try{localStorage.setItem('diagramit_pref_'+key,JSON.stringify(v));}catch{}}
 function loadPreferences(){const read=(k,f)=>{try{const v=localStorage.getItem('diagramit_pref_'+k);return v===null?f:JSON.parse(v);}catch{return f;}};theme=read('theme','light');showGrid=read('grid',true);layoutDirection=read('layout','down');document.body.dataset.theme=theme;const leftWidth=read('leftWidth',null),rightWidth=read('rightWidth',null);if(leftWidth)document.documentElement.style.setProperty('--panel-width',`${leftWidth}px`);if(rightWidth)document.documentElement.style.setProperty('--inspector-width',`${rightWidth}px`);document.body.classList.toggle('sidebar-collapsed',read('libraryHidden',window.innerWidth<850));document.body.classList.toggle('inspector-collapsed',read('inspectorHidden',window.innerWidth<850));}
-function addNode(shape,x,y,label,extra={}){const n=node(shape,x,y,label,extra);page.nodes.push(n);selected=new Set([n.id]);edgeSelected=null;return n;}
-function addAtCenter(shape){if(selected.size===1&&byId([...selected][0])){addChild([...selected][0],false,shape);return;}const size=DEFAULT_SIZE[shape]||[160,70],wh=getWorldSize();let wx=(wh.w/2-view.x)/view.k-size[0]/2,wy=(wh.h/2-view.y)/view.k-size[1]/2;transact(()=>addNode(shape,Math.round(wx/12)*12,Math.round(wy/12)*12));}
-function startEdit(id,type='node',replaceWith=null){if(editing)finishEdit();const n=type==='node'?byId(id):findEdge(id);if(!n)return;const p=type==='node'?nodePos(n):null;const input=dom('textarea','editing-text',undefined,$('canvasWrap'));input.value=replaceWith!==null?replaceWith:(n.label||'');const rect=canvas.getBoundingClientRect();if(type==='node'){input.style.left=`${p.x*view.k+view.x+Math.max(7,p.w*view.k*.09)}px`;input.style.top=`${p.y*view.k+view.y+Math.max(5,p.h*view.k*.19)}px`;input.style.width=`${Math.max(110,p.w*view.k*.83)}px`;input.style.height=`${Math.max(51,p.h*view.k*.65)}px`;input.style.fontSize=`${clamp((n.fontSize||13)*view.k,12,21)}px`;}else{const a=byId(n.from),b=byId(n.to);if(!isFreeEdge(n)&&(!a||!b))return;const pt=getEdgeGeom(n,a,b).label;input.style.left=`${pt.x*view.k+view.x-80}px`;input.style.top=`${pt.y*view.k+view.y-24}px`;input.style.width='160px';input.style.height='52px';}editing={input,id,type};input.focus();if(replaceWith===null)input.select();else input.setSelectionRange(input.value.length,input.value.length);input.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishEdit(false);}else if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();e.stopPropagation();finishEdit(true);}});input.addEventListener('blur',()=>{if(editing?.input===input)finishEdit(true);});}
+function addNode(shape,x,y,label,extra={}){const n=node(shape,x,y,label,extra);
+ if(page.mode!=='bubble'){n.outlineOrder=page.nodes.length+1;n.wbsCodeOverride=null;n.dependencies=[];if(page.mode==='flow')n.outlineParentId=null;}
+ page.nodes.push(n);selected=new Set([n.id]);edgeSelected=null;return n;}
+function initialShapeSize(shape,source=null){const fallback=DEFAULT_SIZE[shape]||[160,70];return window.ThinkItInsertLayout?.inheritedSize(source,fallback)||{w:fallback[0],h:fallback[1]};}
+// H3a: auto-managed objects may be rearranged by later insertions. Historical,
+// pinned and manually moved objects are held fixed. All changes happen inside
+// the caller's existing transaction, preserving one-step undo/redo.
+function h3ApplyPositions(positions){
+ for(const [id,p] of Object.entries(positions||{})){
+  const n=byId(id);if(n?.layoutManaged===true&&!n.pinned&&Number.isFinite(p.x)&&Number.isFinite(p.y)){
+   n.x=Math.round(p.x);n.y=Math.round(p.y);
+  }
+ }
+}
+const h3LastConstraints=new Map();
+function h3RememberConstraints(anchorId,conflicts){
+ if(conflicts.length)h3LastConstraints.set(page.id,{anchorId,conflicts});
+ else if(h3LastConstraints.get(page.id)?.anchorId===anchorId)h3LastConstraints.delete(page.id);
+}
+function h3BranchReflow(anchorId){
+ if(!anchorId||!['mind','flow'].includes(page.mode))return;
+ const direction=page.mode==='mind'?'right':layoutDirection==='right'?'right':'down';
+ const visibleIds=page.mode==='flow'?flowGraphPlan().visibleNodeIds:visibleNodes().map(n=>n.id);
+ const nested=window.ThinkItSubtreeLayout;
+ if(nested?.planBranch){
+  const plan=nested.planBranch(page,anchorId,{direction,
+   gap:page.mode==='mind'?mindSettings().siblingGap:32,visibleIds});
+  h3ApplyPositions(plan.positions);h3RememberConstraints(anchorId,plan.conflicts);
+  return;
+ }
+ const planner=window.ThinkItBranchReflow;
+ if(planner?.planBranch)h3ApplyPositions(planner.planBranch(page,anchorId,{direction,
+   gap:page.mode==='mind'?mindSettings().siblingGap:32}));
+}
+function h3Repair(protectedId=null){
+ if(!['mind','flow'].includes(page.mode))return;
+ const visibleIds=page.mode==='flow'?flowGraphPlan().visibleNodeIds:visibleNodes().map(n=>n.id);
+ const nested=window.ThinkItSubtreeLayout;
+ if(nested?.repairVisible){
+  const plan=nested.repairVisible(page,visibleIds,{protectIds:protectedId?[protectedId]:[]});
+  h3ApplyPositions(plan.positions);return;
+ }
+ const planner=window.ThinkItBranchReflow;
+ if(planner?.repairVisible)h3ApplyPositions(planner.repairVisible(page,visibleIds,
+   {protectIds:protectedId?[protectedId]:[]}));
+}
+// Auto-placement is local; its new node is eligible for later scoped reflows.
+function arrangeInserted(n,preferred,direction='down'){
+ if(!n||!['mind','flow'].includes(page.mode))return n;
+ const engine=window.ThinkItInsertLayout;
+ if(!engine?.place)throw Error('Insertion layout module unavailable');
+ const next=engine.place(page.nodes,n.id,{preferred,direction});
+ n.x=Math.round(next.x);n.y=Math.round(next.y);n.layoutManaged=true;return n;
+}
+function addAtCenter(shape){if(selected.size===1&&byId([...selected][0])){addChild([...selected][0],false,shape);return;}const size=initialShapeSize(shape),wh=getWorldSize();let wx=(wh.w/2-view.x)/view.k-size.w/2,wy=(wh.h/2-view.y)/view.k-size.h/2;transact(()=>{const n=addNode(shape,Math.round(wx/12)*12,Math.round(wy/12)*12,undefined,{w:size.w,h:size.h});if(page.mode==='flow'&&flowFocusId())n.outlineParentId=flowFocusId();arrangeInserted(n,{x:n.x,y:n.y});});}
+function startEdit(id,type='node',replaceWith=null){if(editing)finishEdit();const n=type==='node'?byId(id):findEdge(id);if(!n)return;if(type==='edge'&&flowProjectedEdge(id)){toast('Expand the subprocess before editing this connector on the canvas.');return;}const p=type==='node'?nodePos(n):null;const input=dom('textarea','editing-text',undefined,$('canvasWrap'));input.value=replaceWith!==null?replaceWith:(n.label||'');const rect=canvas.getBoundingClientRect();if(type==='node'){input.style.left=`${p.x*view.k+view.x+Math.max(7,p.w*view.k*.09)}px`;input.style.top=`${p.y*view.k+view.y+Math.max(5,p.h*view.k*.19)}px`;input.style.width=`${Math.max(110,p.w*view.k*.83)}px`;input.style.height=`${Math.max(51,p.h*view.k*.65)}px`;input.style.fontSize=`${clamp((n.fontSize||13)*view.k,12,21)}px`;}else{const a=byId(n.from),b=byId(n.to);if(!isFreeEdge(n)&&(!a||!b))return;const pt=getEdgeGeom(n,a,b).label;input.style.left=`${pt.x*view.k+view.x-80}px`;input.style.top=`${pt.y*view.k+view.y-24}px`;input.style.width='160px';input.style.height='52px';}editing={input,id,type};input.focus();if(replaceWith===null)input.select();else input.setSelectionRange(input.value.length,input.value.length);input.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishEdit(false);}else if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();e.stopPropagation();finishEdit(true);}});input.addEventListener('blur',()=>{if(editing?.input===input)finishEdit(true);});}
 function finishEdit(commit=true){if(!editing)return;if(editing.type==='annotation'){editing.container?.remove();editing=null;return;}const {input,id,type}=editing;editing=null;const value=input.value.trim();input.remove();canvas.focus({preventScroll:true});if(commit&&value){if(type==='node'){const n=byId(id);if(n&&n.label!==value)transact(()=>n.label=value);}else{const e=findEdge(id);if(e&&e.label!==value)transact(()=>e.label=value);}}}
 function chooseNonOverlapping(x,y,shape){const [w,h]=DEFAULT_SIZE[shape]||[160,70],stepX=w+42,stepY=h+47;const collision=(cx,cy)=>page.nodes.some(n=>cx<n.x+n.w+13&&cx+w+13>n.x&&cy<n.y+n.h+13&&cy+h+13>n.y);if(!collision(x,y))return{x,y};for(const by of [0,1,-1,2,-2]){for(let a=1;a<15;a++){for(const sx of [-1,1]){const cx=x+sx*a*stepX*.75,cy=y+by*stepY;if(!collision(cx,cy))return{x:cx,y:cy};}}}return{x:x+stepX*2,y:y+stepY*2};}
-function defaultChildPosition(parent,sibling=false){const sibs=treeChildren(parent.id);if(page.mode==='mind'){const direction=parent.parentId?Math.sign((parent.x+parent.w/2)-(byId(parent.parentId).x+byId(parent.parentId).w/2))||1:1;return{x:parent.x+(direction>0?parent.w+92:-255),y:parent.y+sibs.length*85-9};}if(page.mode==='org')return{x:parent.x+(sibs.length-1)*190,y:parent.y+160};return{x:parent.x+parent.w/2-84,y:parent.y+155};}
+function defaultChildPosition(parent,sibling=false,size=null){const sibs=treeChildren(parent.id),w=size?.w||168,h=size?.h||68;if(page.mode==='mind'){const direction=parent.parentId?Math.sign((parent.x+parent.w/2)-(byId(parent.parentId).x+byId(parent.parentId).w/2))||1:1;return{x:parent.x+(direction>0?parent.w+92:-w-92),y:parent.y+sibs.length*Math.max(85,h+24)-9};}if(page.mode==='org')return{x:parent.x+(sibs.length-1)*190,y:parent.y+160};return{x:parent.x+parent.w/2-w/2,y:parent.y+parent.h+87};}
 function edgeSourceFor(n){return page.edges.find(e=>e.to===n.id&&!isFreeEdge(e))?.from||null;}
-function placeRelative(reference,shape,direction,space=85){const [w,h]=DEFAULT_SIZE[shape]||[160,70];const refX=reference.x+reference.w/2,refY=reference.y+reference.h/2;
+function placeRelative(reference,shape,direction,space=85,size=null){const [fallbackW,fallbackH]=DEFAULT_SIZE[shape]||[160,70],w=size?.w||fallbackW,h=size?.h||fallbackH;const refX=reference.x+reference.w/2,refY=reference.y+reference.h/2;
 return direction==='left'?{x:reference.x-w-space,y:refY-h/2}:direction==='right'?{x:reference.x+reference.w+space,y:refY-h/2}:direction==='up'?{x:refX-w/2,y:reference.y-h-space}:{x:refX-w/2,y:reference.y+reference.h+space};}
 function chooseDirectionalSlot(reference,shape,rough,direction){const [w,h]=DEFAULT_SIZE[shape]||[160,70];const touches=(x,y)=>page.nodes.some(n=>x<n.x+n.w+13&&x+w+13>n.x&&y<n.y+n.h+13&&y+h+13>n.y);
 if(!touches(rough.x,rough.y))return rough;
@@ -720,18 +1565,34 @@ if(!touches(x,y))return{x,y};}
 return rough;}
 function addChild(parentId,sibling=false,customShape,direction=null,makeParent=false){let created=null;transact(()=>{const selectedNode=byId(parentId);if(!selectedNode)return;const existingFlowParent=sibling&&page.mode==='flow'?byId(edgeSourceFor(selectedNode)):null;
 const base=sibling?(page.mode==='flow'?(existingFlowParent||selectedNode):(byId(selectedNode.parentId)||selectedNode)):selectedNode;if(!base)return;
-const shape=customShape||(page.mode==='org'?'person':page.mode==='mind'?'subtopic':'process');let roughPos;
-if(direction){roughPos=placeRelative(selectedNode,shape,direction,makeParent?90:100);}else if(sibling){const siblings=page.mode==='flow'?page.edges.filter(e=>e.from===base.id).map(e=>byId(e.to)).filter(Boolean):treeChildren(base.id);const i=siblings.length;roughPos=page.mode==='mind'?{x:selectedNode.x,y:selectedNode.y+(i?88:95)}:page.mode==='org'?{x:selectedNode.x+205,y:selectedNode.y}:{x:selectedNode.x+selectedNode.w+95,y:selectedNode.y};}else{roughPos=defaultChildPosition(base);}
-const pos=direction?chooseDirectionalSlot(selectedNode,shape,roughPos,direction):chooseNonOverlapping(roughPos.x,roughPos.y,shape);const label=page.mode==='org'?(makeParent?'New manager':'New role'):page.mode==='mind'?(makeParent?'New parent topic':'New topic'):(makeParent?'New preceding step':'New step');
+const shape=customShape||(page.mode==='org'?'person':page.mode==='mind'?'subtopic':'process');const size=initialShapeSize(shape,['flow','mind'].includes(page.mode)?selectedNode:null);let roughPos;
+if(direction){roughPos=placeRelative(selectedNode,shape,direction,makeParent?90:100,size);}else if(sibling){const siblings=page.mode==='flow'?page.edges.filter(e=>e.from===base.id).map(e=>byId(e.to)).filter(Boolean):treeChildren(base.id);const i=siblings.length;roughPos=page.mode==='mind'?{x:selectedNode.x,y:selectedNode.y+Math.max(i?88:95,size.h+24)}:page.mode==='org'?{x:selectedNode.x+205,y:selectedNode.y}:{x:selectedNode.x+selectedNode.w+95,y:selectedNode.y};}else{roughPos=defaultChildPosition(base,false,size);}
+const auto=['mind','flow'].includes(page.mode),pos=auto?roughPos:(direction?chooseDirectionalSlot(selectedNode,shape,roughPos,direction):chooseNonOverlapping(roughPos.x,roughPos.y,shape));const label=page.mode==='org'?(makeParent?'New manager':'New role'):page.mode==='mind'?(makeParent?'New parent topic':'New topic'):(makeParent?'New preceding step':'New step');
 const oldParent=selectedNode.parentId;
-created=addNode(shape,pos.x,pos.y,label,{parentId:page.mode==='flow'?null:(makeParent?oldParent:base.id),fill:page.mode==='flow'?'plain':page.mode==='mind'?'blue':'plain'});
+created=addNode(shape,pos.x,pos.y,label,{parentId:page.mode==='flow'?null:(makeParent?oldParent:base.id),fill:page.mode==='flow'?'plain':page.mode==='mind'?'blue':'plain',...(auto?{w:size.w,h:size.h}:{})});
+if(page.mode==='flow'&&flowFocusId()){
+ const focus=flowFocusId();
+ // Graph arrows describe sequence; WBS ownership comes from focused scope.
+ const owner=base.shape==='subprocess'&&window.ThinkItFlowFocus.index(page).descendants(focus).has(base.id)?base.id:focus;
+ created.outlineParentId=owner;
+}
+if(auto)arrangeInserted(created,pos,direction||(page.mode==='mind'&&pos.x<base.x?'left':page.mode==='mind'?'right':'down'));
 if(makeParent){if(page.mode==='flow')page.edges.push(edge(created.id,selectedNode.id));else selectedNode.parentId=created.id;}
 else if(page.mode==='flow')page.edges.push(edge(base.id,created.id));
-if(base.collapsed)base.collapsed=false;});if(created){ensureVisibleNode(created);startEdit(created.id);}}
+if(base.collapsed)base.collapsed=false;
+if(auto){h3BranchReflow(base.id);h3Repair(created.id);}
+});if(created){ensureVisibleNode(created);startEdit(created.id);}}
 function directionalCreation(direction,makeParent=false){if(selected.size!==1){toast('Select one node first, then use Option + an arrow key.');return;}const current=[...selected][0];addChild(current,false,null,direction,makeParent);}
 
-function addRoot(){const shape=page.mode==='flow'?'process':page.mode==='org'?'person':'topic';addAtCenter(shape);if(selected.size===1)startEdit([...selected][0]);}
-function duplicateSelection(){if(!selected.size)return;const source=[...selected].map(byId).filter(Boolean);if(!confirmSharedKeepItCopy(source,'duplicate'))return;transact(()=>{const orig=source,map=new Map(),newIds=[];for(const old of orig){const n=clone(old);n.id=uid();n.x+=36;n.y+=34;n.groupId=null;map.set(old.id,n.id);page.nodes.push(n);newIds.push(n.id);}for(const n of page.nodes.slice(-orig.length)){if(n.parentId&&map.has(n.parentId))n.parentId=map.get(n.parentId);else if(page.mode!=='flow'&&!byId(n.parentId))n.parentId=null;}for(const e of page.edges.slice()){if(map.has(e.from)&&map.has(e.to))page.edges.push({...clone(e),id:uid(),from:map.get(e.from),to:map.get(e.to)});}for(const a of (page.annotations||[]).slice()){if(a.parentId&&map.has(a.parentId)){const cp=clone(a);cp.id=uid();cp.parentId=map.get(a.parentId);allAnnotations().push(cp);}}selected=new Set(newIds);edgeSelected=null;});}
+function addRoot(){if(page.mode==='flow'&&flowFocusId()){toast('Exit focused subprocess before adding a top-level activity.');return;}const shape=page.mode==='flow'?'process':page.mode==='org'?'person':'topic';addAtCenter(shape);if(selected.size===1)startEdit([...selected][0]);}
+function duplicateSelection(){if(!selected.size)return;const source=[...selected].map(byId).filter(Boolean);if(!source.length||!confirmSharedKeepItCopy(source,'duplicate'))return;transact(()=>{const orig=source,map=new Map(),newIds=[];for(const old of orig){const n=clone(old);n.id=uid();n.x+=36;n.y+=34;n.groupId=null;
+ // A duplicated work item receives a new generated code and order. Stable IDs
+ // are remapped only where the predecessor or outline parent was also copied.
+ if(page.mode!=='bubble'){n.wbsCodeOverride=null;n.outlineOrder=page.nodes.length+1;}
+ map.set(old.id,n.id);page.nodes.push(n);newIds.push(n.id);}for(const n of page.nodes.slice(-orig.length)){if(n.parentId&&map.has(n.parentId))n.parentId=map.get(n.parentId);else if(page.mode!=='flow'&&!byId(n.parentId))n.parentId=null;
+ if(page.mode==='flow'&&n.outlineParentId&&map.has(n.outlineParentId))n.outlineParentId=map.get(n.outlineParentId);
+ if(Array.isArray(n.dependencies))n.dependencies=n.dependencies.map(dep=>map.has(dep.id)?{...dep,id:map.get(dep.id)}:dep);
+ }for(const e of page.edges.slice()){if(map.has(e.from)&&map.has(e.to))page.edges.push({...clone(e),id:uid(),from:map.get(e.from),to:map.get(e.to)});}for(const a of (page.annotations||[]).slice()){if(a.parentId&&map.has(a.parentId)){const cp=clone(a);cp.id=uid();cp.parentId=map.get(a.parentId);allAnnotations().push(cp);}}selected=new Set(newIds);edgeSelected=null;});}
 function removeSelection(options) {
   if(!selected.size&&!edgeSelected&&!selectedAnnotation)return false;
   const doomed=!selectedAnnotation&&!edgeSelected?affectedSelectionIds():new Set();
@@ -740,6 +1601,10 @@ function removeSelection(options) {
     if(selectedAnnotation){page.annotations=allAnnotations().filter(a=>a.id!==selectedAnnotation);selectedAnnotation=null;}
     else if(edgeSelected){page.edges=page.edges.filter(e=>e.id!==edgeSelected);edgeSelected=null;}
     else{
+      // Flowchart WBS parenting is separate from graph arrows. Reparent
+      // surviving children to the nearest retained ancestor (or root) when an
+      // outline parent is deleted; keep predecessor references for audit.
+      if(page.mode==='flow'&&doomed.size){const indexed=new Map(page.nodes.map(n=>[n.id,n]));for(const n of page.nodes){if(doomed.has(n.id))continue;let parent=n.outlineParentId??null;while(parent&&doomed.has(parent))parent=indexed.get(parent)?.outlineParentId??null;if(parent!==n.outlineParentId)n.outlineParentId=parent;}}
       page.nodes=page.nodes.filter(n=>!doomed.has(n.id));
       page.annotations=allAnnotations().filter(a=>!a.parentId||!doomed.has(a.parentId));
       page.edges=page.edges.filter(e=>!doomed.has(e.from)&&!doomed.has(e.to));
@@ -750,22 +1615,209 @@ function removeSelection(options) {
 }
 function groupSelection(){if(selected.size<2)return;transact(()=>{const g=uid();for(const id of selected){const n=byId(id);if(n)n.groupId=g;}});toast(`${selected.size} objects grouped; group membership does not change hierarchy.`);}
 function ungroupSelection(){transact(()=>{for(const id of selected){const n=byId(id);if(n)n.groupId=null;}});}
-function toggleCollapse(id){const n=byId(id);if(!n||page.mode==='flow')return;transact(()=>{n.collapsed=!n.collapsed;selected=new Set([id]);});}
+function toggleCollapse(id,force){
+ const n=byId(id);if(!n)return;
+ // The Mind Map / Org Chart action is intentionally unchanged.
+ if(page.mode!=='flow'){transact(()=>{n.collapsed=!n.collapsed;selected=new Set([id]);
+  if(page.mode==='mind')h3Repair(id);
+ });return;}
+ if(!page.nodes.some(child=>child.outlineParentId===id))return;
+ const collapse=force===undefined?!n.collapsed:!!force;
+ if(!!n.collapsed===collapse)return;
+ transact(()=>{n.collapsed=collapse;selected=new Set([id]);edgeSelected=null;selectedAnnotation=null;
+  flowRenderPlan=null;t22VisibleCache=null;
+  const source=n.outlineParentId||edgeSourceFor(n);if(source)h3BranchReflow(source);
+  h3Repair(id);
+ });
+}
 function changeParent(id,parentId){const n=byId(id);if(!n||page.mode==='flow')return;if(parentId===id||descendants(id).has(parentId)){toast('Cannot assign a subordinate as their manager or parent.');renderInspector();return;}transact(()=>{n.parentId=parentId||null;n.collapsed=false;});toast(parentId?'Parent updated. Use Auto-layout to arrange the branch.':'Node moved to top level.');}
-function selectNode(id,extend=false){selectedAnnotation=null;if(!extend)selected.clear();if(extend&&selected.has(id))selected.delete(id);else selected.add(id);edgeSelected=null;render();}
+function selectNode(id,extend=false){if(page.mode==='flow'){
+  const scope=flowFocusId()?window.ThinkItFlowFocus.index(page).descendants(flowFocusId()):null;
+  if(scope&&!scope.has(id)){flowFocusByPage.set(page.id,null);t22VisibleCache=null;}
+  flowRevealAncestors(id);
+ }selectedAnnotation=null;if(!extend)selected.clear();if(extend&&selected.has(id))selected.delete(id);else selected.add(id);edgeSelected=null;render();}
 function selectEdge(id){selectedAnnotation=null;edgeSelected=id;selected.clear();render();}
 function clearSelection(){selectedAnnotation=null;selected.clear();edgeSelected=null;reparentPick=null;render();}
 function selectPage(id){diClosedTabs.delete(id);diSaveTabState();if(doc.activePageId===id){render();return;}selectedAnnotation=null;finishEdit();cancelPreview(false);doc.activePageId=id;page=getPage();selected.clear();edgeSelected=null;selectedAnnotation=null;history={undo:[],redo:[]};markDirty();render();if(page.mode!=='bubble')requestAnimationFrame(()=>fitView({initial:true}));}
-function newPage(mode,name,starter=false,zoneTemplate='CUSTOM'){transact(()=>{const p={id:uid(),name:name||`New ${MODES[mode].name}`,mode,nodes:[],edges:[],annotations:[],orgLayout:mode==='org'?{...DEFAULT_ORG_LAYOUT}:undefined,mindLayout:mode==='mind'?{...DEFAULT_MIND_LAYOUT}:undefined,bubbleData:mode==='bubble'?(starter?null:{format:'diagramit-bubble-template',schema:1,spaces:[],relations:{},flows:[],title:name||'New bubble study',zoneTemplate}):undefined};doc.pages.push(p);diClosedTabs.delete(p.id);diSaveTabState();doc.activePageId=p.id;page=p;selected.clear();edgeSelected=null;if(starter&&!['bubble','bmc'].includes(mode)){const sz=DEFAULT_SIZE[mode==='flow'?'terminator':mode==='org'?'person':'topic'];addNode(mode==='flow'?'terminator':mode==='org'?'person':'topic',100,120,mode==='flow'?'Start':mode==='org'?'Department Head':'Central topic',{fill:'teal'});}});if(page.mode!=='bubble')fitView({initial:true});else render();}
+function newPage(mode,name,starter=false,zoneTemplate='CUSTOM'){transact(()=>{const p={id:uid(),name:name||`New ${MODES[mode].name}`,mode,nodes:[],edges:[],annotations:[],orgLayout:mode==='org'?{...DEFAULT_ORG_LAYOUT}:undefined,mindLayout:mode==='mind'?{...DEFAULT_MIND_LAYOUT}:undefined,bubbleData:mode==='bubble'?(starter?null:{format:'diagramit-bubble-template',schema:1,spaces:[],relations:{},flows:[],title:name||'New bubble study',zoneTemplate}):undefined};if(window.ThinkItOutline&&!['bubble','bmc'].includes(mode))window.ThinkItOutline.migrateDocument({pages:[p]});doc.pages.push(p);diClosedTabs.delete(p.id);diSaveTabState();doc.activePageId=p.id;page=p;selected.clear();edgeSelected=null;if(starter&&!['bubble','bmc'].includes(mode)){const sz=DEFAULT_SIZE[mode==='flow'?'terminator':mode==='org'?'person':'topic'];addNode(mode==='flow'?'terminator':mode==='org'?'person':'topic',100,120,mode==='flow'?'Start':mode==='org'?'Department Head':'Central topic',{fill:'teal'});}});if(page.mode!=='bubble')fitView({initial:true});else render();}
 function blankDiagramIt(mode='flow',name='Untitled workspace',zoneTemplate='CUSTOM'){
  const p={id:uid(),name:MODES[mode].name+' 1',mode,nodes:[],edges:[],annotations:[],orgLayout:mode==='org'?{...DEFAULT_ORG_LAYOUT}:undefined,mindLayout:mode==='mind'?{...DEFAULT_MIND_LAYOUT}:undefined,bubbleData:mode==='bubble'?{format:'diagramit-bubble-template',schema:2,title:name,spaces:[],relations:{},flows:[],generated:false,zoneTemplate}:undefined};
+ if(window.ThinkItOutline&&!['bubble','bmc'].includes(mode))window.ThinkItOutline.migrateDocument({pages:[p]});
  return {format:'DIAGRAMIT',version:3,id:uid(),name,pages:[p],activePageId:p.id,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
 }
+// T27: Switching projects replaces the one active local save slot. Prepare a
+// verified, independently selectable recovery copy BEFORE changing `doc`.
+let diProjectSwitchBusy=false;
+function diHasWorkToProtect(current){return !!current&&(!freshInstall||
+ current.pages?.length>1||!['Untitled workspace','Untitled project'].includes(current.name)||
+ current.pages?.some(p=>p.nodes?.length||p.edges?.length||p.annotations?.length||p.bubbleData?.spaces?.length||(p.bmcData?.blocks&&Object.values(p.bmcData.blocks).some(Boolean)))
+);}
+// Compare actual project values, not transient object identity or top-level
+// JSON key insertion order. Arrays, node geometry, notes and dependencies must
+// still match byte-for-byte when serialized individually.
+function diProjectSameValues(raw,current){
+ if(raw===null)return current==null;
+ if(typeof raw!=='string'||!current||typeof current!=='object')return false;
+ let before;try{before=JSON.parse(raw);}catch{return false;}
+ const keys=Object.keys(before);
+ return keys.length===Object.keys(current).length&&keys.every(key=>
+  Object.prototype.hasOwnProperty.call(current,key)&&JSON.stringify(before[key])===JSON.stringify(current[key]));
+}
+async function diCommitProjectSwitch(incoming,reason){
+ if(diProjectSwitchBusy){toast('A project change is already in progress.');return false;}
+ diProjectSwitchBusy=true;
+ let switchCommitStarted=false;
+ try{
+  const checkedIncoming=validatedSnapshot(JSON.stringify(incoming));
+  if(!checkedIncoming)throw Error('The incoming project failed validation; no local project was replaced.');
+  incoming=checkedIncoming;incoming.version=3;
+  let outgoing=doc;
+  clearTimeout(saveTimer);
+  // Drain outstanding writes before freezing the departing document. During
+  // this await, pending edits and first-launch layout can still legitimately
+  // modify the in-memory project. They must be INCLUDED in the protected copy,
+  // never silently discarded or mistaken for a later conflicting edit.
+  await saveQueue;await diDraftQueue;
+  if(storageMode==='indexeddb'){const live=await dbReadState();if(live.raw!==diExpectedRaw||live.revision!==diExpectedRevision)throw diSaveConflictError();}
+  else if(storageMode==='localstorage'&&localStorage.getItem('ThinkIt_v094_document')!==diExpectedRaw)throw diSaveConflictError();
+  if(diSaveConflict)throw Error('Another tab has changed this project. Export JSON and resolve the conflict before switching.');
+  if(outgoing?.id!==doc?.id)throw Error('The active project identity changed during the switch. Retry after saving.');
+  // Capture the latest stable in-memory object after draining outgoing writes.
+  outgoing=doc;
+  // The protection boundary begins here: subsequent content edits still
+  // abort the switch rather than overwrite unsaved work with the incoming project.
+  const raw=outgoing?JSON.stringify(outgoing):null;
+  clearTimeout(saveTimer);
+  if(diHasWorkToProtect(outgoing))await diArchiveOutgoingProject(raw,reason);
+  // One active slot is kept for compatibility; independent named entries let
+  // Open Recent reopen a real project instead of scavenging recovery archives.
+  if(diHasWorkToProtect(outgoing)&&typeof diWriteProjectRecord==='function')await diWriteProjectRecord(raw,{guardCurrent:true});
+  const incomingRaw=JSON.stringify(incoming);
+  if(reason==='Open project file'&&typeof diReadSavedProject==='function'){
+    const previous=await diReadSavedProject(incoming.id);
+    if(previous&&previous.raw!==incomingRaw&&incoming.id!==outgoing?.id)
+      throw Error('A different saved project already uses this project ID. Open its saved version or import a separately identified copy.');
+  }
+  // T29: Switch the canonical active slot BEFORE changing the in-memory project.
+  // The previous T28 path wrote a named record here but only changed `current`
+  // through a delayed markDirty/autosave. Closing during that gap reopened the
+  // outgoing project, even after Project Manager displayed the incoming one.
+  if(!diProjectSameValues(raw,doc))throw Error('The current project changed during protection. Retry.');
+  if(storageMode==='indexeddb'){
+    // dbWrite performs a single transaction: current + revision + incoming
+    // named project. It fails closed if a second tab altered current meanwhile.
+    switchCommitStarted=true;
+    await dbWrite(incomingRaw,{manual:true});
+    const live=await dbReadState(),stored=await diReadSavedProject(incoming.id);
+    if(live.raw!==incomingRaw||live.revision!==diExpectedRevision||stored?.raw!==incomingRaw){
+      diSaveConflict=true;
+      throw Error('Project switch save could not be verified. Export JSON before further edits.');
+    }
+  }else if(storageMode==='localstorage'){
+    // Use the same exclusive lock and exact readback as an ordinary Save.
+    switchCommitStarted=true;
+    await diFallbackWrite(incomingRaw);
+    const stored=await diReadSavedProject(incoming.id);
+    if(localStorage.getItem('ThinkIt_v094_document')!==incomingRaw||stored?.raw!==incomingRaw){
+      diSaveConflict=true;
+      throw Error('Project switch save could not be verified. Export JSON before further edits.');
+    }
+  }else throw Error('Verified local saving is unavailable. Export JSON before switching.');
+  if(!diProjectSameValues(raw,doc)){
+    diSaveConflict=true;
+    throw Error('The outgoing project changed during the switch; export JSON to preserve the new edits.');
+  }
+  doc=incoming;diTabProjectId='';diLoadTabState();diClosedTabs.clear();diSaveTabState();
+  page=getPage();history={undo:[],redo:[]};selected.clear();edgeSelected=null;selectedAnnotation=null;preview=null;
+  bubbleActivePageId=null;freshInstall=false;lastSaved=incomingRaw;
+  setSaveState('saved','Saved on this device');render();if(page.mode!=='bubble')requestAnimationFrame(()=>fitView({initial:true}));
+  diHideStart();toast('Project opened and verified on this device. Previous work remains recoverable.');
+  return true;
+ }catch(err){
+  // A write may have committed even when its readback or response failed.
+  // Never let an old-project retry replace an ambiguous incoming commit.
+  if(switchCommitStarted){diSaveConflict=true;setSaveState('error','Project switch not verified · Export JSON');}
+  console.error('Project switch aborted',err);toast('Project switch blocked: '+String(err?.message||err||'Storage unavailable'));
+  if(!diSaveConflict&&doc){clearTimeout(saveTimer);saveTimer=setTimeout(persist,350);}return false;}
+ finally{diProjectSwitchBusy=false;}
+}
+function diRequestProjectSwitch(incoming,reason,{confirm=true}={}){
+ if(storageMode==='pending')return diStorageReady.then(()=>diRequestProjectSwitch(incoming,reason,{confirm}));
+ if(!incoming||typeof incoming.id!=='string'||!incoming.id.trim())return Promise.resolve(false);
+ if(JSON.stringify(incoming)===JSON.stringify(doc)){toast('That project is already open.');return Promise.resolve(true);}
+ if(!confirm||!diHasWorkToProtect(doc))return diCommitProjectSwitch(incoming,reason);
+ return new Promise(resolve=>{
+  const same=doc?.id===incoming.id;
+  let settled=false;const finish=ok=>{if(!settled){settled=true;resolve(ok);}};
+  modal('Protect current project before switching',`<p><strong>${esc(doc.name||'Current project')}</strong> will leave the active workspace. A verified device-local recovery copy is required before opening <strong>${esc(incoming.name||'New project')}</strong>.</p><p class="modal-subtext">${same?'Both files have the SAME project ID. They are treated as competing revisions, not automatically merged.':'This application retains one active project at a time.'} Recovery copies are stored in this browser, not synced to KeepIt or OneDrive. For an independent backup, export your current project as JSON before continuing.</p>`,[
+   {text:'Cancel',action:()=>finish(false)},
+   {text:same?'Open incoming revision':'Protect and continue',primary:true,action:()=>{
+     const dialog=activeModal;
+     // The user cannot dismiss the confirmation halfway through the archive
+     // and accidentally trigger a second competing project change.
+     for(const button of $('modalRoot').querySelectorAll('button'))button.disabled=true;
+     diCommitProjectSwitch(incoming,reason).then(ok=>{finish(ok);if(activeModal===dialog)dialog.close();});
+     return false;
+   }}
+  ],()=>finish(false));
+ });
+}
+// The Project Manager shows verified local project entries, not recovery
+// snapshots. The active project is never deleted automatically.
+async function diOpenProjectManager(){
+ let projects;
+ try{projects=await diListSavedProjects();}catch(err){toast('Local project catalogue cannot be read: '+err.message);return;}
+ const byId=new Map(projects.map(p=>[p.projectId,p]));
+ // Unsaved first-launch/legacy project remains visible as active, never
+ // misrepresented as a verified entry in the saved-project catalogue.
+ if(doc&&!byId.has(doc.id))projects.unshift({projectId:doc.id,name:doc.name,raw:JSON.stringify(doc),unsaved:true,savedAt:0});
+ const body=modal('Project Manager',`<p class="modal-subtext">Open a project saved on this device. Changes are not synchronized to KeepIt or OneDrive. For an independent backup, export JSON.</p><div id="diProjectList" class="di-project-list"></div>`,[
+  {text:'Close'},{text:'Open JSON file…',action:()=>diClick('fileInput')},
+  {text:'New project…',primary:true,action:()=>setTimeout(()=>openProjectChooser(),0)}
+ ]);
+ const list=body.querySelector('#diProjectList');
+ if(!projects.length)dom('p','modal-subtext','No locally saved projects found.',list);
+ for(const entry of projects){
+  const button=dom('button','di-recovery-row',undefined,list);
+  button.type='button';button.dataset.projectId=entry.projectId;
+  dom('strong','',entry.name||'Untitled project',button);
+  const date=Number(entry.savedAt)>0?new Date(entry.savedAt).toLocaleString():'Not yet independently saved';
+  dom('span','',`${entry.projectId===doc?.id?'Currently open · ':''}${entry.unsaved?'Active only · ':''}${date}`,button);
+  button.disabled=entry.projectId===doc?.id;
+  button.onclick=async()=>{
+    button.disabled=true;
+    try{
+      // Cold readback at selection time; never trust stale modal snapshots.
+      const stored=await diReadSavedProject(entry.projectId);
+      if(!stored)throw Error('Project no longer exists on this device');
+      const incoming=validatedSnapshot(stored.raw);
+      if(!incoming)throw Error('Stored project is invalid');
+      const dialog=activeModal;dialog?.close();
+      await diRequestProjectSwitch(incoming,'Open recent project',{confirm:true});
+    }catch(err){toast('Cannot open saved project: '+err.message);button.disabled=false;}
+  };
+ }
+}
+function diSaveAsLocalProject(){
+ const body=modal('Save As — New Local Project',`<p class="modal-subtext">Create a separate project with its own identity in this browser. The current project is preserved. This does not create a linked file on your Mac or in KeepIt.</p><div class="prop-field"><label for="diSaveAsName">New project name</label><input id="diSaveAsName" maxlength="180" value="${esc((doc?.name||'Untitled project')+' copy')}"></div><p class="modal-subtext">Embedded note and file references remain references to their original records; copying the project does not duplicate those KeepIt items.</p>`,[
+  {text:'Cancel'},
+  {text:'Create separate project',primary:true,action:b=>{
+    const name=b.querySelector('#diSaveAsName')?.value?.trim();
+    if(!name){toast('Enter a project name.');return false;}
+    const copy=JSON.parse(JSON.stringify(doc));copy.id=uid();copy.name=name;
+    copy.createdAt=new Date().toISOString();copy.updatedAt=copy.createdAt;
+    setTimeout(()=>diRequestProjectSwitch(copy,'Save As new local project',{confirm:true}),0);
+  }}
+ ]);
+ return body;
+}
 function newDocument(mode='flow',name='Untitled workspace',zoneTemplate='CUSTOM'){
- doc=blankDiagramIt(mode,name,zoneTemplate);diTabProjectId='';diLoadTabState();diClosedTabs.clear();diSaveTabState();page=getPage();history={undo:[],redo:[]};selected.clear();edgeSelected=null;selectedAnnotation=null;markDirty();render();if(mode!=='bubble')requestAnimationFrame(()=>fitView({initial:true}));
+ return diRequestProjectSwitch(blankDiagramIt(mode,name,zoneTemplate),'New project',{confirm:true});
 }
 function openProjectChooser(fromWelcome=false){
- let created=false;const body=modal('Create blank DiagramIt project',`<p class="modal-subtext">Choose the kind of diagram you want to create. Every new project starts blank—no sample shapes, arrows or site images.</p><div class="diagram-choices">${Object.entries(MODES).map(([k,v])=>`<button class="diagram-choice ${k==='flow'?'selected':''}" data-project-mode="${k}" style="border-width:${k==='flow'?'2px':'1px'}"><strong>${v.symbol} ${v.name}</strong><span>${v.desc}</span></button>`).join('')}</div><div class="prop-field"><label>Project name</label><input id="projectStartName" value="Untitled project"></div><div id="projectZoneRow" class="prop-field"><label>Architectural zone template</label><select id="projectZoneTemplate"><option value="RESIDENTIAL">Residential · KDG CAD Studio</option><option value="COMMERCIAL">Commercial · KDG CAD Studio</option><option value="INSTITUTIONAL">Institutional · KDG CAD Studio</option><option value="AIRPORT-PTB">Airport PTB · KDG CAD Studio</option><option value="INDUSTRIAL">Industrial · KDG CAD Studio</option><option value="MIXED-USE">Mixed-Use · KDG CAD Studio</option><option value="CUSTOM">Custom · basic blank zone library</option></select><p class="modal-subtext">Only category names and KDG colors are loaded; no rooms or bubbles are preloaded.</p></div>`,[{text:'Cancel'},{text:'Create blank project',primary:true,action:b=>{const mode=b.querySelector('.diagram-choice.selected')?.dataset.projectMode||'flow',name=b.querySelector('#projectStartName').value.trim()||'Untitled project';created=true;newDocument(mode,name,mode==='bubble'?b.querySelector('#projectZoneTemplate').value:'CUSTOM');diHideStart();}}],()=>{if(fromWelcome&&!created)diShowStart(diHasSavedProject);});
+ let created=false;const body=modal('Create blank DiagramIt project',`<p class="modal-subtext">Choose the kind of diagram you want to create. Every new project starts blank—no sample shapes, arrows or site images.</p><div class="diagram-choices">${Object.entries(MODES).map(([k,v])=>`<button class="diagram-choice ${k==='flow'?'selected':''}" data-project-mode="${k}" style="border-width:${k==='flow'?'2px':'1px'}"><strong>${v.symbol} ${v.name}</strong><span>${v.desc}</span></button>`).join('')}</div><div class="prop-field"><label>Project name</label><input id="projectStartName" value="Untitled project"></div><div id="projectZoneRow" class="prop-field"><label>Architectural zone template</label><select id="projectZoneTemplate"><option value="RESIDENTIAL">Residential · KDG CAD Studio</option><option value="COMMERCIAL">Commercial · KDG CAD Studio</option><option value="INSTITUTIONAL">Institutional · KDG CAD Studio</option><option value="AIRPORT-PTB">Airport PTB · KDG CAD Studio</option><option value="INDUSTRIAL">Industrial · KDG CAD Studio</option><option value="MIXED-USE">Mixed-Use · KDG CAD Studio</option><option value="CUSTOM">Custom · basic blank zone library</option></select><p class="modal-subtext">Only category names and KDG colors are loaded; no rooms or bubbles are preloaded.</p></div>`,[{text:'Cancel'},{text:'Create blank project',primary:true,action:b=>{const mode=b.querySelector('.diagram-choice.selected')?.dataset.projectMode||'flow',name=b.querySelector('#projectStartName').value.trim()||'Untitled project';created=true;const zone=mode==='bubble'?b.querySelector('#projectZoneTemplate').value:'CUSTOM';
+  // Close the chooser before showing the separate replacement confirmation.
+  setTimeout(()=>{newDocument(mode,name,zone).then(ok=>{if(!ok&&fromWelcome)diShowStart(diHasSavedProject);});},0);}}],()=>{if(fromWelcome&&!created)diShowStart(diHasSavedProject);});
  body.querySelectorAll('[data-project-mode]').forEach(b=>b.onclick=()=>{body.querySelectorAll('[data-project-mode]').forEach(x=>{x.classList.remove('selected');x.style.borderWidth='1px'});b.classList.add('selected');b.style.borderWidth='2px';body.querySelector('#projectZoneRow').style.display=b.dataset.projectMode==='bubble'?'block':'none';});body.querySelector('#projectZoneRow').style.display='none';
 }
 /* --------- Layout: always compute separately and preview before committing. --------- */
@@ -869,18 +1921,77 @@ function openMindLayoutDialog(initialScope='all'){if(page.mode!=='mind')return;
  msg.classList.toggle('layout-warning',hits.length>0);renderCanvas();}
  for(const inp of d.querySelectorAll('input,select'))inp.addEventListener('input',update);update();
 }
-function showLayoutPreview(){if(!page.nodes.length){toast('Add shapes before arranging.');return;}if(page.mode==='org'){openOrgLayoutDialog();return;}preview=proposeLayout();renderCanvas();modal('Preview automatic layout',`<p class="modal-subtext">A dashed teal outline shows each proposed position. <strong>Accept layout</strong> moves eligible nodes in one undoable operation. Pinned nodes remain fixed. This first version uses a lightweight algorithm; crowded flows and loops may need manual adjustment.</p><div class="notice">Scope: entire current page · Direction: ${layoutDirection==='down'?'Top to bottom':'Left to right'} · Affected nodes: ${Object.keys(preview).length}</div>`,[{text:'Cancel',action:()=>cancelPreview()},{text:'Accept layout',primary:true,action:()=>{const next=preview;preview=null;transact(()=>{for(const n of page.nodes){if(next?.[n.id]){n.x=Math.round(next[n.id].x);n.y=Math.round(next[n.id].y);}}});fitView();toast('Layout applied. Use ⌘Z to restore previous positions.');}}],()=>cancelPreview(false));}
+function showLayoutPreview(){if(page.mode==='flow'&&[...flowSnapshot().effectiveCollapsed].length){toast('Expand subprocesses before automatic layout. Hierarchy-aware rearrangement follows in H3.');return;}if(!page.nodes.length){toast('Add shapes before arranging.');return;}if(page.mode==='org'){openOrgLayoutDialog();return;}preview=proposeLayout();renderCanvas();modal('Preview automatic layout',`<p class="modal-subtext">A dashed teal outline shows each proposed position. <strong>Accept layout</strong> moves eligible nodes in one undoable operation. Pinned nodes remain fixed. This first version uses a lightweight algorithm; crowded flows and loops may need manual adjustment.</p><div class="notice">Scope: entire current page · Direction: ${layoutDirection==='down'?'Top to bottom':'Left to right'} · Affected nodes: ${Object.keys(preview).length}</div>`,[{text:'Cancel',action:()=>cancelPreview()},{text:'Accept layout',primary:true,action:()=>{const next=preview;preview=null;transact(()=>{for(const n of page.nodes){if(next?.[n.id]){n.x=Math.round(next[n.id].x);n.y=Math.round(next[n.id].y);}}});fitView();toast('Layout applied. Use ⌘Z to restore previous positions.');}}],()=>cancelPreview(false));}
 function cancelPreview(draw=true){preview=null;orgPreviewSizes={};if(draw)renderCanvas();}
 /* -------- File validation, export and import -------- */
-function validateDocument(d){if(!d||!((d.format==='DIAGRAMIT'&&(d.version===2||d.version===3))||(d.format==='SIMA-DIAGRAM'&&d.version===1))||!Array.isArray(d.pages)||!d.pages.length)throw Error('Unsupported diagram file. Open a DiagramIt v2/v3 or legacy SIMA Diagram v1 JSON project.');if(d.pages.length>100)throw Error('Too many pages.');const pageIds=new Set();let count=0;for(const p of d.pages){if(!p?.id||!MODES[p.mode]||!Array.isArray(p.nodes)||!Array.isArray(p.edges))throw Error('Invalid page structure.');if(pageIds.has(p.id))throw Error('Duplicate page ID.');pageIds.add(p.id);if(p.mode==='bmc'&&(typeof p.id!=='string'||p.id.length>256||(p.bmcData!==undefined&&!businessModel.validModel(p.bmcData))))throw Error('Invalid Business Model Canvas page.');if(p.mode==='bubble'&&p.bubbleData){const b=p.bubbleData;if(!Array.isArray(b.spaces)||b.spaces.length>750||!b.relations||typeof b.relations!=='object'||!Array.isArray(b.flows)||b.flows.length>5000)throw Error('Invalid Bubble Diagram page.');}const ids=new Set();for(const n of p.nodes){if(!n.id||ids.has(n.id)||!Number.isFinite(n.x)||!Number.isFinite(n.y)||!(n.w>5&&n.w<20000)||!(n.h>5&&n.h<20000)||typeof n.label!=='string')throw Error('Invalid or duplicate node in '+p.name+'.');ids.add(n.id);count++;}if(count>25000)throw Error('Project exceeds 25,000 node safety limit.');if(p.annotations!==undefined){if(!Array.isArray(p.annotations)||p.annotations.length>10000)throw Error('Invalid annotations');for(const a of p.annotations){if(!a.id||typeof a.label!=='string'||(a.html&&typeof a.html!=='string')||(a.html&&a.html.length>30000)||!(a.w>8&&a.w<20000)||!(a.h>8&&a.h<20000)||(a.parentId&&!ids.has(a.parentId)))throw Error('Invalid or orphaned annotation.');if(a.html){const tpl=document.createElement('template');tpl.innerHTML=a.html;a.html=sanitizeAnnotationMarkup(tpl.content);}else a.html=esc(a.label);}}const edgeIds=new Set();for(const e of p.edges){if(!e.id||edgeIds.has(e.id)||!(isFreeEdge(e)?['start','end'].every(k=>Number.isFinite(e[k]?.x)&&Number.isFinite(e[k]?.y)):ids.has(e.from)&&ids.has(e.to)))throw Error(`Connector ${e.id||'?'} in ${p.name} has a missing endpoint or duplicate ID.`);edgeIds.add(e.id);}for(const n of p.nodes){if(n.keepitFiles!==undefined){if(!Array.isArray(n.keepitFiles)||n.keepitFiles.length>100||n.keepitFiles.some(r=>!r||r.provider!=='keepit'||r.version!==1||!/^sha256:[a-f0-9]{64}$/.test(r.scope)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(r.itemId)||!Number.isSafeInteger(r.revision)||r.revision<0||typeof r.label!=='string'||!r.label||r.label.length>160||!['file','note'].includes(r.kind)))throw Error('Invalid KeepIt file references in the project.');} }for(const n of p.nodes){if(p.mode==='mind'&&n.noteHtml!==undefined){if(typeof n.noteHtml!=='string'||n.noteHtml.length>MIND_NOTE_MAX_HTML)throw Error('Invalid or oversized mind topic note.');n.noteHtml=sanitizeMindNote(n.noteHtml);}}const nm=new Map(p.nodes.map(n=>[n.id,n]));for(const n of p.nodes){if(n.parentId&&!ids.has(n.parentId))throw Error(`Missing parent ${n.parentId} for ${n.id}`);const seen=new Set([n.id]);let a=n;while(a?.parentId){if(seen.has(a.parentId))throw Error('Circular parent hierarchy involving '+n.id);seen.add(a.parentId);a=nm.get(a.parentId);}}}if(!pageIds.has(d.activePageId))d.activePageId=d.pages[0].id;if(d.format==='SIMA-DIAGRAM'){d.format='DIAGRAMIT';d.version=2;d.migratedFrom='SIMA-DIAGRAM v1';}return d;}
+function validateDocument(d){if(!d||!((d.format==='DIAGRAMIT'&&(d.version===2||d.version===3))||(d.format==='SIMA-DIAGRAM'&&d.version===1))||!Array.isArray(d.pages)||!d.pages.length)throw Error('Unsupported diagram file. Open a DiagramIt v2/v3 or legacy SIMA Diagram v1 JSON project.');if(d.pages.length>100)throw Error('Too many pages.');
+ // Outline structural preflight runs before existing note/annotation sanitizers.
+ // Invalid outline metadata must not partially rewrite imported rich content.
+ if(window.ThinkItOutline){for(const p of d.pages){if(p&&['mind','flow','org'].includes(p.mode))window.ThinkItOutline.auditPage(p);}}
+ else if(d.pages.some(p=>p?.outlineSettings!==undefined||p?.nodes?.some(n=>n.dependencies!==undefined||n.outlineParentId!==undefined)))throw Error('Outline/WBS module unavailable: cannot safely open this project.');
+ const pageIds=new Set();let count=0;for(const p of d.pages){if(!p?.id||!MODES[p.mode]||!Array.isArray(p.nodes)||!Array.isArray(p.edges))throw Error('Invalid page structure.');if(pageIds.has(p.id))throw Error('Duplicate page ID.');pageIds.add(p.id);if(p.mode==='bmc'&&(typeof p.id!=='string'||p.id.length>256||(p.bmcData!==undefined&&!businessModel.validModel(p.bmcData))))throw Error('Invalid Business Model Canvas page.');if(p.mode==='bubble'&&p.bubbleData){const b=p.bubbleData;if(!Array.isArray(b.spaces)||b.spaces.length>750||!b.relations||typeof b.relations!=='object'||!Array.isArray(b.flows)||b.flows.length>5000)throw Error('Invalid Bubble Diagram page.');}const ids=new Set();for(const n of p.nodes){if(!n.id||ids.has(n.id)||!Number.isFinite(n.x)||!Number.isFinite(n.y)||!(n.w>5&&n.w<20000)||!(n.h>5&&n.h<20000)||typeof n.label!=='string')throw Error('Invalid or duplicate node in '+p.name+'.');if(p.mode==='flow'&&n.flowActivity!==undefined){
+ const v=n.flowActivity,fields=['responsible','participants','inputs','outputs','approvals','remarks'];
+ if(!v||typeof v!=='object'||Array.isArray(v)||
+    Object.keys(v).some(k=>!fields.includes(k)||typeof v[k]!=='string'||v[k].length>6000))
+  throw Error('Invalid Flowchart activity details in '+p.name+'.');
+}
+ids.add(n.id);count++;}if(count>25000)throw Error('Project exceeds 25,000 node safety limit.');if(p.annotations!==undefined){if(!Array.isArray(p.annotations)||p.annotations.length>10000)throw Error('Invalid annotations');for(const a of p.annotations){if(!a.id||typeof a.label!=='string'||(a.html&&typeof a.html!=='string')||(a.html&&a.html.length>30000)||!(a.w>8&&a.w<20000)||!(a.h>8&&a.h<20000)||(a.parentId&&!ids.has(a.parentId)))throw Error('Invalid or orphaned annotation.');if(a.html){const tpl=document.createElement('template');tpl.innerHTML=a.html;a.html=sanitizeAnnotationMarkup(tpl.content);}else a.html=esc(a.label);}}const edgeIds=new Set();for(const e of p.edges){if(!e.id||edgeIds.has(e.id)||!(isFreeEdge(e)?['start','end'].every(k=>Number.isFinite(e[k]?.x)&&Number.isFinite(e[k]?.y)):ids.has(e.from)&&ids.has(e.to)))throw Error(`Connector ${e.id||'?'} in ${p.name} has a missing endpoint or duplicate ID.`);edgeIds.add(e.id);}for(const n of p.nodes){if(n.keepitFiles!==undefined){if(!Array.isArray(n.keepitFiles)||n.keepitFiles.length>100||n.keepitFiles.some(r=>!r||r.provider!=='keepit'||r.version!==1||!/^sha256:[a-f0-9]{64}$/.test(r.scope)||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(r.itemId)||!Number.isSafeInteger(r.revision)||r.revision<0||typeof r.label!=='string'||!r.label||r.label.length>160||!['file','note'].includes(r.kind)))throw Error('Invalid KeepIt file references in the project.');} }for(const n of p.nodes){if(p.mode==='mind'&&n.noteHtml!==undefined){if(typeof n.noteHtml!=='string'||n.noteHtml.length>MIND_NOTE_MAX_HTML)throw Error('Invalid or oversized mind topic note.');n.noteHtml=sanitizeMindNote(n.noteHtml);}}const nm=new Map(p.nodes.map(n=>[n.id,n]));const checked=new Set();for(const n of p.nodes){if(n.parentId&&!ids.has(n.parentId))throw Error(`Missing parent ${n.parentId} for ${n.id}`);}for(const n of p.nodes){if(checked.has(n.id))continue;if(!n.parentId||checked.has(n.parentId)){checked.add(n.id);continue;}const chain=[];const active=new Set();let a=n;while(a&&!checked.has(a.id)){if(active.has(a.id))throw Error('Circular parent hierarchy involving '+n.id);active.add(a.id);chain.push(a.id);a=a.parentId?nm.get(a.parentId):null;}for(const id of chain)checked.add(id);}}// T22-A: reject invalid outline data before accepting imported documents.
+  // The dedicated browser module is loaded before this script in index.html.
+  if(window.ThinkItOutline)window.ThinkItOutline.migrateDocument(d);
+
+  if(!pageIds.has(d.activePageId))d.activePageId=d.pages[0].id;if(d.format==='SIMA-DIAGRAM'){d.format='DIAGRAMIT';d.version=2;d.migratedFrom='SIMA-DIAGRAM v1';}return d;}
 function downloadBlob(blob,filename){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),12000);}
 function baseName(){return(doc.name||'DiagramIt').replace(/[^\w-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,90)||'DiagramIt';}
-function exportJson(){const out={...doc,version:3,updatedAt:new Date().toISOString()};downloadBlob(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}),`${baseName()}.diagramit.json`);toast('Native DiagramIt JSON backup exported.');}
-function staticSVG(){const ns=document.createElementNS.bind(document,SVG),b=bounds(),pad=58;const output=ns('svg');output.setAttribute('xmlns',SVG);output.setAttribute('width',String(Math.ceil(b.w+pad*2)));output.setAttribute('height',String(Math.ceil(b.h+pad*2)));output.setAttribute('viewBox',`${b.x-pad} ${b.y-pad} ${Math.max(20,b.w+pad*2)} ${Math.max(20,b.h+pad*2)}`);const defs=ns('defs'),marker=ns('marker'),mPath=ns('path');marker.setAttribute('id','arrowMarker');marker.setAttribute('viewBox','0 0 10 10');marker.setAttribute('refX','9');marker.setAttribute('refY','5');marker.setAttribute('markerWidth','7');marker.setAttribute('markerHeight','7');marker.setAttribute('orient','auto-start-reverse');mPath.setAttribute('d','M0 0 L10 5 L0 10 Z');mPath.setAttribute('fill','#38586D');marker.append(mPath);defs.append(marker);for(const kind of ['filled','open','diamond']){const m=ns('marker'),path=ns('path');m.setAttribute('id','diagramitArrow_'+kind);m.setAttribute('viewBox','0 0 12 12');m.setAttribute('refX',kind==='diamond'?'10':'11');m.setAttribute('refY','6');m.setAttribute('markerWidth','8');m.setAttribute('markerHeight','8');m.setAttribute('orient','auto-start-reverse');path.setAttribute('d',kind==='diamond'?'M1 6 L6 1 L11 6 L6 11 Z':'M1 1 L11 6 L1 11');path.setAttribute('fill',kind==='open'?'none':'#38586D');path.setAttribute('stroke','#38586D');path.setAttribute('stroke-width',kind==='open'?'1.7':'1');m.append(path);defs.append(m);}output.append(defs);const background=ns('rect');background.setAttribute('x',b.x-pad);background.setAttribute('y',b.y-pad);background.setAttribute('width',Math.max(20,b.w+pad*2));background.setAttribute('height',Math.max(20,b.h+pad*2));background.setAttribute('fill','#FFFFFF');output.append(background);const outEdges=ns('g'),outNodes=ns('g');output.append(outEdges,outNodes);visibleIdSet=new Set(visibleNodes().map(n=>n.id));for(const e of effectiveEdges())drawEdge(outEdges,e,true);for(const n of visibleNodes())drawNode(outNodes,n,true);for(const a of allAnnotations())drawAnnotation(outNodes,a,true);return new XMLSerializer().serializeToString(output);}
+// T24: a portable export must be acceptable to our own importer. Preflight a
+// detached copy, never mutate an active document or imply a cloud file binding.
+const DI_PORTABLE_MAX_BYTES=24*1024*1024;
+function diPortableSnapshot(){
+ if(!doc)throw Error('No open project to export.');
+ const copy=JSON.parse(JSON.stringify({...doc,version:3,updatedAt:new Date().toISOString()}));
+ const validated=validateDocument(copy);
+ const blob=new Blob([JSON.stringify(validated)],{type:'application/json'});
+ if(blob.size>DI_PORTABLE_MAX_BYTES)throw Error('Portable project exceeds the 24 MiB import limit. Your device-local work remains unchanged.');
+ return {blob,filename:`${baseName()}.diagramit.json`};
+}
+function exportJson(){
+ try{const output=diPortableSnapshot();downloadBlob(output.blob,output.filename);toast('Portable DiagramIt JSON copy downloaded.');return true;}
+ catch(err){console.error('Portable project export rejected',err);toast('Project export blocked: '+err.message);return false;}
+}
+function staticSVG(){flowRenderPlan=page.mode==='flow'?flowGraphPlan():null;const ns=document.createElementNS.bind(document,SVG),b=bounds(),pad=58;const output=ns('svg');output.setAttribute('xmlns',SVG);output.setAttribute('width',String(Math.ceil(b.w+pad*2)));output.setAttribute('height',String(Math.ceil(b.h+pad*2)));output.setAttribute('viewBox',`${b.x-pad} ${b.y-pad} ${Math.max(20,b.w+pad*2)} ${Math.max(20,b.h+pad*2)}`);const defs=ns('defs'),marker=ns('marker'),mPath=ns('path');marker.setAttribute('id','arrowMarker');marker.setAttribute('viewBox','0 0 10 10');marker.setAttribute('refX','9');marker.setAttribute('refY','5');marker.setAttribute('markerWidth','7');marker.setAttribute('markerHeight','7');marker.setAttribute('orient','auto-start-reverse');mPath.setAttribute('d','M0 0 L10 5 L0 10 Z');mPath.setAttribute('fill','#38586D');marker.append(mPath);defs.append(marker);for(const kind of ['filled','open','diamond']){const m=ns('marker'),path=ns('path');m.setAttribute('id','diagramitArrow_'+kind);m.setAttribute('viewBox','0 0 12 12');m.setAttribute('refX',kind==='diamond'?'10':'11');m.setAttribute('refY','6');m.setAttribute('markerWidth','8');m.setAttribute('markerHeight','8');m.setAttribute('orient','auto-start-reverse');path.setAttribute('d',kind==='diamond'?'M1 6 L6 1 L11 6 L6 11 Z':'M1 1 L11 6 L1 11');path.setAttribute('fill',kind==='open'?'none':'#38586D');path.setAttribute('stroke','#38586D');path.setAttribute('stroke-width',kind==='open'?'1.7':'1');m.append(path);defs.append(m);}output.append(defs);const background=ns('rect');background.setAttribute('x',b.x-pad);background.setAttribute('y',b.y-pad);background.setAttribute('width',Math.max(20,b.w+pad*2));background.setAttribute('height',Math.max(20,b.h+pad*2));background.setAttribute('fill','#FFFFFF');output.append(background);const outEdges=ns('g'),outNodes=ns('g');output.append(outEdges,outNodes);visibleIdSet=new Set(visibleNodes().map(n=>n.id));for(const e of effectiveEdges())drawEdge(outEdges,e,true);for(const n of visibleNodes())drawNode(outNodes,n,true);for(const a of allAnnotations())if(page.mode!=='flow'||(flowFocusId()?!!a.parentId&&visibleIdSet.has(a.parentId):!a.parentId||visibleIdSet.has(a.parentId)))drawAnnotation(outNodes,a,true);return new XMLSerializer().serializeToString(output);}
 function exportSvg(){if(page.mode==='bmc'){toast('Use Print / PDF to export this canvas.');return;}if(page.mode==='bubble'){bubbleExport('svg');return;}const data=staticSVG();downloadBlob(new Blob([data],{type:'image/svg+xml;charset=utf-8'}),`${baseName()}_${page.name.replace(/\W+/g,'_')}.svg`);toast('Current page exported as vector SVG.');}
 async function exportPNG(){if(page.mode==='bmc'){toast('Use Print / PDF to export this canvas.');return;}if(page.mode==='bubble'){bubbleExport('png');return;}const data=staticSVG(),blob=new Blob([data],{type:'image/svg+xml;charset=utf-8'}),url=URL.createObjectURL(blob);try{const image=new Image();await new Promise((ok,fail)=>{image.onload=ok;image.onerror=fail;image.src=url;});const scale=2,w=Math.min(Math.ceil(image.width*scale),12000),h=Math.min(Math.ceil(image.height*scale),12000),c=document.createElement('canvas');c.width=w;c.height=h;const context=c.getContext('2d');context.drawImage(image,0,0,w,h);const png=await new Promise(resolve=>c.toBlob(resolve,'image/png'));if(!png)throw Error('Image encoding failed');downloadBlob(png,`${baseName()}_${page.name.replace(/\W+/g,'_')}.png`);toast('Current page exported as 2× PNG.');}catch(e){console.error(e);toast('PNG export failed. Use SVG export instead.');}finally{URL.revokeObjectURL(url);}}
 function printPage(){if(page.mode==='bmc'){businessModel.print();return;}if(page.mode==='bubble'){bubbleExport('print');return;}const svg=staticSVG();const win=window.open('','_blank');if(!win){toast('Allow pop-ups to print or save as PDF.');return;}win.document.open();win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(page.name)} | DiagramIt</title><style>html,body{margin:0;padding:0;background:#fff}svg{width:100%;height:auto;max-height:96vh}body{display:flex;align-items:center;justify-content:center}@page{size:landscape;margin:9mm}@media print{svg{max-height:none;page-break-inside:avoid}}</style></head><body>${svg}</body></html>`);win.document.close();setTimeout(()=>{win.focus();win.print();},200);}
-async function importFile(f){if(!f)return;try{if(f.size>24*1024*1024)throw Error('The selected project is over the 24 MB import limit.');const raw=await f.text(),incoming=validateDocument(JSON.parse(raw));doc=incoming;doc.version=3;diTabProjectId='';diLoadTabState();page=getPage();selected.clear();edgeSelected=null;preview=null;history={undo:[],redo:[]};markDirty();bubbleActivePageId=null;render();if(page.mode!=='bubble')fitView({initial:true});diHideStart();toast(`Opened project: ${doc.name}. ${storageMode==='none'?'Local storage unavailable; export JSON backup.':'Local save pending; export JSON for a portable backup.'}`);}catch(err){console.error(err);toast('Import rejected: '+err.message);}}
+// An externally supplied project may share an ID with a different saved
+// local revision. Never overwrite that record without a deliberate choice.
+async function diResolveImportedProjectIdentity(incoming){
+ const stored=typeof diReadSavedProject==='function'?await diReadSavedProject(incoming.id):null;
+ if(!stored||stored.raw===JSON.stringify(incoming)||incoming.id===doc?.id)return incoming;
+ return new Promise(resolve=>{
+  let settled=false;const finish=value=>{if(!settled){settled=true;resolve(value);}};
+  modal('Project identity already exists',`<p>Another local project already uses this project's internal ID: <strong>${esc(incoming.name||'Untitled project')}</strong>.</p><p class="modal-subtext">The incoming file and the saved project are different revisions. You may reopen the saved version or import this file as a separate project. A separate project keeps existing topic and note references; it does NOT duplicate linked KeepIt files.</p>`,[
+   {text:'Cancel import',action:()=>finish(null)},
+   {text:'Open saved version',action:()=>finish(validatedSnapshot(stored.raw))},
+   {text:'Import as new project',primary:true,action:()=>{
+     const copy=JSON.parse(JSON.stringify(incoming));copy.id=uid();copy.createdAt=new Date().toISOString();
+     finish(copy);
+   }}
+  ],()=>finish(null));
+ });
+}
+async function importFile(f,{confirm=false}={}){
+ if(!f)return false;
+ try{
+  await diStorageReady;
+  if(f.size>DI_PORTABLE_MAX_BYTES)throw Error('The selected project is over the 24 MB import limit.');
+  const raw=await f.text(),incoming=validateDocument(JSON.parse(raw));
+  // Some legacy SIMA files had no project-level ID. Assign one once, while
+  // preserving all existing page, topic, dependency and KeepIt link IDs.
+  if(!incoming.id)incoming.id=uid();
+  const safe=await diResolveImportedProjectIdentity(incoming);
+  if(!safe)return false;
+  return await diRequestProjectSwitch(safe,'Open project file',{confirm});
+ }catch(err){console.error(err);toast('Import rejected: '+err.message);return false;}
+}
 /* -------- Dialogs and palette -------- */
 /* Mind Map long-form topic notes; this data is saved on nodes, never as map shapes.
    No cloud link is fabricated; exporting HTML/TXT is supported for external reuse. */
@@ -1579,9 +2690,13 @@ function selectDirectionalNeighbor(direction){
  }).filter(Boolean).sort((a,b)=>a.score-b.score);
  if(choices.length){selectNode(choices[0].node.id);ensureVisibleNode(choices[0].node);}else toast('No shape in that direction.');
 }
-function nudge(dx,dy){if(!selected.size)return;transact(()=>{const ids=effectiveDragIDs();for(const id of ids){const n=byId(id);if(n){n.x+=dx;n.y+=dy;}}});}
-function effectiveDragIDs(){const out=new Set(selected);for(const id of selected){const n=byId(id);if(!n)continue;if(n.groupId)for(const nn of page.nodes)if(nn.groupId===n.groupId)out.add(nn.id);if(page.mode!=='flow')for(const d of descendants(id))out.add(d);}return out;}
-function dropShape(shape,pos){if(!SHAPES[page.mode].some(s=>s[0]===shape))return;const size=DEFAULT_SIZE[shape]||[160,70];transact(()=>addNode(shape,Math.round((pos.x-size[0]/2)/12)*12,Math.round((pos.y-size[1]/2)/12)*12));}
+function nudge(dx,dy){if(!selected.size)return;transact(()=>{const ids=effectiveDragIDs();for(const id of ids){const n=byId(id);if(n){n.x+=dx;n.y+=dy;if(['mind','flow'].includes(page.mode))n.layoutManaged=false;}}h3Repair();});}
+function effectiveDragIDs(){const out=new Set(selected);for(const id of selected){const n=byId(id);if(!n)continue;if(n.groupId)for(const nn of page.nodes)if(nn.groupId===n.groupId)out.add(nn.id);if(page.mode==='flow'&&n.collapsed)for(const d of flowOutlineDescendants(id))out.add(d);
+ if(page.mode!=='flow')for(const d of descendants(id))out.add(d);}return out;}
+function dropShape(shape,pos){if(!SHAPES[page.mode].some(s=>s[0]===shape))return;const source=['flow','mind'].includes(page.mode)&&selected.size===1?byId([...selected][0]):null,size=initialShapeSize(shape,source),preferred={x:Math.round((pos.x-size.w/2)/12)*12,y:Math.round((pos.y-size.h/2)/12)*12};transact(()=>{const n=addNode(shape,preferred.x,preferred.y,undefined,{w:size.w,h:size.h});arrangeInserted(n,preferred,page.mode==='mind'&&source&&preferred.x<source.x?'left':page.mode==='mind'?'right':'down');
+if(page.mode==='flow'&&flowFocusId())n.outlineParentId=flowFocusId();
+// Palette drop coordinates are an intentional manual choice, not an auto child.
+if(['mind','flow'].includes(page.mode))n.layoutManaged=false;});}
 function nextParallelOffset(from,to){const count=page.edges.filter(e=>e.from===from&&e.to===to).length;return count===0?0:(count%2===1?1:-1)*Math.ceil(count/2)*32;}
 function makeConnection(sourceId,targetId,kind,fromPort='auto',toPort='auto'){if(sourceId===targetId){toast('Choose two different nodes.');return;}if(!byId(sourceId)||!byId(targetId))return;
 let created;transact(()=>{const secondary=page.mode!=='flow';created=edge(sourceId,targetId,secondary?'secondary':'flow',{fromPort,toPort,route:'orthogonal',parallelOffset:nextParallelOffset(sourceId,targetId)});page.edges.push(created);edgeSelected=created.id;selected.clear();});
@@ -1596,7 +2711,7 @@ focusCanvas();const collapseTarget=e.target.closest('[data-collapse-node]');if(c
 const w=worldPoint(e),s=screenPoint(e),corner=e.target.closest('[data-resize]')?.dataset.resize,edgeHandle=e.target.closest('[data-edge-handle]')?.dataset.edgeHandle;
 if(e.button===1||tool==='hand'||spacePressed){gesture={type:'pan',start:s,origin:{x:view.x,y:view.y}};canvas.classList.add('is-panning');canvas.setPointerCapture(e.pointerId);return;}
 if(annotationId&&tool==='select'){const a=annoById(annotationId);if(a){selectAnnotation(annotationId);const origin=annoPosition(a);gesture={type:annoResize?'anno-resize':'anno-drag',id:annotationId,start:w,original:{x:a.x,y:a.y,dx:a.dx,dy:a.dy,w:a.w,h:a.h},before:JSON.stringify(doc),moved:false};canvas.setPointerCapture(e.pointerId);return;}}
-if(edgeHandle&&edgeId){const ed=findEdge(edgeId);if(ed){selectEdge(edgeId);if(edgeHandle==='bend'){const source=byId(ed.from),target=byId(ed.to),geom=getEdgeGeom(ed,source,target);gesture={type:'edge-bend',edgeId,start:w,axis:geom.trunk?.axis,base:geom.trunk?.base,before:JSON.stringify(doc),moved:false};}else if(isFreeEdge(ed)){gesture={type:'edge-point',edgeId,which:edgeHandle,before:JSON.stringify(doc),moved:false};}else{gesture={type:'edge-reanchor',edgeId,which:edgeHandle,start:w,current:w,before:JSON.stringify(doc),moved:false};}canvas.setPointerCapture(e.pointerId);return;}}
+if(edgeHandle&&edgeId){if(flowProjectedEdge(edgeId)){toast('Expand the subprocess to move the actual connector endpoints.');return;}const ed=findEdge(edgeId);if(ed){selectEdge(edgeId);if(edgeHandle==='bend'){const source=byId(ed.from),target=byId(ed.to),geom=getEdgeGeom(ed,source,target);gesture={type:'edge-bend',edgeId,start:w,axis:geom.trunk?.axis,base:geom.trunk?.base,before:JSON.stringify(doc),moved:false};}else if(isFreeEdge(ed)){gesture={type:'edge-point',edgeId,which:edgeHandle,before:JSON.stringify(doc),moved:false};}else{gesture={type:'edge-reanchor',edgeId,which:edgeHandle,start:w,current:w,before:JSON.stringify(doc),moved:false};}canvas.setPointerCapture(e.pointerId);return;}}
 if(corner&&id){const n=byId(id);gesture={type:'resize',nodeId:id,corner,start:w,original:{x:n.x,y:n.y,w:n.w,h:n.h},before:JSON.stringify(doc),moved:false};canvas.setPointerCapture(e.pointerId);return;}
 if(action==='quick-child'&&id){e.preventDefault();addChild(id);return;}
 if(reparentPick){if(id){const source=reparentPick;reparentPick=null;changeParent(source,id);}else{reparentPick=null;toast('Choose a target parent node.');}return;}
@@ -1630,12 +2745,18 @@ function onUp(e){if(!gesture)return;const g=gesture;gesture=null;canvas.classLis
 if(g.type==='anno-drag'||g.type==='anno-resize'){if(g.moved)recordHistory(g.before);render();return;}
 if(g.type==='edge-reanchor'){if(g.moved){const ed=ensureWritableEdge(g.edgeId),p=worldPoint(e),hit=pointHitsNode(p);if(ed&&hit){const result=closestPort(hit,p);if(g.which==='from'){if(hit.id===ed.to){toast('Start and end must remain on different shapes.');}else{ed.from=hit.id;ed.fromPort=result.port;ed.fromFraction=result.fraction;recordHistory(g.before);}}else{if(hit.id===ed.from){toast('Start and end must remain on different shapes.');}else{ed.to=hit.id;ed.toPort=result.port;ed.toFraction=result.fraction;recordHistory(g.before);}}}else toast('Release over a shape edge to reattach.');}render();return;}
 if(g.type==='edge-bend'){if(g.moved)recordHistory(g.before);render();return;}
-if(g.type==='edge-point'||g.type==='free-arrow-move'||g.type==='resize'){if(g.moved)recordHistory(g.before);render();return;}
+if(g.type==='edge-point'||g.type==='free-arrow-move'||g.type==='resize'){if(g.moved){if(g.type==='resize'&&['mind','flow'].includes(page.mode)){
+  const resized=byId(g.nodeId);if(resized){h3BranchReflow(resized.id);h3Repair(resized.id);}
+ }recordHistory(g.before);}render();return;}
 if(g.type==='arrow-draw'){const a=g.startWorld,b=g.current||a;const endpoint=Math.hypot(b.x-a.x,b.y-a.y)<12?{x:a.x+190,y:a.y}:b;let created;transact(()=>{created=freeArrow(a,endpoint);page.edges.push(created);selected.clear();edgeSelected=created.id;});toast('Independent arrow added. Drag its endpoint handles to reposition it.');return;}
-if(g.type==='drag'){if(!g.moved&&!g.shiftAtStart&&selected.size>1){selectNode(g.source);return;}if(g.moved){if(e.shiftKey&&page.mode!=='flow'&&selected.size===1){const n=byId(g.source),on=pointHitsNode(worldPoint(e),g.source);if(on&&on.id!==n.id&&!descendants(n.id).has(on.id)){n.parentId=on.id;toast(`Reparented ${n.label} under ${on.label}.`);}else if(on)toast('Cannot create a hierarchy cycle.');}recordHistory(g.before);}render();return;}
+if(g.type==='drag'){if(!g.moved&&!g.shiftAtStart&&selected.size>1){selectNode(g.source);return;}if(g.moved){if(e.shiftKey&&page.mode!=='flow'&&selected.size===1){const n=byId(g.source),on=pointHitsNode(worldPoint(e),g.source);if(on&&on.id!==n.id&&!descendants(n.id).has(on.id)){n.parentId=on.id;toast(`Reparented ${n.label} under ${on.label}.`);}else if(on)toast('Cannot create a hierarchy cycle.');}if(['mind','flow'].includes(page.mode)){
+  // Explicit dragging fixes those objects in place, including group members.
+  for(const id of Object.keys(g.original||{})){const n=byId(id);if(n)n.layoutManaged=false;}
+  h3Repair(g.source);
+ }recordHistory(g.before);}render();return;}
 if(g.type==='marquee'){const p1=g.startWorld,p2=g.current,rect={x:Math.min(p1.x,p2.x),y:Math.min(p1.y,p2.y),w:Math.abs(p1.x-p2.x),h:Math.abs(p1.y-p2.y)};if(rect.w>=3&&rect.h>=3){if(!g.extend)selected.clear();for(const n of visibleNodes())if(n.x<rect.x+rect.w&&n.x+n.w>rect.x&&n.y<rect.y+rect.h&&n.y+n.h>rect.y)selected.add(n.id);}render();return;}
 if(g.type==='connect'){const target=pointHitsNode(worldPoint(e),g.source);if(target){const point=worldPoint(e),ports=Object.entries(pointsFor(target));ports.sort((aa,bb)=>Math.hypot(aa[1].x-point.x,aa[1].y-point.y)-Math.hypot(bb[1].x-point.x,bb[1].y-point.y));const best=ports[0],nearestPort=Math.hypot(best[1].x-point.x,best[1].y-point.y)<22?best[0]:'auto';connectSource=null;makeConnection(g.source,target.id,null,g.port==='auto'?'auto':g.port,nearestPort);render();return;}
-const p=worldPoint(e);if(page.mode==='flow'&&tool!=='connect'&&Math.hypot(p.x-g.anchor.x,p.y-g.anchor.y)>28){let newId;transact(()=>{const n=addNode('process',p.x-84,p.y-35,'New step');newId=n.id;page.edges.push(edge(g.source,n.id,'flow',{fromPort:g.port}));});if(newId)startEdit(newId);return;}
+const p=worldPoint(e);if(page.mode==='flow'&&tool!=='connect'&&Math.hypot(p.x-g.anchor.x,p.y-g.anchor.y)>28){let newId;transact(()=>{const source=byId(g.source),size=initialShapeSize('process',source),preferred={x:p.x-size.w/2,y:p.y-size.h/2};const n=addNode('process',preferred.x,preferred.y,'New step',{w:size.w,h:size.h});arrangeInserted(n,preferred,'down');if(flowFocusId())n.outlineParentId=flowFocusId();newId=n.id;page.edges.push(edge(g.source,n.id,'flow',{fromPort:g.port}));h3BranchReflow(g.source);h3Repair(n.id);});if(newId)startEdit(newId);return;}
 connectSource={id:g.source,port:g.port};if(tool!=='connect')tool='connect';render();toast('Source selected. Click the destination node. Press Esc to cancel.');return;}
 renderCanvas();}
 
@@ -1646,7 +2767,13 @@ function onWheel(e){e.preventDefault();const p=screenPoint(e);const z=Math.exp(-
 /* ----- Property editing; apply only on change, not every keystroke, to avoid focus loss. ----- */
 function ensureWritableEdge(id){let ed=page.edges.find(e=>e.id===id);if(ed)return ed;if(id?.startsWith('tree_')){const generated=effectiveEdges().find(e=>e.id===id);if(generated){ed=clone(generated);page.edges.push(ed);return ed;}}return null;}
 function onInspectorChange(e){const tgt=e.target,key=tgt.dataset.prop;if(!key)return;const v=tgt.type==='checkbox'?tgt.checked:tgt.value;
-if(key.startsWith('anno_')&&selectedAnnotation){const a=annoById(selectedAnnotation),k=key.slice(5);if(!a)return;let nv=v;if(['w','h','x','y','fontSize','fontWeight','strokeWidth','opacity'].includes(k)){nv=Number(v);if(!Number.isFinite(nv))return;}if(['w','h'].includes(k))nv=Math.max(28,nv);if(k==='fontSize')nv=clamp(nv,8,70);if(k==='strokeWidth')nv=clamp(nv,0,12);if(k==='opacity')nv=clamp(nv,0,1);transact(()=>{if(a.parentId&&k==='x')a.dx=nv;else if(a.parentId&&k==='y')a.dy=nv;else if(k==='highlight'&&v==='#fff0a9')a.highlight=v;else{a[k]=nv;if(k==='textColor')a.autoTextColor=false;}});return;}
+if(page.mode==='flow'&&key.startsWith('flowActivity_')&&selected.size===1){
+  const n=byId([...selected][0]),fieldName=key.slice('flowActivity_'.length);
+  if(!n||!['responsible','participants','inputs','outputs','approvals','remarks'].includes(fieldName))return;
+  const text=String(v).slice(0,6000);
+  transact(()=>{n.flowActivity={...(n.flowActivity||{}),[fieldName]:text};});return;
+ }
+ if(key.startsWith('anno_')&&selectedAnnotation){const a=annoById(selectedAnnotation),k=key.slice(5);if(!a)return;let nv=v;if(['w','h','x','y','fontSize','fontWeight','strokeWidth','opacity'].includes(k)){nv=Number(v);if(!Number.isFinite(nv))return;}if(['w','h'].includes(k))nv=Math.max(28,nv);if(k==='fontSize')nv=clamp(nv,8,70);if(k==='strokeWidth')nv=clamp(nv,0,12);if(k==='opacity')nv=clamp(nv,0,1);transact(()=>{if(a.parentId&&k==='x')a.dx=nv;else if(a.parentId&&k==='y')a.dy=nv;else if(k==='highlight'&&v==='#fff0a9')a.highlight=v;else{a[k]=nv;if(k==='textColor')a.autoTextColor=false;}});return;}
 if(key==='branchStyle'&&selected.size===1){const n=byId([...selected][0]);transact(()=>{n.layoutStyle=v;});return;}
 if(key.startsWith('org_')&&page.mode==='org'){const k=key.slice(4);let nv=['siblingGap','levelGap','branchGap','cardWidth','cardHeight'].includes(k)?Number(v):v;if(typeof nv==='number'){if(!Number.isFinite(nv))return;nv=clamp(nv,k==='cardWidth'?120:k==='cardHeight'?50:16,k==='cardWidth'?520:k==='cardHeight'?250:420);}transact(()=>{page.orgLayout={...orgSettings(),[k]:nv};});return;}
 if(key==='grid'){showGrid=!!v;pref('grid',showGrid);render();return;}if(key==='layoutDirection'){layoutDirection=v;pref('layout',v);render();return;}
@@ -1654,7 +2781,10 @@ if(key==='pageMode'){if(page.nodes.length||page.edges.length){toast('For a new d
 if(key==='pageName'){transact(()=>page.name=v.trim()||page.name);return;}
 const styleKeys=['stroke','strokeWidth','strokeStyle','fontSize','fontFamily','fontWeight','italic','textColor','textAlign'];
 if(selected.size&&styleKeys.includes(key)){if(v===''&&key!=='stroke')return;const converted=['strokeWidth','fontSize','fontWeight'].includes(key)?Number(v):v;if(['strokeWidth','fontSize'].includes(key)&&(!Number.isFinite(converted)||converted<1))return;if(key==='fontWeight'&&!Number.isFinite(converted))return;transact(()=>{for(const id of selected){const n=byId(id);if(n)n[key]=converted;}});return;}
-if(selected.size===1){const n=byId([...selected][0]);if(!n)return;if(key==='parentId'){changeParent(n.id,v);return;}if(['x','y','w','h'].includes(key)){const val=Number(v);if(!Number.isFinite(val))return;if(['w','h'].includes(key)&&val<35){toast('Minimum size is 35 pixels.');return;}transact(()=>n[key]=val);return;}if(['label','shape','pinned'].includes(key)){transact(()=>n[key]=key==='label'?(v.trim()||'Untitled'):v);return;}if(key==='role'||key==='department'){transact(()=>{n.data=n.data||{};n.data[key]=v;});return;}}
+if(selected.size===1){const n=byId([...selected][0]);if(!n)return;if(key==='parentId'){changeParent(n.id,v);return;}if(['x','y','w','h'].includes(key)){const val=Number(v);if(!Number.isFinite(val))return;if(['w','h'].includes(key)&&val<35){toast('Minimum size is 35 pixels.');return;}transact(()=>{n[key]=val;if(['mind','flow'].includes(page.mode)){
+  if(key==='x'||key==='y'){n.layoutManaged=false;h3Repair(n.id);}
+  else{h3BranchReflow(n.id);h3Repair(n.id);}
+ }});return;}if(['label','shape','pinned'].includes(key)){transact(()=>n[key]=key==='label'?(v.trim()||'Untitled'):v);return;}if(key==='role'||key==='department'){transact(()=>{n.data=n.data||{};n.data[key]=v;});return;}}
 if(edgeSelected){const ed=ensureWritableEdge(edgeSelected);if(!ed)return;transact(()=>{if(key==='edgeLabel')ed.label=v;else if(['kind','route','arrowStart','arrowEnd','fromPort','toPort'].includes(key))ed[key]=v;else if(['fromFraction','toFraction'].includes(key)){const n=Number(v);if(Number.isFinite(n))ed[key]=clamp(n/100,.12,.88);}else if(key==='bendOffset'){ed.bendOffset=v===''?null:Number(v);}else if(isFreeEdge(ed)&&['startX','startY','endX','endY'].includes(key)){const val=Number(v);if(Number.isFinite(val))ed[key.startsWith('start')?'start':'end'][key.endsWith('X')?'x':'y']=val;}});}}
 
 function deletePage(id){
@@ -1667,6 +2797,68 @@ function deletePage(id){
   transact(()=>{doc.pages=doc.pages.filter(p=>p.id!==id);if(doc.activePageId===id)doc.activePageId=doc.pages[0].id;page=getPage();selected.clear();edgeSelected=null;});fitView();return true;
 }
 function setupPanelResizer(id,cssVar,prefName,fromRight=false){const handle=$(id);let dragging=false;handle.addEventListener('pointerdown',e=>{if(window.innerWidth<=850)return;e.preventDefault();dragging=true;handle.classList.add('dragging');handle.setPointerCapture(e.pointerId);});handle.addEventListener('pointermove',e=>{if(!dragging)return;const width=clamp(fromRight?window.innerWidth-e.clientX:e.clientX,200,420);document.documentElement.style.setProperty(cssVar,`${Math.round(width)}px`);renderCanvas();});handle.addEventListener('pointerup',e=>{if(!dragging)return;dragging=false;handle.classList.remove('dragging');const width=parseInt(document.documentElement.style.getPropertyValue(cssVar),10);pref(prefName,width);try{handle.releasePointerCapture(e.pointerId);}catch{}});handle.addEventListener('pointercancel',()=>{dragging=false;handle.classList.remove('dragging');});}
+function mindSiblingPosition(id){
+ const node=byId(id);if(page?.mode!=='mind'||!node)return {siblings:[],index:-1};
+ const siblings=page.nodes.filter(n=>(n.parentId||null)===(node.parentId||null));
+ return {siblings,index:siblings.findIndex(n=>n.id===id)};
+}
+
+function canMoveMindTopic(id,delta){const {siblings,index}=mindSiblingPosition(id);return index>=0&&index+delta>=0&&index+delta<siblings.length;}
+
+function moveMindTopic(id,delta){
+ if(!canMoveMindTopic(id,delta))return false;
+ const {siblings,index}=mindSiblingPosition(id),other=siblings[index+delta],moving=byId(id);
+ let arranged=true;
+ transact(()=>{
+  const from=page.nodes.indexOf(moving),to=page.nodes.indexOf(other);
+  [page.nodes[from],page.nodes[to]]=[page.nodes[to],page.nodes[from]];
+  const settings={...mindSettings(),order:'manual'};page.mindLayout=settings;
+  let next=null;const parent=moving.parentId?byId(moving.parentId):null;
+  try{
+   next=proposeMindLayout(settings,parent?.id||null);
+   if(parent&&next[parent.id]){const dx=parent.x-next[parent.id].x,dy=parent.y-next[parent.id].y;
+    for(const point of Object.values(next)){point.x+=dx;point.y+=dy;}}
+   // Collapsed descendants follow their nearest arranged ancestor so that
+   // expanding the moved branch later reveals its children in the same place.
+   for(const n of page.nodes)if(!next[n.id]&&!n.pinned){
+    let ancestor=n.parentId?byId(n.parentId):null;const seen=new Set([n.id]);
+    while(ancestor&&!seen.has(ancestor.id)){
+     seen.add(ancestor.id);
+     if(next[ancestor.id]){next[n.id]={x:n.x+next[ancestor.id].x-ancestor.x,y:n.y+next[ancestor.id].y-ancestor.y};break;}
+     ancestor=ancestor.parentId?byId(ancestor.parentId):null;
+    }
+   }
+   if(Object.values(next).some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))next=null;
+  }catch{next=null;}
+  if(next){for(const n of page.nodes)if(next[n.id]){n.x=Math.round(next[n.id].x);n.y=Math.round(next[n.id].y);}}
+  else arranged=false;
+ });
+ toast('Topic moved '+(delta<0?'earlier':'later')+'.'+(arranged?' Use Undo to restore the previous sequence.':' Sequence saved; arrange the canvas separately.'));
+ return true;
+}
+
+function updateMindOrderControls(){
+ for(const [suffix,delta] of [['Earlier',-1],['Later',1]]){
+  const button=$('outlineOrder'+suffix);if(!button)continue;
+  button.hidden=page.mode!=='mind';button.disabled=selected.size!==1||!canMoveMindTopic([...selected][0],delta);
+ }
+}
+
+async function diExitCanvasMode(){
+ if(diPrefs.focus)diToggleFocus();
+ if(document.fullscreenElement)try{await document.exitFullscreen();}catch(error){toast(error.message);}
+}
+
+async function captureKeepItProject({opening=false}={}){
+ if(!projectIsReady||!doc||!['indexeddb','localstorage'].includes(storageMode))throw Error('ThinkIt local storage is still opening.');
+ if(editing||activeModal)throw Error('Finish the open ThinkIt edit before opening or syncing a file.');
+ const empty=!$('diStartScreen').hidden&&!diHasSavedProject;
+ if(empty&&!opening)return null;
+ if(!empty&&lastSaved!==JSON.stringify(doc)&&await persist({manual:true})!==true)throw Error('ThinkIt could not save the project on this device.');
+ const payload=JSON.stringify(doc);
+ return {title:doc.name,identity:doc.id,token:payload,payload,empty};
+}
+
 function bindUI(){
  const orderParent=$('btnOutlineExpand').parentElement;
  for(const [suffix,label,delta] of [['Earlier','↑',-1],['Later','↓',1]]){
@@ -1674,15 +2866,19 @@ function bindUI(){
   button.title='Move selected topic '+suffix.toLowerCase()+' among its siblings';button.setAttribute('aria-label','Move topic '+suffix.toLowerCase());
   button.onclick=()=>{if(selected.size===1)moveMindTopic([...selected][0],delta);};
  }
- $('diStartOpen').onclick=()=>$('fileInput').click();$('diStartCreate').onclick=()=>{diHideStart();openProjectChooser(true);};$('diStartResume').onclick=()=>{diHideStart();diOpenTab(doc.activePageId);};setupPanelResizer('leftResizer','--panel-width','leftWidth');setupPanelResizer('rightResizer','--inspector-width','rightWidth',true);canvas.addEventListener('pointerdown',diP3Start,true);canvas.addEventListener('pointermove',diP3Move,true);canvas.addEventListener('pointerup',diP3End,true);canvas.addEventListener('pointercancel',diP3End,true);canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerup',onUp);canvas.addEventListener('pointercancel',e=>{gesture=null;renderCanvas();});canvas.addEventListener('dblclick',onCanvasDblClick);canvas.addEventListener('wheel',onWheel,{passive:false});canvas.addEventListener('contextmenu',e=>{e.preventDefault();const nodeId=e.target.closest('[data-node-id]')?.dataset.nodeId;if(nodeId){selectNode(nodeId);openNodeMenu(nodeId,e.clientX,e.clientY);}else if(e.target.closest('[data-edge-id]'))selectEdge(e.target.closest('[data-edge-id]').dataset.edgeId);});
+$('diStartOpen').onclick=()=>$('fileInput').click();$('diStartRecent').onclick=()=>{diHideStart();diOpenProjectManager();};$('diStartCreate').onclick=()=>{diHideStart();openProjectChooser(true);};$('diStartResume').onclick=()=>{diHideStart();diOpenTab(doc.activePageId);};setupPanelResizer('leftResizer','--panel-width','leftWidth');setupPanelResizer('rightResizer','--inspector-width','rightWidth',true);canvas.addEventListener('pointerdown',diP3Start,true);canvas.addEventListener('pointermove',diP3Move,true);canvas.addEventListener('pointerup',diP3End,true);canvas.addEventListener('pointercancel',diP3End,true);canvas.addEventListener('pointerdown',onDown);canvas.addEventListener('pointermove',onMove);canvas.addEventListener('pointerup',onUp);canvas.addEventListener('pointercancel',e=>{gesture=null;renderCanvas();});canvas.addEventListener('dblclick',onCanvasDblClick);canvas.addEventListener('wheel',onWheel,{passive:false});canvas.addEventListener('contextmenu',e=>{e.preventDefault();const nodeId=e.target.closest('[data-node-id]')?.dataset.nodeId;if(nodeId){selectNode(nodeId);openNodeMenu(nodeId,e.clientX,e.clientY);}else if(e.target.closest('[data-edge-id]'))selectEdge(e.target.closest('[data-edge-id]').dataset.edgeId);});
 $('shapeLibrary').addEventListener('click',e=>{const b=e.target.closest('[data-shape]');if(b)addAtCenter(b.dataset.shape);});$('shapeLibrary').addEventListener('dragstart',e=>{const b=e.target.closest('[data-shape]');if(b)e.dataTransfer.setData('application/diagramit-shape',b.dataset.shape);});$('canvasWrap').addEventListener('dragover',e=>e.preventDefault());$('canvasWrap').addEventListener('drop',e=>{e.preventDefault();const shape=e.dataTransfer?.getData('application/diagramit-shape');if(shape)dropShape(shape,worldPoint(e));});
 $('pageTabs').addEventListener('click',e=>{const c=e.target.closest('[data-close-page]');if(c){e.preventDefault();e.stopPropagation();diCloseTab(c.dataset.closePage);return;}if(e.target.closest('#tabNewPage'))promptNewPage();else if(e.target.closest('#diReopenPage'))diShowOpenTabChooser();else{const t=e.target.closest('[data-page-id]');if(t)selectPage(t.dataset.pageId);}});$('diEmptyOpen').onclick=diShowOpenTabChooser;
 $('pageList').addEventListener('click',e=>{const b=e.target.closest('[data-page-id]');if(b){selectPage(b.dataset.pageId);diCloseMobilePanels(false);}});$('pageList').addEventListener('contextmenu',e=>{const b=e.target.closest('[data-page-id]');if(!b)return;e.preventDefault();const p=doc.pages.find(p=>p.id===b.dataset.pageId);if(!p)return;modal('Page options',`<p class="modal-subtext">${esc(p.name)} · ${MODES[p.mode].name}</p><div class="prop-field"><label>Rename page</label><input id="renamePageInput" value="${esc(p.name)}"></div>`,[{text:'Cancel'},{text:'Delete page',action:()=>deletePage(p.id)},{text:'Save changes',primary:true,action:body=>transact(()=>p.name=body.querySelector('#renamePageInput').value.trim()||p.name)}]);});
 $('outlineTree').addEventListener('click',e=>{const collapse=e.target.closest('[data-collapse-id]');if(collapse){e.preventDefault();toggleCollapse(collapse.dataset.collapseId);return;}const b=e.target.closest('[data-outline-id]');if(b){selectNode(b.dataset.outlineId);centerNode(byId(b.dataset.outlineId));diCloseMobilePanels(false);focusCanvas();}});
-$('inspectorContent').addEventListener('change',onInspectorChange);$('inspectorContent').addEventListener('focusout',()=>setTimeout(renderInspector,0));$('inspectorContent').addEventListener('click',e=>{const sw=e.target.closest('[data-fill]');if(sw&&selected.size){transact(()=>{for(const id of selected){const n=byId(id);if(n)n.fill=sw.dataset.fill;}});return;}const a=e.target.closest('[data-action]')?.dataset.action;if(!a)return;switch(a){case 'edit-annotation':if(selectedAnnotation)beginAnnotationEdit(selectedAnnotation);break;case 'delete-annotation':removeSelection();break;case 'anno-transparent':if(selectedAnnotation)transact(()=>annoById(selectedAnnotation).fill='transparent');break;case 'anno-noborder':if(selectedAnnotation)transact(()=>annoById(selectedAnnotation).strokeWidth=0);break;case 'detach-annotation':if(selectedAnnotation)transact(()=>{const a=annoById(selectedAnnotation),p=annoPosition(a);a.x=p.x;a.y=p.y;a.parentId=null;});break;case 'attach-annotation':if(selectedAnnotation)promptAnnotationAnchor();break;case 'layout-branch':openOrgLayoutDialog('branch');break;case 'mind-layout-branch':openMindLayoutDialog('branch');break;case 'mind-notes':openMindNotes([...selected][0]);break;case 'mind-add-keepit-reference':openMindNotes([...selected][0],{addReference:true});break;case 'format-painter':startPainter();break;case 'reset-route':if(edgeSelected)transact(()=>{const e=findEdge(edgeSelected);e.fromPort='auto';e.toPort='auto';e.fromFraction=.5;e.toFraction=.5;e.bendOffset=null;e.bendAxis=null;});break;case 'toggle-collapse':if(selected.size===1)toggleCollapse([...selected][0]);break;case 'add-department':openDepartmentDialog();break;case 'add-child':if(selected.size===1)addChild([...selected][0]);break;case 'duplicate':duplicateSelection();break;case 'delete':removeSelection();break;case 'group':groupSelection();break;case 'layout':page.mode==='org'?openOrgLayoutDialog('all'):page.mode==='mind'?openMindLayoutDialog():showLayoutPreview();break;case 'fit':fitView();break;case 'reverse-edge':reverseEdge();break;case 'duplicate-edge':duplicateEdge();break;}});
+$('inspectorContent').addEventListener('change',onInspectorChange);$('inspectorContent').addEventListener('focusout',()=>setTimeout(renderInspector,0));$('inspectorContent').addEventListener('click',e=>{const sw=e.target.closest('[data-fill]');if(sw&&selected.size){transact(()=>{for(const id of selected){const n=byId(id);if(n)n.fill=sw.dataset.fill;}});return;}const a=e.target.closest('[data-action]')?.dataset.action;if(!a)return;switch(a){case 'edit-annotation':if(selectedAnnotation)beginAnnotationEdit(selectedAnnotation);break;case 'delete-annotation':removeSelection();break;case 'anno-transparent':if(selectedAnnotation)transact(()=>annoById(selectedAnnotation).fill='transparent');break;case 'anno-noborder':if(selectedAnnotation)transact(()=>annoById(selectedAnnotation).strokeWidth=0);break;case 'detach-annotation':if(selectedAnnotation)transact(()=>{const a=annoById(selectedAnnotation),p=annoPosition(a);a.x=p.x;a.y=p.y;a.parentId=null;});break;case 'attach-annotation':if(selectedAnnotation)promptAnnotationAnchor();break;case 'layout-branch':openOrgLayoutDialog('branch');break;case 'mind-layout-branch':openMindLayoutDialog('branch');break;case 'mind-add-keepit-reference':openMindNotes([...selected][0],{addReference:true});break;case 'mind-notes':openMindNotes([...selected][0]);break;case 'format-painter':startPainter();break;case 'reset-route':if(edgeSelected)transact(()=>{const e=findEdge(edgeSelected);e.fromPort='auto';e.toPort='auto';e.fromFraction=.5;e.toFraction=.5;e.bendOffset=null;e.bendAxis=null;});break;case 'toggle-collapse':if(selected.size===1)toggleCollapse([...selected][0]);break;
+ case 'flow-focus':if(page.mode==='flow'&&selected.size===1)flowSetFocus([...selected][0]);break;
+ case 'flow-wrap':flowWrapSelected();break;
+ case 'flow-group':if(page.mode==='flow')t22OpenFlowGrouping();break;
+ case 'flow-predecessors':if(page.mode==='flow'&&selected.size===1)t22OpenPredecessorPicker([...selected][0]);break;case 'add-department':openDepartmentDialog();break;case 'add-child':if(selected.size===1)addChild([...selected][0]);break;case 'duplicate':duplicateSelection();break;case 'delete':removeSelection();break;case 'group':groupSelection();break;case 'layout':page.mode==='org'?openOrgLayoutDialog('all'):page.mode==='mind'?openMindLayoutDialog():showLayoutPreview();break;case 'fit':fitView();break;case 'reverse-edge':reverseEdge();break;case 'duplicate-edge':duplicateEdge();break;}});
 $('btnLeftToggle').onclick=()=>togglePanel('library');$('btnNewPageTop').onclick=promptNewPage;$('modePill').onclick=openModeSwitcher;$('bubbleModeTop').onclick=openModeSwitcher;$('bubbleOpenTop').onclick=()=>document.getElementById('fileInput').click();
 $('btnFormatPainter').onclick=()=>{if(paintActive){paintActive=false;paintRepeat=false;renderUI();}else startPainter();};$('btnFormatPainter').ondblclick=()=>startPainter(true);
-$('btnUndo').onclick=undo;$('btnRedo').onclick=redo;$('btnSave').onclick=()=>{persist({manual:true});toast('Saving to this device. Export DiagramIt JSON for a portable backup.');};$('btnExport').onclick=openExport;$('btnTheme').onclick=toggleTheme;$('btnHelp').onclick=showHelp;$('btnCommand').onclick=()=>openPalette();$('btnQuickAdd').onclick=()=>selected.size===1?addChild([...selected][0]):addRoot();$('btnAutoLayout').onclick=()=>page.mode==='org'?openOrgLayoutDialog('all'):page.mode==='mind'?openMindLayoutDialog():showLayoutPreview();$('btnDepartment').onclick=openDepartmentDialog;$('btnTextBox').onclick=()=>addAnnotation(false);$('btnAttachText').onclick=()=>addAnnotation(true);$('btnGroup').onclick=groupSelection;$('btnUngroup').onclick=ungroupSelection;$('btnNewPage').onclick=promptNewPage;$('btnNewDoc').onclick=confirmNewDoc;$('btnImport').onclick=()=>$('fileInput').click();$('fileInput').onchange=async e=>{await importFile(e.target.files?.[0]);e.target.value='';};$('btnZoomIn').onclick=()=>zoomAt(1.18,{x:getWorldSize().w/2,y:getWorldSize().h/2});$('btnZoomOut').onclick=()=>zoomAt(1/1.18,{x:getWorldSize().w/2,y:getWorldSize().h/2});$('btnFit').onclick=fitView;$('btnGrid').onclick=()=>{showGrid=!showGrid;pref('grid',showGrid);render();};$('btnRightToggle').onclick=()=>togglePanel('inspector');$('leftCollapse').onclick=()=>togglePanel('library');$('rightCollapse').onclick=()=>togglePanel('inspector');$('mobileMenu').onclick=()=>togglePanel('library');$('diMobilePanelBackdrop').onclick=()=>diCloseMobilePanels();$('btnMindNotes').onclick=()=>openMindNotes();$('btnOutlineExpand').onclick=()=>{transact(()=>{for(const n of page.nodes)n.collapsed=false;});};$('btnConnect').onclick=()=>{if(tool==='connect')selectCanvasTool('select');else{selectCanvasTool('connect');toast('Click source, then destination. Drag from a node also works.');}};
+$('btnUndo').onclick=undo;$('btnRedo').onclick=redo;$('btnSave').onclick=()=>{persist({manual:true});toast('Saving to this device. Export DiagramIt JSON for a portable backup.');};$('btnExport').onclick=openExport;$('btnTheme').onclick=toggleTheme;$('btnHelp').onclick=showHelp;$('btnCommand').onclick=()=>openPalette();$('btnQuickAdd').onclick=()=>selected.size===1?addChild([...selected][0]):addRoot();$('btnAutoLayout').onclick=()=>page.mode==='org'?openOrgLayoutDialog('all'):page.mode==='mind'?openMindLayoutDialog():showLayoutPreview();$('btnDepartment').onclick=openDepartmentDialog;$('btnTextBox').onclick=()=>addAnnotation(false);$('btnAttachText').onclick=()=>addAnnotation(true);$('btnGroup').onclick=groupSelection;$('btnUngroup').onclick=ungroupSelection;$('btnNewPage').onclick=promptNewPage;$('btnNewDoc').onclick=confirmNewDoc;$('btnImport').onclick=()=>$('fileInput').click();$('fileInput').onchange=async e=>{await importFile(e.target.files?.[0],{confirm:true});e.target.value='';};$('btnZoomIn').onclick=()=>zoomAt(1.18,{x:getWorldSize().w/2,y:getWorldSize().h/2});$('btnZoomOut').onclick=()=>zoomAt(1/1.18,{x:getWorldSize().w/2,y:getWorldSize().h/2});$('btnFit').onclick=fitView;$('btnGrid').onclick=()=>{showGrid=!showGrid;pref('grid',showGrid);render();};$('btnRightToggle').onclick=()=>togglePanel('inspector');$('leftCollapse').onclick=()=>togglePanel('library');$('rightCollapse').onclick=()=>togglePanel('inspector');$('mobileMenu').onclick=()=>togglePanel('library');$('diMobilePanelBackdrop').onclick=()=>diCloseMobilePanels();$('btnMindNotes').onclick=()=>openMindNotes();$('btnOutlineExpand').onclick=()=>{transact(()=>{for(const n of page.nodes)n.collapsed=false;});};t22BindWorkspace();$('btnConnect').onclick=()=>{if(tool==='connect')selectCanvasTool('select');else{selectCanvasTool('connect');toast('Click source, then destination. Drag from a node also works.');}};
 $('btnArrow').onclick=()=>{if(tool==='arrow')selectCanvasTool('select');else{selectCanvasTool('arrow');toast('Click and drag anywhere to draw an independent arrow.');}};
 $('floatEdit').onclick=()=>{if(selectedAnnotation)beginAnnotationEdit(selectedAnnotation);else if(selected.size===1)startEdit([...selected][0]);else if(edgeSelected)startEdit(edgeSelected,'edge');};$('floatChild').onclick=()=>{if(selected.size===1)addChild([...selected][0]);};$('floatDuplicate').onclick=duplicateSelection;$('floatDelete').onclick=removeSelection;
 $('docName').addEventListener('change',e=>{const v=e.target.value.trim();if(v)transact(()=>doc.name=v);else e.target.value=doc.name;});
@@ -1731,13 +2927,13 @@ else if(key==='+'||key==='='){e.preventDefault();zoomAt(1.15,{x:getWorldSize().w
 else if(key==='-'){e.preventDefault();zoomAt(1/1.15,{x:getWorldSize().w/2,y:getWorldSize().h/2});}
 }
 
-function openNodeMenu(id,x,y){const n=byId(id);if(!n)return;const items=[['Edit text','edit'],...(page.mode==='org'?[['Add department under…','department']]:[]),['Add connected child','add'],...(page.mode==='mind'?[['Move topic earlier','earlier'],['Move topic later','later']]:[]),['Duplicate','duplicate'],...(page.mode!=='flow'?[['Change parent (click a node)','reparent'],[n.collapsed?'Expand branch':'Collapse branch','collapse']]:[]),['Delete node / branch','delete']];const root=$('modalRoot');if(!root.hidden)return;let menu=document.getElementById('nodeContextMenu');if(menu)menu.remove();menu=dom('div','context-menu',undefined,document.body);menu.style.cssText=`position:fixed;z-index:25;left:${Math.min(window.innerWidth-240,x)}px;top:${Math.max(8,Math.min(window.innerHeight-Math.min(items.length*38+12,window.innerHeight-16),y))}px;width:225px;max-height:calc(100vh - 16px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow);padding:6px`;menu.id='nodeContextMenu';for(const [text,action] of items){const b=dom('button','',text,menu);b.style.cssText='display:block;width:100%;padding:10px;border:none;border-radius:5px;background:transparent;text-align:left;color:var(--ink);font-size:12px';b.onmouseenter=()=>b.style.background='var(--teal-light)';b.onmouseleave=()=>b.style.background='transparent';b.onclick=()=>{menu.remove();if(action==='earlier')moveMindTopic(id,-1);if(action==='later')moveMindTopic(id,1);if(action==='edit')startEdit(id);if(action==='department')openDepartmentDialog();if(action==='add')addChild(id);if(action==='duplicate')duplicateSelection();if(action==='reparent'){reparentPick=id;toast('Click the new parent. Esc cancels.');}if(action==='collapse')toggleCollapse(id);if(action==='delete')removeSelection();};}setTimeout(()=>window.addEventListener('pointerdown',function dismiss(e){if(!menu.contains(e.target)){menu.remove();window.removeEventListener('pointerdown',dismiss);}}, {capture:true}),0);}
+function openNodeMenu(id,x,y){const n=byId(id);if(!n)return;const items=[['Edit text','edit'],...(page.mode==='flow'&&page.nodes.some(child=>child.outlineParentId===id)?[[n.collapsed?'Expand subprocess':'Collapse subprocess','collapse']]:[]),...(page.mode==='org'?[['Add department under…','department']]:[]),['Add connected child','add'],...(page.mode==='mind'?[['Move topic earlier','earlier'],['Move topic later','later']]:[]),['Duplicate','duplicate'],...(page.mode!=='flow'?[['Change parent (click a node)','reparent'],[n.collapsed?'Expand branch':'Collapse branch','collapse']]:[]),['Delete node / branch','delete']];const root=$('modalRoot');if(!root.hidden)return;let menu=document.getElementById('nodeContextMenu');if(menu)menu.remove();menu=dom('div','context-menu',undefined,document.body);menu.style.cssText=`position:fixed;z-index:25;left:${Math.min(window.innerWidth-240,x)}px;top:${Math.min(window.innerHeight-220,y)}px;width:225px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow);padding:6px`;menu.id='nodeContextMenu';for(const [text,action] of items){const b=dom('button','',text,menu);b.style.cssText='display:block;width:100%;padding:10px;border:none;border-radius:5px;background:transparent;text-align:left;color:var(--ink);font-size:12px';b.onmouseenter=()=>b.style.background='var(--teal-light)';b.onmouseleave=()=>b.style.background='transparent';b.onclick=()=>{menu.remove();if(action==='earlier')moveMindTopic(id,-1);if(action==='later')moveMindTopic(id,1);if(action==='edit')startEdit(id);if(action==='department')openDepartmentDialog();if(action==='add')addChild(id);if(action==='duplicate')duplicateSelection();if(action==='reparent'){reparentPick=id;toast('Click the new parent. Esc cancels.');}if(action==='collapse')toggleCollapse(id);if(action==='delete')removeSelection();};}setTimeout(()=>window.addEventListener('pointerdown',function dismiss(e){if(!menu.contains(e.target)){menu.remove();window.removeEventListener('pointerdown',dismiss);}}, {capture:true}),0);}
 
 /* DiagramIt 0.9 shared command shell. Keeps document engines and old project schema intact. */
 const DI_MENUS=['File','Edit','Insert','View','Format','Help'];
 const DI_PREF_KEY='diagramit_v093_ui';
 let diPrefs={toolsVisible:true,activeTab:'Insert',focus:false,grid:true,snap:true,ruler:false};
-try{diPrefs={...diPrefs,...JSON.parse(localStorage.getItem(DI_PREF_KEY)||'{}'),focus:false}}catch{}
+try{diPrefs={...diPrefs,...JSON.parse(localStorage.getItem(DI_PREF_KEY)||'{}')}}catch{}
 let diMenuOpen='',diBubbleState={pane:'program',selection:'none',theme:'formal',showAreas:false};
 let diFrameCounter=0,diClipboard=null;
 const diCommands={};
@@ -1752,14 +2948,14 @@ function diEnabled(c){if(page?.mode==='bmc'&&!diBusinessCommand(c))return false;
 function diClick(id){document.getElementById(id)?.click()}
 function diFormatNode(key,value){if(diIsBubble()){toast('Select the bubble and use its detailed Properties panel for this formatting.');return;}if(!selected.size){toast('Select a shape to format.');return;}transact(()=>{for(const id of selected){const n=byId(id);if(n)n[key]=value;}})}
 function diEnsureInspector(){if(document.body.classList.contains('inspector-collapsed'))togglePanel('inspector');}
-function diSaveAs(){exportJson();toast('Editable DiagramIt project downloaded. This is a copy, not a live file binding.');}
+function diSaveAs(){if(exportJson())toast('Editable DiagramIt copy downloaded · not a live file binding.');}
 async function diShare(){
-  const blob=new Blob([JSON.stringify({...doc,updatedAt:new Date().toISOString()},null,2)],{type:'application/json'});
-  const file=new File([blob],`${baseName()}.diagramit.json`,{type:'application/json'});
+  let portable;try{portable=diPortableSnapshot();}catch(err){console.error(err);toast('Project sharing blocked: '+err.message);return;}
+  const file=new File([portable.blob],portable.filename,{type:'application/json'});
   if(navigator.share&&navigator.canShare?.({files:[file]})){
     try{await navigator.share({title:doc.name,files:[file]});return}catch(e){if(e.name==='AbortError')return;console.warn(e)}
   }
-  exportJson();toast('Sharing is unavailable here. A project JSON download has been created for you to send.');
+  if(exportJson())toast('Sharing is unavailable here. A portable project copy was downloaded.');
 }
 function diCutCopy(cut=false){
  if(diIsBubble()){diBubble(cut?'edit.cut':'edit.copy');return}
@@ -1806,10 +3002,6 @@ function diToggleFocus(){
   $('diFocusToggle').focus({preventScroll:true});
   requestAnimationFrame(()=>{if(!diIsBubble())renderCanvas()});
  }
-}
-async function diExitCanvasMode(){
- if(diPrefs.focus)diToggleFocus();
- if(document.fullscreenElement)try{await document.exitFullscreen();}catch(error){toast(error.message);}
 }
 function diSavePrefs(){const {focus,...preferences}=diPrefs;try{localStorage.setItem(DI_PREF_KEY,JSON.stringify(preferences))}catch{}}
 function diToggleRibbon(){diPrefs.toolsVisible=!diPrefs.toolsVisible;document.body.classList.toggle('di-tools-hidden',!diPrefs.toolsVisible);diSavePrefs();diSyncShell()}
@@ -1888,8 +3080,10 @@ function diExportPng(){if(diIsBubble()){bubbleExport('png');return;}exportPNG()}
  diAdd('file.newPage','New Diagram','File',promptNewPage,{shortcut:'',icon:'▦'});
   diAdd('file.openPage','Open Diagram Tab…','File',diShowOpenTabChooser,{icon:'☷'});
  diAdd('file.open','Open Project…','File',()=>diClick('fileInput'),{shortcut:'⌘O',icon:'↥'});
+ diAdd('file.recent','Project Manager / Open Recent…','File',diOpenProjectManager,{icon:'☷'});
  diAdd('file.save','Save on this device','File',()=>persist({manual:true}),{shortcut:'⌘S',icon:'✓'});
- diAdd('file.saveAs','Save As… (DiagramIt JSON)','File',diSaveAs,{shortcut:'⇧⌘S',icon:'↧'});
+ diAdd('file.saveAs','Save As… (New Local Project)','File',diSaveAsLocalProject,{shortcut:'⇧⌘S',icon:'↧'});
+ diAdd('file.saveCopy','Download Portable JSON…','File',diSaveAs,{icon:'⇩'});
  diAdd('file.recovery','Restore Local Version…','File',openLocalRecovery,{icon:'↶'});
  diAdd('file.export','Export…','File',openExport,{icon:'⇩'});
  diAdd('file.print','Print / PDF…','File',diPrint,{shortcut:'⌘P',icon:'▤'});
@@ -1907,9 +3101,9 @@ function diExportPng(){if(diIsBubble()){bubbleExport('png');return;}exportPNG()}
  diAdd('edit.duplicate','Duplicate','Edit',()=>diIsBubble()?diBubble('edit.duplicate'):duplicateSelection(),{shortcut:'⌘D',icon:'⧉'});
  diAdd('edit.group','Group','Edit',groupSelection,{modes:['flow','org','mind'],shortcut:'⌘G',icon:'▣'});
  diAdd('edit.ungroup','Ungroup','Edit',ungroupSelection,{modes:['flow','org','mind'],shortcut:'⇧⌘G',icon:'◫'});
- diAdd('edit.formatPainter','Format Painter','Edit',()=>diIsBubble()?diBubble('edit.formatPainter'):diClick('btnFormatPainter'),{icon:'◈'});
  diAdd('edit.topicEarlier','Move Topic Earlier','Edit',()=>moveMindTopic([...selected][0],-1),{modes:['mind'],enabled:()=>selected.size===1&&canMoveMindTopic([...selected][0],-1),shortcut:'⌘⇧↑',icon:'↑'});
  diAdd('edit.topicLater','Move Topic Later','Edit',()=>moveMindTopic([...selected][0],1),{modes:['mind'],enabled:()=>selected.size===1&&canMoveMindTopic([...selected][0],1),shortcut:'⌘⇧↓',icon:'↓'});
+ diAdd('edit.formatPainter','Format Painter','Edit',()=>diIsBubble()?diBubble('edit.formatPainter'):diClick('btnFormatPainter'),{icon:'◈'});
  diAdd('edit.find','Find Command or Object…','Edit',diPalette,{shortcut:'⌘K',icon:'⌕'});
 // Insert menu
  diAdd('insert.shape','Shape / Bubble','Insert',diAddShape,{icon:'◇'});
@@ -1952,7 +3146,7 @@ function diExportPng(){if(diIsBubble()){bubbleExport('png');return;}exportPNG()}
  diAdd('help.symbols','Diagram Symbols & Relationships','Help',()=>modal('DiagramIt notation',`<p>Flowchart symbols represent processes, decisions and start/end points. Org charts use primary reporting connections; secondary reporting is represented separately. Mind maps encode topic hierarchy. Bubble Diagram uses AEIOUX adjacency ratings (A/E/I/O/U/X) independently of circulation and sightlines.</p><p>Choose a diagram type when beginning a project. Each type shows only the applicable editing tools.</p>`,[{text:'Close'}]),{icon:'◇'});
  diAdd('help.about','About DiagramIt','Help',()=>modal('ThinkIt · v0.9.21',`<p>A focused diagramming workspace for Flowcharts, Organization Charts, Mind Maps and Architectural Bubble Diagrams.</p><p>DiagramIt runs locally in your browser. It does not require an account. Export an editable DiagramIt JSON backup regularly.</p><p><strong>Future roadmap:</strong> structured Mind Map notes and KeepIt references. Detailed scheduling is reserved for a separate PlanIt application.</p>`,[{text:'Close'}]),{icon:'ⓘ'});
 function diEnsureCanvasVisible(){if(diIsBubble())return; if(document.body.classList.contains('sidebar-collapsed')){ /* canvas remains visible */ }focusCanvas()}
-const DI_GROUPS={File:[['Project','file.new','file.newPage','file.openPage','file.open','file.save','file.saveAs','file.recovery'],['Output','file.export','file.print','file.share'],['Settings','file.preferences']],Edit:[['History','edit.undo','edit.redo'],['Clipboard','edit.cut','edit.copy','edit.paste'],['Selection','edit.topicEarlier','edit.topicLater','edit.delete','edit.selectAll','edit.deselect','edit.duplicate','edit.group','edit.ungroup'],['Tools','edit.formatPainter','edit.find']],Insert:[['Objects','insert.shape','insert.arrow','insert.text','insert.attachedText','insert.zone'],['References','insert.underlay','insert.overlay','insert.link'],['Environment','insert.sun','insert.wind']],View:[['Representation','view.program','view.matrix','view.canvas','view.audit','view.chart','view.outline'],['Workspace','view.fullscreen','view.focus','view.tools','view.properties'],['Guides','view.ruler','view.grid','view.fit','view.theme']],Format:[['Properties','format.properties','format.organize','format.zones','format.lineDefaults'],['Presentation','format.sketch','format.formal','format.showAreas'],['Styles','format.painter']],Help:[['Guidance','help.guide','help.shortcuts','help.symbols','help.about']]};
+const DI_GROUPS={File:[['Project','file.new','file.newPage','file.openPage','file.open','file.recent','file.save','file.saveAs','file.recovery'],['Output','file.saveCopy','file.export','file.print','file.share'],['Settings','file.preferences']],Edit:[['History','edit.undo','edit.redo'],['Clipboard','edit.cut','edit.copy','edit.paste'],['Selection','edit.topicEarlier','edit.topicLater','edit.delete','edit.selectAll','edit.deselect','edit.duplicate','edit.group','edit.ungroup'],['Tools','edit.formatPainter','edit.find']],Insert:[['Objects','insert.shape','insert.arrow','insert.text','insert.attachedText','insert.zone'],['References','insert.underlay','insert.overlay','insert.link'],['Environment','insert.sun','insert.wind']],View:[['Representation','view.program','view.matrix','view.canvas','view.audit','view.chart','view.outline'],['Workspace','view.fullscreen','view.focus','view.tools','view.properties'],['Guides','view.ruler','view.grid','view.fit','view.theme']],Format:[['Properties','format.properties','format.organize','format.zones','format.lineDefaults'],['Presentation','format.sketch','format.formal','format.showAreas'],['Styles','format.painter']],Help:[['Guidance','help.guide','help.shortcuts','help.symbols','help.about']]};
 function diBusinessCommand(command){return command.id.startsWith('file.')||command.id.startsWith('help.')||['view.fullscreen','view.focus','view.tools','view.theme'].includes(command.id);}
 function diMenuItems(name){return (DI_GROUPS[name]||[]).map(([group,...ids])=>[group,...ids.filter(id=>{const command=diCommands[id];return command&&(!command.modes||command.modes.includes(page?.mode))&&(page?.mode!=='bmc'||diBusinessCommand(command));})]);}
 function diOpenMenu(name){
@@ -2146,6 +3340,26 @@ function diInitShell(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',diInitShell);else diInitShell();
 
+window.keepItAppFiles=Object.freeze({syncStatus(message){
+ let label=document.getElementById('keepitProjectSync');
+ if(!label){label=document.createElement('span');label.id='keepitProjectSync';label.className='save-status';label.setAttribute('role','status');document.querySelector('.document-title-wrap').append(label);}
+ label.textContent=message;
+},capture:captureKeepItProject,async open(payload,expected){
+ const incoming=validateDocument(JSON.parse(payload));incoming.version=3;
+ await saveQueue;
+ if(editing||activeModal||JSON.stringify(doc)!==expected||diSaveConflict)throw Error('The local ThinkIt project changed. Review it before switching files.');
+ const serial=JSON.stringify(incoming);
+ if(storageMode==='indexeddb')await dbWrite(serial,{manual:true});
+ else if(storageMode==='localstorage')await diFallbackWrite(serial);
+ else throw Error('ThinkIt local storage is unavailable.');
+ doc=incoming;lastSaved=serial;diHasSavedProject=true;diTabProjectId='';diLoadTabState();page=getPage();
+ selected.clear();edgeSelected=null;selectedAnnotation=null;preview=null;history={undo:[],redo:[]};bubbleActivePageId=null;
+ if(diPrefs.focus)diToggleFocus();
+ render();if(page.mode!=='bubble')fitView({initial:true});diHideStart();setSaveState('saved','Saved on this device');
+ return captureKeepItProject();
+}});
+
+
 // Explicit project transfer requests from the exact bundled KeepIt parent.
 window.addEventListener('message',async event=>{
  if(window.parent===window||event.source!==window.parent||event.origin!==location.origin||event.data?.channel!=='thinkit-native-note-v1'||!['get-project','restore-project'].includes(event.data.type)||typeof event.data.requestId!=='string')return;
@@ -2157,11 +3371,12 @@ window.addEventListener('message',async event=>{
    const project=clone(doc);project.localRecovery=JSON.parse(await (await ThinkItLocalNotes.exportRecovery(doc.id)).text());ThinkItLocalNotes.verifyExportObject(project.localRecovery);if(JSON.stringify(project).length>24*1024*1024)throw Error('Project exceeds the 24 MiB transfer budget.');reply('project-snapshot',{project});
   }else{
    if(JSON.stringify(data.project).length>24*1024*1024)throw Error('Restored project exceeds the transfer budget.');
-   const incoming=validateDocument(clone(data.project));if(incoming.localRecovery){if(incoming.localRecovery.projectId!==incoming.id)throw Error('Local recovery project identity mismatch.');await ThinkItLocalNotes.restoreRecovery(incoming.localRecovery);}await importFile(new File([JSON.stringify(incoming)],'Restored-project.diagramit.json',{type:'application/json'}));
+   const incoming=validateDocument(clone(data.project));if(incoming.localRecovery){if(incoming.localRecovery.projectId!==incoming.id)throw Error('Local recovery project identity mismatch.');await ThinkItLocalNotes.restoreRecovery(incoming.localRecovery);}const adopted=await importFile(new File([JSON.stringify(incoming)],'Restored-project.diagramit.json',{type:'application/json'}));
+   if(!adopted)throw Error('ThinkIt declined the imported project; original project was retained.');
    if(doc.id!==incoming.id||await persist({manual:true})!==true)throw Error('The restored project could not be saved locally. Native recovery remains in KeepIt.');reply('project-restored');
   }
  }catch(error){reply('project-failed',{message:String(error.message||error).slice(0,300)});}
 });
 
-bindUI();initStorage();
+bindUI();diStorageReady=initStorage();
 })();

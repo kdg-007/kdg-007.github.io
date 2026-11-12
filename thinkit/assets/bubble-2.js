@@ -110,8 +110,34 @@ function ensureContainment(){
  for(const s of model.spaces){if(!s.parentId)continue;const p=space(s.parentId);if(p&&Math.PI*Math.pow(radius(s),2)>Math.PI*Math.pow(radius(p),2)*.82)warnings.push(`${s.name} exceeds the visible capacity of ${p.name}`);}
  return warnings;
 }
+/* T21: refuse destructive auto-layout when an imported program has broken
+   nesting references. This does not modify, unlink or silently repair topics. */
+function generationNestingError(){
+ const byId=new Map();
+ for(const s of model.spaces){
+   if(!s.id||byId.has(s.id))return 'Duplicate or missing bubble IDs. Review the space program before generating.';
+   byId.set(s.id,s);
+ }
+ for(const s of model.spaces){
+   if(s.parentId&&!byId.has(s.parentId))return 'A nested bubble has a missing parent. Review its Within / Parent space setting.';
+ }
+ const state=new Map(); // 1: current chain, 2: verified chain
+ for(const s of model.spaces){
+   let cursor=s.id;
+   const chain=[];
+   while(cursor&&state.get(cursor)!==2){
+     if(state.get(cursor)===1)return 'Circular bubble nesting detected. Review the Within / Parent space settings.';
+     state.set(cursor,1);chain.push(cursor);
+     cursor=byId.get(cursor)?.parentId||'';
+   }
+   for(const id of chain)state.set(id,2);
+ }
+ return '';
+}
 function generate(alt=false){
  if(!model.spaces.length){tab('program');showToast('Add spaces in the program first.');return;}
+ const hierarchyError=generationNestingError();
+ if(hierarchyError){showToast(hierarchyError);return;}
  const nestingWarnings=ensureContainment(),spaces=model.spaces;
  const parents=spaces.filter(s=>!s.parentId||!space(s.parentId));
  const free=parents.filter(s=>!s.pinned&&!descendantsOf(s.id).some(id=>space(id)?.pinned));
@@ -133,6 +159,8 @@ function generate(alt=false){
  if(initialPlacement){
    free.forEach((s,i)=>{
      const ang=i*2.399963+seed*.83,rad=80+105*Math.sqrt(i);
+     // Initial target coordinates are provisional until the solver finishes.
+     // Relocate the hierarchy exactly once after physics, including notes.
      s.x=W/2+rad*Math.cos(ang);s.y=H/2+rad*Math.sin(ang);
    });
  }
@@ -184,13 +212,25 @@ function generate(alt=false){
      moveWithChildren(p,nx,ny);
    }
  }else{
+   // First Generate previously moved only parent coordinates in the solver,
+   // leaving descendant groups and attached text at the pre-layout positions.
+   // Apply each root's final displacement exactly once to its entire group.
+   for(const p of parents){
+     const before=priorPositions.get(p.id);if(!before)continue;
+     const nx=p.x,ny=p.y;p.x=before.x;p.y=before.y;
+     moveWithChildren(p,nx,ny);
+   }
    const visit=new Set();
    function placeChildren(p){
      if(visit.has(p.id))return;visit.add(p.id);
      const ch=spaces.filter(s=>s.parentId===p.id);
      const rr=Math.max(0,radius(p)-Math.max(0,...ch.map(c=>radius(c)))-7)*.63;
      ch.forEach((s,i)=>{
-       if(!s.pinned){const a=-Math.PI/2+i*Math.PI*2/Math.max(3,ch.length);s.x=p.x+rr*Math.cos(a);s.y=p.y+rr*Math.sin(a);}
+       // A pinned descendant protects its ancestors' relative positions.
+       if(!s.pinned&&!descendantsOf(s.id).some(id=>space(id)?.pinned)){
+         const a=-Math.PI/2+i*Math.PI*2/Math.max(3,ch.length);
+         moveWithChildren(s,p.x+rr*Math.cos(a),p.y+rr*Math.sin(a));
+       }
        placeChildren(s);
      });
    }
@@ -738,7 +778,7 @@ function renderMatrix(){
    return `<tr><td class="matrix-space" title="${html(s.name)}"><strong>${i+1}.</strong> ${html(s.name)}</td>${model.spaces.map((t,j)=>{
      if(i===j)return '<td class="rating-cell rate-na">—</td>';
      const key=relationKey(s.id,t.id),r=pairs[key]?.rating||'U';
-     return (i>j&&!windowed)?`<td class="rating-cell rate-${r}" title="${html(t.name)}: ${r}">${r}</td>`:`<td class="rating-cell"><select aria-label="${html(s.name)} versus ${html(t.name)}" class="rate-${r}" data-pair="${key}">${Object.keys(RATINGS).map(v=>`<option value="${v}" ${r===v?'selected':''}>${v}</option>`).join('')}</select></td>`;
+     return i>j?`<td class="rating-cell rate-${r}" data-mirror-pair="${html(key)}" data-mirror-from="${html(s.id)}" data-mirror-to="${html(t.id)}" aria-label="${html(s.name)} versus ${html(t.name)}: ${r} (read-only mirror)" title="${html(t.name)}: ${r}">${r}</td>`:`<td class="rating-cell"><select aria-label="${html(s.name)} versus ${html(t.name)}" class="rate-${r}" data-pair="${html(key)}">${Object.keys(RATINGS).map(v=>`<option value="${v}" ${r===v?'selected':''}>${v}</option>`).join('')}</select></td>`;
    }).join('')}</tr>`;
  }).join('');
 }
@@ -764,7 +804,19 @@ function update(e){const t=e.target;
    if(!rootGroupValid(selectedRoots([s.id]),dx,dy)){showToast('Position blocked by a lock, parent boundary, or canvas edge.');renderInspector();return;}
    checkpoint();translateSelection([s.id],dx,dy);commit();return;
  }
- if(t.dataset.envProp&&selection.kind==='envGraphic'){const g=envItem(selection.id);if(!g)return;const k=t.dataset.envProp;checkpoint();g[k]=k==='showLabel'?t.checked:['x','y','scale','angle','opacity','curve','spacing','thickness'].includes(k)?num(t.value):t.value;Object.assign(g,envNorm(g));commit(false);renderCanvas();return;}if(t.dataset.relationProperty&&selection.kind==='relation'){const k=t.dataset.relationProperty;checkpoint();const rel=model.relations[selection.id]||={rating:'U'};if(k==='graphicStyle')setRelationGraphicStyle(rel,t.value);else rel[k]=['thickness','bend','headSize','bodyWidth','bandSpacing'].includes(k)?num(t.value):t.value;commit(false);renderCanvas();if(['graphicStyle','rating','direction'].includes(k))renderInspector();return;}if(t.dataset.multiProperty&&selection.kind==='multi'){const k=t.dataset.multiProperty;checkpoint();for(const id of selection.ids||[]){const x=space(id);if(x)x[k]=['strokeWidth','labelFontSize'].includes(k)?num(t.value,k==='strokeWidth'?2.2:0):t.value;}commit(false);renderCanvas();if(k==='labelColorMode')renderInspector();return;}if(t.dataset.noteAttachment&&selection.kind==='note'){const n=model.notes.find(x=>x.id===selection.id);if(n){checkpoint();attachNote(n,t.value);commit();}return;}if(t.dataset.noteAnchor&&selection.kind==='note'){const n=model.notes.find(x=>x.id===selection.id);if(n?.lineAnchor){checkpoint();n.lineAnchor.t=clamp(num(t.value,50)/100,0,1);commit(false);renderCanvas();renderInspector();}return;}if(t.dataset.noteProperty&&selection.kind==='note'){const n=(model.notes||[]).find(x=>x.id===selection.id);if(!n)return;checkpoint();const k=t.dataset.noteProperty;n[k]=['fontSize','borderWidth','angle','opacity'].includes(k)?num(t.value):t.value;commit(false);renderCanvas();if(k==='fillMode')renderInspector();return;}if(t.id==='showAreasToggle'){checkpoint();model.showAreas=t.checked;commit(false);renderCanvas();return;}if(t.dataset.pair){checkpoint();model.relations[t.dataset.pair]={...(model.relations[t.dataset.pair]||{}),rating:t.value};t.className='rate-'+t.value;const [aa,bb]=t.dataset.pair.split('|'),ia=model.spaces.findIndex(s=>s.id===aa),ib=model.spaces.findIndex(s=>s.id===bb);for(const peer of document.querySelectorAll('#matrixBody select[data-pair]')){if(peer!==t&&peer.dataset.pair===t.dataset.pair){peer.value=t.value;peer.className='rate-'+t.value;}}if(ia>=0&&ib>=0&&model.spaces.length<=MATRIX_WINDOW_THRESHOLD){const visibleIndex=Math.max(ia,ib)-(model.spaces.length>MATRIX_WINDOW_THRESHOLD?matrixRowStart:0);const row=visibleIndex>=0?$('matrixBody').children[visibleIndex]:null,cell=row?.children[Math.min(ia,ib)+1];if(cell&&cell.tagName==='TD'){cell.className='rating-cell rate-'+t.value;cell.textContent=t.value;}}commit(false);return}let id=t.dataset.name||t.dataset.area||t.dataset.zone||t.dataset.parent||t.dataset.shape,s=id&&space(id);if(s){let k=t.dataset.name?'name':t.dataset.area?'area':t.dataset.zone?'zone':t.dataset.parent?'parentId':'shape';if(k==='parentId'&&!safeParent(id,t.value)){showToast('A space cannot contain its own ancestor.');render();return;}checkpoint();s[k]=k==='area'?Math.max(1,num(t.value,50)):t.value;if(k==='shape')s.vertices=null;
+ if(t.dataset.envProp&&selection.kind==='envGraphic'){const g=envItem(selection.id);if(!g)return;const k=t.dataset.envProp;checkpoint();g[k]=k==='showLabel'?t.checked:['x','y','scale','angle','opacity','curve','spacing','thickness'].includes(k)?num(t.value):t.value;Object.assign(g,envNorm(g));commit(false);renderCanvas();return;}if(t.dataset.relationProperty&&selection.kind==='relation'){const k=t.dataset.relationProperty;checkpoint();const rel=model.relations[selection.id]||={rating:'U'};if(k==='graphicStyle')setRelationGraphicStyle(rel,t.value);else rel[k]=['thickness','bend','headSize','bodyWidth','bandSpacing'].includes(k)?num(t.value):t.value;commit(false);renderCanvas();if(['graphicStyle','rating','direction'].includes(k))renderInspector();return;}if(t.dataset.multiProperty&&selection.kind==='multi'){const k=t.dataset.multiProperty;checkpoint();for(const id of selection.ids||[]){const x=space(id);if(x)x[k]=['strokeWidth','labelFontSize'].includes(k)?num(t.value,k==='strokeWidth'?2.2:0):t.value;}commit(false);renderCanvas();if(k==='labelColorMode')renderInspector();return;}if(t.dataset.noteAttachment&&selection.kind==='note'){const n=model.notes.find(x=>x.id===selection.id);if(n){checkpoint();attachNote(n,t.value);commit();}return;}if(t.dataset.noteAnchor&&selection.kind==='note'){const n=model.notes.find(x=>x.id===selection.id);if(n?.lineAnchor){checkpoint();n.lineAnchor.t=clamp(num(t.value,50)/100,0,1);commit(false);renderCanvas();renderInspector();}return;}if(t.dataset.noteProperty&&selection.kind==='note'){const n=(model.notes||[]).find(x=>x.id===selection.id);if(!n)return;checkpoint();const k=t.dataset.noteProperty;n[k]=['fontSize','borderWidth','angle','opacity'].includes(k)?num(t.value):t.value;commit(false);renderCanvas();if(k==='fillMode')renderInspector();return;}if(t.id==='showAreasToggle'){checkpoint();model.showAreas=t.checked;commit(false);renderCanvas();return;}if(t.dataset.pair){checkpoint();model.relations[t.dataset.pair]={...(model.relations[t.dataset.pair]||{}),rating:t.value};t.className='rate-'+t.value;
+   // Only the upper triangle is editable, including when rows are windowed.
+   // Update the visible read-only mirror immediately; off-screen rows read the
+   // canonical pair record when their window is rendered.
+   for(const mirror of $('matrixBody').querySelectorAll('td[data-mirror-pair]')){
+     if(mirror.dataset.mirrorPair!==t.dataset.pair)continue;
+     mirror.className='rating-cell rate-'+t.value;mirror.textContent=t.value;
+     const from=space(mirror.dataset.mirrorFrom)?.name||'Space';
+     const to=space(mirror.dataset.mirrorTo)?.name||'Space';
+     mirror.setAttribute('aria-label',`${from} versus ${to}: ${t.value} (read-only mirror)`);
+     mirror.title=to+': '+t.value;
+   }
+   commit(false);return}let id=t.dataset.name||t.dataset.area||t.dataset.zone||t.dataset.parent||t.dataset.shape,s=id&&space(id);if(s){let k=t.dataset.name?'name':t.dataset.area?'area':t.dataset.zone?'zone':t.dataset.parent?'parentId':'shape';if(k==='parentId'&&!safeParent(id,t.value)){showToast('A space cannot contain its own ancestor.');render();return;}checkpoint();s[k]=k==='area'?Math.max(1,num(t.value,50)):t.value;if(k==='shape')s.vertices=null;
  if(k==='parentId'&&s.parentId){const p=space(s.parentId);
    if(p&&!s.pinned&&!descendantsOf(s.id).some(cid=>space(cid)?.pinned))moveWithChildren(s,p.x,p.y);
  }
@@ -863,7 +915,13 @@ function manageZones(){
 function fitView(){let b={x:40,y:35,w:W-80,h:H-70};if(model.spaces.length){const minx=Math.min(...model.spaces.map(s=>s.x-radius(s))),maxx=Math.max(...model.spaces.map(s=>s.x+radius(s))),miny=Math.min(...model.spaces.map(s=>s.y-radius(s))),maxy=Math.max(...model.spaces.map(s=>s.y+radius(s)));if(maxx>minx&&maxy>miny)b={x:minx-40,y:miny-40,w:maxx-minx+80,h:maxy-miny+80}}const ratio=Math.max(b.w/W,b.h/H,1);model.view={x:b.x-(W*ratio-b.w)/2,y:b.y-(H*ratio-b.h)/2,w:W*ratio,h:H*ratio};renderCanvas()}
 function svgPoint(e){const el=$('diagram'),p=el.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const m=el.getScreenCTM();return m?p.matrixTransform(m.inverse()):{x:0,y:0}}
 function descendantsOf(id,out=[]){for(const s of model.spaces)if(s.parentId===id&&!out.includes(s.id)){out.push(s.id);descendantsOf(s.id,out)}return out}
-function moveWithChildren(s,x,y){const dx=x-s.x,dy=y-s.y;s.x=x;s.y=y;for(const id of descendantsOf(s.id)){const c=space(id);c.x+=dx;c.y+=dy}for(const n of model.notes||[])if(n.attachedTo===s.id||descendantsOf(s.id).includes(n.attachedTo)){n.x+=dx;n.y+=dy;}}
+function moveWithChildren(s,x,y){const dx=x-s.x,dy=y-s.y;
+ if(!dx&&!dy)return;
+ const members=new Set([s.id,...descendantsOf(s.id)]);
+ s.x=x;s.y=y;
+ for(const id of members){if(id===s.id)continue;const c=space(id);if(c){c.x+=dx;c.y+=dy;}}
+ for(const n of model.notes||[])if(members.has(n.attachedTo)){n.x+=dx;n.y+=dy;}
+}
 function startInline(s){endInline(true);const svg=$('diagram');const fo=document.createElementNS(NS,'foreignObject');fo.setAttribute('x',s.x-105);fo.setAttribute('y',s.y-28);fo.setAttribute('width',210);fo.setAttribute('height',70);fo.setAttribute('data-inline','1');const input=document.createElement('textarea');input.className='editing';input.style.cssText='width:205px;height:60px';input.value=s.name;fo.appendChild(input);svg.appendChild(fo);editing={id:s.id,element:fo,input,original:s.name};input.focus();input.select();input.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();endInline(false)}else if((e.key==='Delete'||e.key==='Backspace')&&input.value===s.name&&input.selectionStart===0&&input.selectionEnd===input.value.length){e.preventDefault();endInline(false);deleteSpace(s.id)}else if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();endInline(true)}};input.onblur=()=>queueMicrotask(()=>{if(editing?.element===fo)endInline(true)});}
 function endInline(commitValue){
  if(!editing)return;
@@ -905,18 +963,41 @@ if((e.metaKey||e.ctrlKey||e.shiftKey)&&tool!=='arrow'&&!handle){endInline(true);
 if(flow){if(applyPaintTo('flow',flow.dataset.flow)){e.preventDefault();return;}endInline(true);selection={kind:'flow',id:flow.dataset.flow};renderCanvas();renderInspector();e.preventDefault();return}
 if(e.shiftKey&&tool==='select'){endInline(true);drag={kind:'marquee',start:svgPoint(e),end:svgPoint(e),moved:false};$('diagram').setPointerCapture(e.pointerId);e.preventDefault();return;}if(underlay&&model.underlay&&!model.underlay.locked){selection={kind:'underlay',id:null};drag={kind:'underlay',start:svgPoint(e),old:clone(model.underlay),moved:false};$('diagram').setPointerCapture(e.pointerId);renderInspector();return}
 if(tool==='arrow'){endInline(true);const p=svgPoint(e);drag={kind:'freeflow',start:p,end:p,moved:false};$('diagram').setPointerCapture(e.pointerId);e.preventDefault();return;}endInline(true);selection={kind:null,id:null};editOutline=false;paintSource=null;renderCanvas();renderInspector();}
+// T42-C: pointercancel and Escape are aborts, not commits. Keep a shallow
+// undo/redo stack snapshot before the FIRST drag checkpoint; the project
+// snapshot also restores nested children, attached notes and cloned links.
+function captureDragRollback(){
+ if(!drag||drag.rollback)return;
+ drag.rollback={raw:JSON.stringify(model),history:[...history],redo:[...redoStack],selection:clone(selection)};
+}
+function rollbackDrag(d,{notifyHost=true}={}){
+ if(d?.rollback){
+   model=upgrade(JSON.parse(d.rollback.raw));
+   history=d.rollback.history;redoStack=d.rollback.redo;
+   selection=d.rollback.selection;
+   // Alt-duplicate can publish before pointerup; a compensating owner
+   // notification removes that temporary clone from the parent snapshot.
+   if(notifyHost)notify();
+ }
+ render();
+}
+function pointerCancel(){
+ const d=drag;drag=null;
+ if(d)rollbackDrag(d);
+}
 function pointerMove(e){if(!drag)return;const p=svgPoint(e),dx=p.x-drag.start.x,dy=p.y-drag.start.y;
  if(drag.kind==='marquee'){drag.end=p;drag.moved=Math.hypot(dx,dy)>4;renderCanvas();paintMarquee();return;}
  if(drag.kind==='multi-space'){
    if(!drag.moved&&Math.hypot(dx,dy)<3)return;
    const stepx=dx-drag.last.dx,stepy=dy-drag.last.dy;
-   if(!selectedCanMove(drag.ids)){showToast('Group contains a locked bubble or descendant. Unlock it before moving.');drag=null;render();return;}
+   if(!selectedCanMove(drag.ids)){showToast('Group contains a locked bubble or descendant. Unlock it before moving.');pointerCancel();return;}
    if(!rootGroupValid(selectedRoots(drag.ids),stepx,stepy))return;
-   if(!drag.moved){checkpoint();drag.moved=true;}
+   if(!drag.moved){captureDragRollback();checkpoint();drag.moved=true;}
    translateSelection(drag.ids,stepx,stepy);drag.last={dx,dy};renderCanvas();return;
  }
  if(!drag.moved&&Math.abs(dx)+Math.abs(dy)<3)return;
  if(!drag.moved){
+   captureDragRollback();
    if(drag.kind==='space'&&drag.alt&&!drag.cloned){
      const sourceId=drag.id;
      const captured=captureBubbleSelection();
@@ -942,7 +1023,7 @@ renderCanvas();if(drag?.kind==='freeflow'){const ln=document.createElementNS(NS,
 function pointerUp(e){if(!drag)return;const d=drag;drag=null;
  if(d.kind==='marquee'){if(d.moved){const r=selectionBox(d.start,d.end);selectBubbleIds(model.spaces.filter(s=>s.x>=r.x&&s.x<=r.x+r.w&&s.y>=r.y&&s.y<=r.y+r.h).map(s=>s.id));}render();return;}
  if(d.kind==='multi-space'){if(d.moved){notify();render();}else render();return;}
- if(d.kind==='freeflow'){if(Math.hypot(d.end.x-d.start.x,d.end.y-d.start.y)>12){const f={id:uid(),start:{x:d.start.x,y:d.start.y},end:{x:d.end.x,y:d.end.y},source:null,target:null,label:'',bend:60};applyPreset(f,model.selectedLinePreset);model.flows.push(f);selection={kind:'flow',id:f.id};tool='select';commit();showToast('Free-standing '+LINE_PRESETS[f.preset].label+' placed. Drag its endpoints; choose Arrow appearance in Properties.')}else renderCanvas();return;}const s=space(d.id);if(d.moved){if(d.kind==='resize')ensureContainment();notify();render();if(d.cloned&&s)startInline(s)}else{render();if(d.kind==='space'&&s)startInline(s);if(d.kind==='note'){const n=model.notes.find(x=>x.id===d.id);if(n)startNoteInline(n);}}}
+ if(d.kind==='freeflow'){if(Math.hypot(d.end.x-d.start.x,d.end.y-d.start.y)>12){const f={id:uid(),start:{x:d.start.x,y:d.start.y},end:{x:d.end.x,y:d.end.y},source:null,target:null,label:'',bend:60};applyPreset(f,model.selectedLinePreset);model.flows.push(f);selection={kind:'flow',id:f.id};tool='select';commit();showToast('Free-standing '+LINE_PRESETS[f.preset].label+' placed. Drag its endpoints; choose Arrow appearance in Properties.')}else rollbackDrag(d,{notifyHost:false});return;}const s=space(d.id);if(d.moved){if(d.kind==='resize')ensureContainment();notify();render();if(d.cloned&&s)startInline(s)}else{render();if(d.kind==='space'&&s)startInline(s);if(d.kind==='note'){const n=model.notes.find(x=>x.id===d.id);if(n)startNoteInline(n);}}}
 function exportDiagramSVG(){return `<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="790" viewBox="0 0 1100 790">${svgMarkup(true)}</svg>`;}
 function exportPrintDiagram(){
  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
@@ -976,7 +1057,7 @@ function exportHostPNG(){exportPNG()}
 function keydown(e){const isField=!!e.target.closest('input,select,textarea,[contenteditable]');if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!isField){e.preventDefault();e.shiftKey?redo():undo();return}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(EMBEDDED)parent.postMessage({channel:CHANNEL,type:'save'},location.origin);else notify();return}if(isField)return;
 if((e.metaKey||e.ctrlKey)&&e.altKey&&e.key.toLowerCase()==='c'){e.preventDefault();activatePainter();return;}
 if((e.metaKey||e.ctrlKey)&&e.altKey&&e.key.toLowerCase()==='v'){e.preventDefault();if(paintSource&&selection.kind&&selection.id)applyPaintTo(selection.kind,selection.id);return;}
-if(e.key==='Escape'){tool='select';flowSource=null;paintSource=null;selection={kind:null,id:null};editOutline=false;render();return}if((e.key==='Backspace'||e.key==='Delete')&&selection.kind){e.preventDefault();triggerAction('delete');return}if(e.key.toLowerCase()==='v'&&!e.ctrlKey&&!e.metaKey){tool='select';renderCanvas();return}if(e.key.toLowerCase()==='c'&&!e.ctrlKey&&!e.metaKey){tool='arrow';renderCanvas();return}if(e.key==='ArrowLeft'||e.key==='ArrowRight'||e.key==='ArrowUp'||e.key==='ArrowDown'){const s=space(selection.id);if(!s)return;e.preventDefault();const dir={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(e.shiftKey){const ids=selectionIds();if(rootGroupValid(selectedRoots(ids),dir[0]*12,dir[1]*12)){checkpoint();translateSelection(ids,dir[0]*12,dir[1]*12);commit();}else showToast('Movement blocked: locked bubble, nesting constraint, or canvas edge.');}else{if(selection.kind==='multi')return;let best=null,score=Infinity;for(const t of model.spaces){if(t.id===s.id)continue;const dx=t.x-s.x,dy=t.y-s.y,fwd=dx*dir[0]+dy*dir[1],cross=Math.abs(dx*dir[1]-dy*dir[0]);if(fwd>0&&fwd+cross*1.8<score){score=fwd+cross*1.8;best=t}}if(best){selection={kind:'space',id:best.id};render()}}return}}
+if(e.key==='Escape'){if(drag)pointerCancel();tool='select';flowSource=null;paintSource=null;selection={kind:null,id:null};editOutline=false;render();return}if((e.key==='Backspace'||e.key==='Delete')&&selection.kind){e.preventDefault();triggerAction('delete');return}if(e.key.toLowerCase()==='v'&&!e.ctrlKey&&!e.metaKey){tool='select';renderCanvas();return}if(e.key.toLowerCase()==='c'&&!e.ctrlKey&&!e.metaKey){tool='arrow';renderCanvas();return}if(e.key==='ArrowLeft'||e.key==='ArrowRight'||e.key==='ArrowUp'||e.key==='ArrowDown'){const s=space(selection.id);if(!s)return;e.preventDefault();const dir={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(e.shiftKey){const ids=selectionIds();if(rootGroupValid(selectedRoots(ids),dir[0]*12,dir[1]*12)){checkpoint();translateSelection(ids,dir[0]*12,dir[1]*12);commit();}else showToast('Movement blocked: locked bubble, nesting constraint, or canvas edge.');}else{if(selection.kind==='multi')return;let best=null,score=Infinity;for(const t of model.spaces){if(t.id===s.id)continue;const dx=t.x-s.x,dy=t.y-s.y,fwd=dx*dir[0]+dy*dir[1],cross=Math.abs(dx*dir[1]-dy*dir[0]);if(fwd>0&&fwd+cross*1.8<score){score=fwd+cross*1.8;best=t}}if(best){selection={kind:'space',id:best.id};render()}}return}}
 function importUnderlay(f){if(!f)return;if(f.size>9*1024*1024){showToast('Choose an image below 9 MB for this offline project.');return;}if(!['image/png','image/jpeg','image/webp','image/gif'].includes(f.type)){showToast('Choose a PNG, JPEG, WebP or GIF image.');return;}const reader=new FileReader();reader.onerror=()=>showToast('Image file could not be read.');reader.onload=()=>{if(!safeUnderlayDataUrl(reader.result)){showToast('Image format is not supported.');return;}const im=new Image();im.onerror=()=>showToast('Image could not be decoded.');im.onload=()=>{if(!im.width||!im.height){showToast('Image has no usable dimensions.');return;}const ratio=Math.min((W-60)/im.width,(H-60)/im.height);checkpoint();model.underlay={data:reader.result,name:f.name,x:(W-im.width*ratio)/2,y:(H-im.height*ratio)/2,w:im.width*ratio,h:im.height*ratio,opacity:.4,angle:0,locked:true};selection={kind:'underlay',id:null};pane='canvas';model.generated=true;commit();showToast('Underlay imported. Unlock it to reposition and resize.');};im.src=reader.result};reader.readAsDataURL(f)}
 function attach(){document.addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b){tab(b.dataset.view);return}const act=e.target.closest('[data-action]');if(act){triggerAction(act.dataset.action);return}const graphic=e.target.closest('[data-graphic-style]');if(graphic&&(selection.kind==='flow'||selection.kind==='relation')){if(selection.kind==='flow'){const f=model.flows.find(x=>x.id===selection.id);if(f){checkpoint();setArrowGraphicStyle(f,graphic.dataset.graphicStyle);commit();}}else{const r=model.relations[selection.id];if(r){checkpoint();setRelationGraphicStyle(r,graphic.dataset.graphicStyle);commit();}}return;}const role=e.target.closest('[data-border-role]');if(role){const ids=selection.kind==='multi'?(selection.ids||[]):selection.kind==='space'?[selection.id]:[];if(ids.length){checkpoint();for(const id of ids){const s=space(id);if(s){s.borderRole=role.dataset.borderRole;s.strokeStyle=BORDER_ROLES[s.borderRole].dash;s.strokeWidth=BORDER_ROLES[s.borderRole].weight;}}commit();}return;}const toggle=e.target.closest('[data-note-toggle]');if(toggle&&selection.kind==='note'){const n=model.notes.find(x=>x.id===selection.id);if(n){checkpoint();n[toggle.dataset.noteToggle]=!n[toggle.dataset.noteToggle];commit();}return;}const labelToggle=e.target.closest('[data-label-toggle]');if(labelToggle&&(selection.kind==='space'||selection.kind==='multi')){const k=labelToggle.dataset.labelToggle,ids=selection.kind==='multi'?selection.ids:[selection.id],objs=ids.map(space).filter(Boolean);if(objs.length){const next=!(k==='labelBold'?objs.every(s=>s.labelBold!==false):objs.every(s=>!!s[k]));checkpoint();for(const s of objs)s[k]=next;commit();}return;}const rem=e.target.closest('[data-remove]');if(rem){deleteSpace(rem.dataset.remove);return}});
 document.addEventListener('change',update);$('firstSpace').onclick=$('addSpaceProgram').onclick=$('addSpaceMatrix').onclick=$('emptyAdd').onclick=()=>addSpace();$('auditMatrixBtn').onclick=$('auditCanvasBtn').onclick=openAudit;$('addTextNoteBtn').onclick=addTextNote;$('envGallerySun').onclick=()=>envGallery('sun');$('envGalleryWind').onclick=()=>envGallery('wind');$('addCanvasSpaceBtn').onclick=()=>{const s=addSpace(false);pane='canvas';selection={kind:'space',id:s.id};render();startInline(s)};$('ratingDefaultsMatrix').onclick=$('ratingDefaultsCanvas').onclick=manageRatingStyles;$('goMatrixBtn').onclick=()=>tab('matrix');$('goProgramBtn').onclick=()=>tab('program');$('backMatrixBtn').onclick=()=>tab('matrix');$('generateBtn').onclick=$('generateMatrixBtn').onclick=()=>generate(false);$('selectToolBtn').onclick=()=>{tool='select';renderCanvas()};$('arrowToolBtn').onclick=setFlow;$('semanticArrowPreset').innerHTML=lineStyleOptions(model.selectedLinePreset);$('graphicArrowStyle').innerHTML=arrowStyleOptions(model.selectedArrowStyle);$('graphicArrowStyle').onchange=e=>{checkpoint();const style=e.target.value;model.selectedArrowStyle=style;const f=selection.kind==='flow'?model.flows.find(x=>x.id===selection.id):null;if(f){setArrowGraphicStyle(f,style);commit();}else{notify();showToast('New arrows will use: '+GRAPHIC_ARROW_STYLES[style].label);renderCanvas();}};$('semanticArrowPreset').onchange=e=>{checkpoint();model.selectedLinePreset=e.target.value;notify();tool='arrow';flowSource=null;renderCanvas();showToast('Drawing '+LINE_PRESETS[model.selectedLinePreset].label+'. Select two bubbles.');};$('matrixHeaderMode').onchange=e=>{checkpoint();model.matrixHeaderMode=e.target.value;notify();renderMatrix();};
@@ -986,7 +1067,7 @@ $('matrixGoRowBtn').onclick=()=>{matrixPageToRow(num($('matrixJumpRow').value,1)
 $('matrixJumpRow').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();matrixPageToRow(num(e.currentTarget.value,1)-1);renderMatrix();}});$('sizingMode').onchange=e=>{checkpoint();model.sizingMode=e.target.value;notify();renderCanvas();renderInspector();};$('paintBtn').onclick=activatePainter;$('fitBtn').onclick=fitView;$('themeSelect').onchange=e=>{checkpoint();model.theme=e.target.value;commit()};$('sketchIntensity').onchange=e=>{checkpoint();model.sketchStrength=clamp(num(e.target.value,2),1,3);commit()};let scaleEditActive=false;
  $('bubbleScaleRange').oninput=e=>{if(!scaleEditActive){checkpoint();scaleEditActive=true;}model.bubbleScale=clamp(num(e.target.value,1),.45,2.4);renderCanvas()};
  $('bubbleScaleRange').onchange=e=>{if(!scaleEditActive){checkpoint();model.bubbleScale=clamp(num(e.target.value,1),.45,2.4);}scaleEditActive=false;notify();renderInspector()};$('overlayBtn').onclick=$('importPlanBtn').onclick=()=>{if(model.underlay){pane='canvas';selection={kind:'underlay',id:null};render()}else $('underlayFile').click()};$('underlayFile').onchange=e=>{importUnderlay(e.target.files?.[0]);e.target.value=''};$('editZonesCanvasBtn').onclick=$('editZonesMatrixBtn').onclick=manageZones;$('undoBtn').onclick=undo;$('exportSvgBtn').onclick=exportSVG;$('addZoneBtn').onclick=manageZones;
-const svg=$('diagram');svg.ondblclick=e=>{const el=e.target.closest('[data-note]');if(el){const n=model.notes.find(n=>n.id===el.dataset.note);if(n)startNoteInline(n);}};svg.onpointerdown=pointerDown;svg.onpointermove=pointerMove;svg.onpointerup=pointerUp;svg.onpointercancel=()=>{drag=null;render()};document.addEventListener('keydown',keydown);
+const svg=$('diagram');svg.ondblclick=e=>{const el=e.target.closest('[data-note]');if(el){const n=model.notes.find(n=>n.id===el.dataset.note);if(n)startNoteInline(n);}};svg.onpointerdown=pointerDown;svg.onpointermove=pointerMove;svg.onpointerup=pointerUp;svg.onpointercancel=pointerCancel;document.addEventListener('keydown',keydown);
 // Allow mouse-wheel zoom without stealing document scroll from the Program / Matrix tables.
 svg.addEventListener('wheel',e=>{e.preventDefault();const p=svgPoint(e),factor=e.deltaY>0?1.08:1/1.08;const old=model.view||{x:0,y:0,w:W,h:H},newW=clamp(old.w*factor,250,4000),newH=newW*H/W;model.view={x:p.x-(p.x-old.x)*newW/old.w,y:p.y-(p.y-old.y)*newH/old.h,w:newW,h:newH};renderCanvas()},{passive:false});
 }
