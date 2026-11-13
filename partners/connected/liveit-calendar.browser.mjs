@@ -280,10 +280,14 @@ try{
   await a.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentWindow?.LiveItDemo?.getProjectionCount()===1,null,{timeout:45000});
   await live.locator('[data-action="scope"][data-scope="work"]').first().click();
   await live.locator('[data-action="nav"][data-view="calendar"]:visible').first().click();
-  assert.equal(await live.locator('.calendar-mark').filter({hasText:'App folder trip'}).count(),0);
+  await live.locator('[data-action="calendar-mode"][data-mode="month"]').click();
+  await live.locator('.calendar-cell[data-date="'+eventStart+'"]').click();
+  assert.equal(await live.locator('.feed-title').filter({hasText:'App folder trip'}).count(),0);
   await live.locator('[data-action="scope"][data-scope="personal"]').first().click();
   for(const day of [eventStart,eventMiddle,eventEnd]){
-   await live.locator('.calendar-cell[data-date="'+day+'"]').getByText(/App folder trip/).waitFor();
+   await live.locator('[data-action="calendar-mode"][data-mode="month"]').click();
+   await live.locator('.calendar-cell[data-date="'+day+'"]').click();
+   await live.locator('.feed-title').filter({hasText:'App folder trip'}).waitFor();
   }
   b.page.once('dialog',dialog=>dialog.accept());
   await otherTravel.locator('#modal-close').click();
@@ -302,7 +306,7 @@ try{
    console.error('LIVEIT_TRIP_DELETE_STATE',await a.page.evaluate(()=>document.visibilityState),await live.locator('#travelCalendarStatus').textContent(),a.errors);
    throw error;
   });
-  assert.equal(await live.locator('.calendar-mark').filter({hasText:'App folder trip'}).count(),0);
+  assert.equal(await live.locator('.feed-title').filter({hasText:'App folder trip'}).count(),0);
   console.log('TRAVELIT_AUTOMATIC_WORKSPACE_AND_LIVEIT_PERSONAL_SPAN_'+engine.name().toUpperCase()+'_PASS');
 
   assert.deepEqual(a.errors,[]);assert.deepEqual(b.errors,[]);
