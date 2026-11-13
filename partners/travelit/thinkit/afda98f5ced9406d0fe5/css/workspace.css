@@ -4,7 +4,7 @@ html[data-suite-app="travelit"][data-nav-open="true"] .sidebar{display:flex}
 html[data-suite-app="travelit"] .app-main{margin-left:0;width:100%;min-width:0}
 html[data-suite-app="travelit"] .mobile-nav{display:none}
 html[data-suite-app="travelit"] .app-footer{display:none}
-html[data-suite-app="travelit"] .topbar{min-height:60px;padding:8px 310px 8px 16px;gap:12px;position:sticky;top:0;z-index:25}
+html[data-suite-app="travelit"] .topbar{min-height:60px;height:auto;box-sizing:border-box;flex-wrap:wrap;padding:8px 16px;gap:8px 12px;position:sticky;top:0;z-index:25}
 html[data-suite-app="travelit"] .topbar .top-actions{gap:8px}
 html[data-suite-app="travelit"] .topbar .conn-pill,html[data-suite-app="travelit"] .button-today{display:none}
 html[data-suite-app="travelit"] main{padding:14px 18px 24px;max-width:none;margin:0}
@@ -68,7 +68,7 @@ html[data-suite-app="travelit"] .map-editing .button{padding:5px 9px;min-height:
 .budget-metrics strong{display:block;font-size:24px}
 .packing-groups{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:16px;margin:12px 0}
 .packing-groups label{display:block;padding:6px 0;font-size:15px}
-@media(max-width:1000px){html[data-suite-app="travelit"] .topbar{padding-right:285px}.workspace-navigation>strong{display:none}html[data-suite-app="travelit"] .topbar #quick-save{display:none}}
+@media(max-width:1000px){html[data-suite-app="travelit"] .topbar{padding-right:12px}.workspace-navigation>strong{display:none}html[data-suite-app="travelit"] .topbar #quick-save{display:block}}
 @media(max-width:720px){html[data-suite-app="travelit"] .topbar{padding:8px 12px}.trip-select-label{max-width:100%;width:100%}.trip-command-bar .row{width:100%}html[data-suite-app="travelit"] main{padding:10px}.packing-groups{grid-template-columns:1fr 1fr}.gantt-table{font-size:15px}html[data-suite-app="travelit"] .street-map-frame{height:calc(100dvh - 160px)}html[data-suite-app="travelit"] .topbar #quick-save{display:block}.trip-title-row h2{max-width:100%}}
 
 html[data-suite-app="travelit"][data-workspace-view="map"] .section-head{margin:4px 0 8px}

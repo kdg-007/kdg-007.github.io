@@ -174,6 +174,10 @@
    if(popup&&!popup.hidden&&!inside(doc.getElementById('diMenuBar'))){const trigger=doc.querySelector('#diMenuTabs [aria-expanded=true]');if(trigger){trigger.click();if(escape)trigger.focus();}closed=true;}
    const more=doc.getElementById('more-menu');
    if(more&&!more.hidden&&!inside(more)&&!inside(doc.getElementById('more-trigger'))){more.hidden=true;doc.getElementById('more-trigger')?.setAttribute('aria-expanded','false');closed=true;}
+   const navigation=doc.getElementById('navigation-toggle');
+   if(navigation&&doc.documentElement.dataset.navOpen==='true'&&!inside(doc.querySelector('.sidebar'))&&!inside(navigation)){
+    doc.documentElement.dataset.navOpen='false';navigation.setAttribute('aria-expanded','false');if(escape)navigation.focus();closed=true;
+   }
   }
   return closed;
  }
@@ -186,6 +190,19 @@
   doc.addEventListener('click',event=>{
    const menu=doc.getElementById('connected-apps-list');
    if(menu?.contains(event.target)&&event.target.closest('a,button'))queueMicrotask(()=>{menu.hidden=true;doc.getElementById('connected-apps-toggle')?.setAttribute('aria-expanded','false');});
+  },true);
+  doc.addEventListener('toggle',event=>{
+   const menu=event.target;
+   if(!menu.matches?.('details.action-menu,details.note-command-menu,details.apps-menu')||!menu.open)return;
+   const popup=menu.querySelector('.action-menu-items');if(!popup)return;
+   // Details menus can sit at either viewport edge (especially on phones).
+   popup.style.translate='';popup.style.top='';popup.style.bottom='';popup.style.maxHeight='';
+   const view=doc.defaultView,rect=popup.getBoundingClientRect(),margin=12;
+   const shift=rect.width>view.innerWidth-2*margin?margin-rect.left:Math.min(0,view.innerWidth-margin-rect.right)+Math.max(0,margin-rect.left);
+   popup.style.translate=shift+'px 0';
+   const below=view.innerHeight-rect.top-margin,above=menu.getBoundingClientRect().top-margin;
+   if(below<150&&above>below){popup.style.top='auto';popup.style.bottom='calc(100% + 5px)';popup.style.maxHeight=Math.max(44,above)+'px';}
+   else popup.style.maxHeight=Math.max(44,below)+'px';
   },true);
   const scan=()=>doc.querySelectorAll('iframe').forEach(frame=>{
    if(!frame.dataset.dismissWired){frame.dataset.dismissWired='true';frame.addEventListener('load',()=>{try{wire(frame.contentDocument);}catch{}});}

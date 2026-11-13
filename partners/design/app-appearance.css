@@ -259,3 +259,34 @@ html[data-app-scheme] .app-appearance-dialog {
 html[data-appearance-embedded][data-suite-app="thinkit"] .document-title-wrap .save-status{
  max-width:100%!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+
+/* Connected controls reserve only their measured width on shared desktop rows.
+   Compact screens use the separate shell row and retain the full app width. */
+@media(max-width:1099px){
+ html[data-appearance-embedded] .topbar{padding-right:14px!important}
+}
+@media(min-width:1100px){
+ html[data-appearance-embedded][data-suite-app="liveit"] .topbar{
+  height:auto;min-height:64px;flex-wrap:wrap;gap:6px 10px;padding-block:8px;
+ }
+ html[data-appearance-embedded][data-suite-app="liveit"] .header-nav{
+  order:0;flex:0 1 auto;min-width:0;max-width:100%;overflow-x:auto;
+ }
+ html[data-appearance-embedded][data-suite-app="liveit"] .brand{min-width:90px}
+ html[data-appearance-embedded][data-suite-app="liveit"] .header-search{flex:1 1 140px;min-width:100px;max-width:190px}
+ html[data-appearance-embedded][data-suite-app="thinkit"] .topbar{height:auto;flex-wrap:wrap;row-gap:6px}
+}
+html[data-appearance-embedded][data-suite-app="thinkit"] .document-title-wrap{min-width:0;flex:1 1 220px}
+html[data-appearance-embedded][data-suite-app="thinkit"] #docName{min-width:0;max-width:100%;box-sizing:border-box}
+html[data-suite-app="liveit"] .workspace-context-banner{flex-wrap:wrap;gap:4px 12px}
+@media(max-width:600px){
+ html[data-suite-app="liveit"] .workspace-context-banner :is(#workspaceSyncStatus,#calendarSyncStatus){flex:1 1 100%;font-size:12px;line-height:1.4}
+}
+html[data-suite-app="travelit"] .workspace-navigation{flex:1 1 200px;min-width:0;flex-wrap:wrap;gap:8px}
+html[data-suite-app="travelit"] .workspace-navigation select{min-width:0;max-width:100%}
+html[data-suite-app="travelit"] .action-menu-items{box-sizing:border-box;max-width:min(400px,calc(100vw - 24px));overscroll-behavior:contain}
+@media(min-width:1100px) and (max-width:1500px){
+ html[data-appearance-embedded][data-suite-app="liveit"] .topbar{column-gap:6px}
+ html[data-appearance-embedded][data-suite-app="liveit"] .top-spacer{display:none}
+ html[data-appearance-embedded][data-suite-app="liveit"] .header-search{flex:1 1 100px;min-width:100px;max-width:140px}
+}
