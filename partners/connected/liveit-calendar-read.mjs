@@ -6,7 +6,7 @@ export async function readCalendarNotes(library,decode){
  const items=(await library.list()).filter(item=>item.source===CALENDAR_SOURCE&&item.tags?.includes(CALENDAR_TAG)&&!item.duplicateOf);
  const cache=caches.get(library)||new Map();
  caches.set(library,cache);
- const rows=[];
+ const rows=[],unavailableIds=[];
  let cursor=0,unavailable=0;
  await Promise.all(Array.from({length:Math.min(items.length,4)},async()=>{
   while(cursor<items.length){
@@ -21,8 +21,8 @@ export async function readCalendarNotes(library,decode){
      cache.set(item.id,entry);
     }
     rows.push(structuredClone(entry.row));
-   }catch{unavailable++;}
+   }catch{unavailable++;unavailableIds.push(item.id);}
   }
  }));
- return {rows,unavailable};
+ return {rows,unavailable,unavailableIds};
 }

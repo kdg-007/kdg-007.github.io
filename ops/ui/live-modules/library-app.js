@@ -1,4 +1,4 @@
-import { readCalendarNotes } from "/partners/connected/liveit-calendar-read.mjs?v=1";
+import { readCalendarNotes } from "/partners/connected/liveit-calendar-read.mjs?v=recovery-1";
 import { CALENDAR_SOURCE as ft, CALENDAR_TAG as mt, eventRecord as Qe, eventSignature as Fe, eventNoteId as Mt, eventEnvelope as $i, readEventEnvelope as $t } from "/partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1";
 import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=2";
 import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=liveit-auto-1";
@@ -34,7 +34,7 @@ async function _i(e, t, i) {
 function Hi({ frame: e, getLibrary: t, getTarget: i, canSync: o = () => true }) {
   let n = false, r = false, s = false;
   async function p() {
-    if (n) return;
+    if (n || document.hidden || !navigator.onLine) return;
     if (r) {
       s = true;
       return;
@@ -52,14 +52,15 @@ function Hi({ frame: e, getLibrary: t, getTarget: i, canSync: o = () => true }) 
       let b = await i(), y = () => !n && t() === h;
       if (!await g.bind(b)) return;
       g.status("syncing", "Syncing events with KeepIt\u2026");
-      let { rows: I, unavailable: missing } = await readCalendarNotes(h, _e);
+      let { rows: I, unavailable: missing, unavailableIds } = await readCalendarNotes(h, _e);
       if (!y() || !await g.merge(I, b) || !y()) return;
-      if (missing) {
-        g.status("error", missing + " calendar item(s) could not be read. Saved events are retained. Retry sync.");
-        return;
-      }
+      const unread = new Set(unavailableIds);
       for (let c of g.pending(b)) {
         if (!y() || h.pending || !o() || !g.canSync()) return;
+        // Do not overwrite an unread original. Unrelated events can still save.
+        const itemId = await Mt(c.record.id);
+        if (!y() || !o() || !g.canSync()) return;
+        if (unread.has(itemId)) continue;
         let w = I.find((N) => N.record.id === c.record.id);
         if (w && Fe(w.record) === Fe(c.record)) {
           await g.ack(c.record.id, c.signature, w, b);
@@ -73,6 +74,10 @@ function Hi({ frame: e, getLibrary: t, getTarget: i, canSync: o = () => true }) 
         if (!y()) return;
         await g.ack(c.record.id, c.signature, v, b);
       }
+      if (missing) {
+        g.status("error", missing + " saved event(s) could not be read. Other changes continue syncing; affected events are retained. Retry sync.");
+        return;
+      }
       let C = g.pending(b).length, l = g.conflicts();
       g.status(l ? "conflict" : C ? "pending" : "synced", l ? "Calendar changes need review" : C ? "Events waiting to sync" : "Events saved in KeepIt \xB7 available on your devices");
     } catch (h) {
@@ -82,12 +87,12 @@ function Hi({ frame: e, getLibrary: t, getTarget: i, canSync: o = () => true }) 
     }
   }
   let d = () => {
-    p();
+    return p();
   }, m = setInterval(d, 15e3), f = () => {
     e.contentWindow.addEventListener("liveit-calendar-change", d), e.contentWindow.addEventListener("online", d), d();
   };
-  return e.addEventListener("load", f), window.addEventListener("keepit-connection-state", d), window.addEventListener("focus", d), document.addEventListener("visibilitychange", d), { sync: d, dispose() {
-    n = true, clearInterval(m), window.removeEventListener("keepit-connection-state", d), window.removeEventListener("focus", d), document.removeEventListener("visibilitychange", d), e.removeEventListener("load", f);
+  return e.addEventListener("load", f), window.addEventListener("keepit-connection-state", d), window.addEventListener("focus", d), window.addEventListener("online", d), document.addEventListener("visibilitychange", d), { sync: d, dispose() {
+    n = true, clearInterval(m), window.removeEventListener("keepit-connection-state", d), window.removeEventListener("focus", d), window.removeEventListener("online", d), document.removeEventListener("visibilitychange", d), e.removeEventListener("load", f);
     try {
       e.contentWindow.removeEventListener("liveit-calendar-change", d);
     } catch {
