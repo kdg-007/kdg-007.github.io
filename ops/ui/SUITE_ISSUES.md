@@ -18,6 +18,7 @@ Updated 2026-11-13. “Implemented” describes shipped code and checks; it does
 | Delete trips, remove samples, destinations in Explore | Implementations exist | Final behavior audit against user comments |
 | Trip sequence and travel documents / KeepIt links | Direct up/down controls reorder flexible activities; imported codes and order survive reopening; timed/fixed activities are protected. Dependencies and canonical KeepIt references pass domain checks | Full outline/mind-map rearranging and actual document-opening workflows |
 | ThinkIt collapsible hierarchy | H5 integrated in the connected suite | Remaining real-project observations |
-| ThinkIt contrast, horizontal/vertical print rulers, BMC rich text/images/tables/notes, outline reorder | Implementations exist in prior releases | Print accuracy and complete feature audit; not all closed |
+| ThinkIt horizontal/vertical print rulers and fit to page | Millimetre artwork-size readout; physical scale retained across preview zoom; paper/margin/ruler choices survive reopening; consistent title sizing; print-time recalculation; 320-pixel controls and preview checked | Physical printer calibration remains unverified |
+| ThinkIt contrast, BMC rich text/images/tables/notes, outline reorder | Implementations exist in prior releases | Complete feature audit; not all closed |
 
 No new decision gate is needed for these engineering fixes. Ask for the owner's input only for a concrete product choice or account/device access that cannot be verified here. Do not turn this ledger into another manual test checklist for the owner.
