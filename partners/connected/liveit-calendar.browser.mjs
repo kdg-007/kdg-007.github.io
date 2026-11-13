@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {resolve,join,extname,sep} from 'node:path';
 import {createRequire} from 'node:module';
 import {connectionFixture} from './owner-connection-fixture.mjs';
+import {checkMapLifecycle} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/map-lifecycle.browser.mjs';
 const require=createRequire(resolve(process.cwd(),'package.json')),{chromium,webkit}=require('playwright');
 const root=resolve('.'),temp=mkdtempSync(join(tmpdir(),'owner-connect-'));
 execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(temp,'key'),'-out',join(temp,'cert'),'-days','1','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1'],{stdio:'ignore'});
@@ -21,7 +22,7 @@ let browser;
 try{
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));const origin='https://127.0.0.1:'+server.address().port;
  for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
-  browser=await engine.launch({headless:true});const fixture=connectionFixture(origin,{writable:true}),contexts=[];uploadFixture=fixture;fixture.uploadEndpoint=origin+'/__calendar-upload';
+  browser=await engine.launch({headless:true});await checkMapLifecycle(browser,origin);const fixture=connectionFixture(origin,{writable:true}),contexts=[];uploadFixture=fixture;fixture.uploadEndpoint=origin+'/__calendar-upload';
   async function device(){const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:393,height:852},isMobile:true,hasTouch:true});contexts.push(context);const network={offline:false,expireNextWrite:false,expiredWrites:0};await context.route('**/*',route=>{
     const host=new URL(route.request().url()).hostname;
     if(network.offline&&['graph.microsoft.com','fixture.storage.live.com'].includes(host))return route.abort();
