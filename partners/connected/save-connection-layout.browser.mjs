@@ -121,7 +121,7 @@ async function headers(browser){
    const header=app==='keepit'?'.library-top':'.topbar';
    if(app!=='keepit')await page.locator('iframe').first().waitFor();
    const frame=app==='keepit'?page:page.frameLocator('iframe').first();await frame.locator(header).waitFor();
-   if(app==='thinkit'){await frame.locator('#diStartCreate').click();await frame.getByRole('button',{name:'Create blank project',exact:true}).click();}
+   if(app==='thinkit'){await frame.locator('#diStartCreate').click();await frame.getByRole('button',{name:'Create blank project',exact:true}).click();await frame.locator('#diMenuTabs [data-tab=File]').click();await frame.locator('body').press('Escape');}
    await page.evaluate(()=>window.dispatchEvent(new CustomEvent('keepit-connection-state',{detail:{phase:'connected',message:'OneDrive / Very long folder path / 06 Database / 05 Knowledge Base / KeepIt connected'}})));
    for(const width of [320,393,744,1100,1280,1600,2048]){
     await page.setViewportSize({width,height:900});await page.evaluate(()=>new Promise(ok=>requestAnimationFrame(()=>requestAnimationFrame(ok))));
@@ -132,6 +132,14 @@ async function headers(browser){
      return {left:bar.left,right:bar.right,width:innerWidth,overlap};
     },app);
     assert.ok(geometry.left>=0&&geometry.right<=width+1,app+' bar '+JSON.stringify(geometry));assert.deepEqual(geometry.overlap,[],app+' '+width+' controls overlap');
+    if(app==='thinkit'){
+     const overflowing=await frame.locator('.di-ribbon-btn').evaluateAll(buttons=>buttons.filter(button=>{
+      const label=button.lastElementChild,range=button.ownerDocument.createRange();range.selectNodeContents(label);
+      const text=range.getBoundingClientRect(),box=button.getBoundingClientRect();
+      return text.left<box.left-1||text.right>box.right+1||text.top<box.top-1||text.bottom>box.bottom+1;
+     }).map(button=>button.title));
+     assert.deepEqual(overflowing,[],'ThinkIt ribbon labels escape their buttons at '+width);
+    }
     if(process.env.STABILITY_PREVIEW_DIR&&[393,2048].includes(width)){mkdirSync(process.env.STABILITY_PREVIEW_DIR,{recursive:true});await page.screenshot({path:join(process.env.STABILITY_PREVIEW_DIR,app+'-'+width+'.png'),clip:{x:0,y:0,width,height:220}});}
    }
    await page.locator('#connected-apps-toggle').click();await frame.locator(header).click({position:{x:10,y:10}});assert.equal(await page.locator('#connected-apps-list').isHidden(),true);

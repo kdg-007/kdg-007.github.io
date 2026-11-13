@@ -3164,7 +3164,7 @@ function diCloseMenu(restoreFocus=false){const previous=diMenuOpen;diMenuOpen=''
 function diFocusMenuItem(toEnd=false){const items=[...$('diMenuPopup').querySelectorAll('button.di-menu-item:not([disabled])')];(toEnd?items.at(-1):items[0])?.focus();}
 function diStepMenuItem(direction){const items=[...$('diMenuPopup').querySelectorAll('button.di-menu-item:not([disabled])')];if(!items.length)return;const i=items.indexOf(document.activeElement);items[(i+direction+items.length)%items.length]?.focus();}
 
-function diRibbonButton(id){const c=diCommands[id];if(!c||!diEnabled(c))return null;const b=document.createElement('button');b.type='button';b.className='di-ribbon-btn';b.dataset.dcmd=id;b.title=c.label+(c.shortcut?' · '+c.shortcut:'');b.innerHTML=`<span class="di-ribbon-icon"></span><span></span>`;b.children[0].textContent=c.icon;b.children[1].textContent=c.label.replace(/…/g,'').replace(/\s*\/.*$/,'').replace(/ Diagram$/,'');return b}
+function diRibbonButton(id){const c=diCommands[id];if(!c||!diEnabled(c))return null;const b=document.createElement('button');b.type='button';b.className='di-ribbon-btn';b.dataset.dcmd=id;b.title=c.label+(c.shortcut?' · '+c.shortcut:'');b.setAttribute('aria-label',c.label);b.innerHTML=`<span class="di-ribbon-icon"></span><span></span>`;b.children[0].textContent=c.icon;const shortLabels={'file.save':'Save locally','file.saveAs':'Save as new','file.recovery':'Restore version'};b.children[1].textContent=shortLabels[id]||c.label.replace(/…/g,'').replace(/\s*\/.*$/,'').replace(/ Diagram$/,'');return b}
 function diRibbonSelect(options,value,change,shortLabel){const row=document.createElement('label');row.className='di-inline-check';row.textContent=shortLabel+' ';const el=document.createElement('select');el.className='di-ribbon-select';for(const [v,label] of options){const o=document.createElement('option');o.value=v;o.textContent=label;el.append(o)}el.value=value;el.onchange=e=>change(e.target.value);row.append(el);return row}
 function diRibbonCheck(label,checked,change){const l=document.createElement('label');l.className='di-inline-check';const c=document.createElement('input');c.type='checkbox';c.checked=checked;c.onchange=e=>change(e.target.checked);l.append(c,document.createTextNode(label));return l}
 function diRenderRibbon(){
@@ -3293,6 +3293,9 @@ function diInitShell(){
  $('diRibbonToggle').onclick=diToggleRibbon;$('diFocusToggle').onclick=diToggleFocus;$('diFocusExit').onclick=diExitCanvasMode;
  $('diInspectorToggle').onclick=()=>diPanel('inspector');$('diActiveMode').onclick=diMode;
  document.addEventListener('pointerdown',e=>{if(diMenuOpen&&!e.target.closest('#diMenuBar'))diCloseMenu()},true);
+ // Pointer events do not cross iframe boundaries. Dismiss menus when focus
+ // moves to the suite header or an embedded editor such as the BMC canvas.
+ window.addEventListener('blur',()=>{if(diMenuOpen)diCloseMenu()});
  document.addEventListener('keydown',e=>{
    if(!$('diStartScreen').hidden)return;
    if(activeModal)return;

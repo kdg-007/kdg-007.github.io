@@ -27,5 +27,9 @@ jobs:
           npx playwright install --with-deps chromium webkit
       - name: Verify deployed bytes and Microsoft return with synthetic services
         run: node partners/connected/owner-deployed.test.mjs
+      - name: Verify readable toolbar labels and menu dismissal across screen sizes
+        env:
+          STABILITY_HEADERS_ONLY: "1"
+        run: node partners/connected/save-connection-layout.browser.mjs
       - name: Verify cross-device saves, offline recovery and expired-write renewal
         run: node partners/connected/liveit-calendar.browser.mjs
