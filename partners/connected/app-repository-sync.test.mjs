@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {test} from 'node:test';
 import {createSyncBindings} from './app-sync-bindings.mjs';
-import {createAppRepository,hashText,newFileKey,projectFileKey,travelWorkspaceKey,findTravelWorkspace} from './app-repository-store.mjs';
+import {createAppRepository,hashText,newFileKey,projectFileKey,travelWorkspaceKey,findTravelWorkspace,liveWorkspaceKey,findLiveWorkspace} from './app-repository-store.mjs';
 
 // Exercise the production coordinator, not a reimplementation of its decisions.
 // Browser mounting is covered separately; these adapters model local editing and
@@ -33,7 +33,7 @@ function tab(f,payload='original',session=storage()){
  const messages=[],copies=[];
  const client={capture:async()=>({...state,token:state.revision}),syncStatus:message=>messages.push(message)};
  const env={app:f.app,folder:f.app,contentLabel:'Project',loadBinding:(...args)=>bindings.load(...args),saveBinding:value=>bindings.save(value),adapter:()=>client,
- connected:async()=>({scope:f.scope,repo:f.repo,isCurrent:f.isCurrent}),hashText,newFileKey,projectFileKey,travelWorkspaceKey,findTravelWorkspace,lastRead:0,
+ connected:async()=>({scope:f.scope,repo:f.repo,isCurrent:f.isCurrent}),hashText,newFileKey,projectFileKey,travelWorkspaceKey,findTravelWorkspace,liveWorkspaceKey,findLiveWorkspace,lastRead:0,
  status:{textContent:''},saveSession:crypto.randomUUID(),resyncRequested:false,task:null,panel:{querySelectorAll:()=>[]},queueMicrotask,console,
  remember:async(scope,version)=>{copies.push(version);},Date,followups:0};
  env.openCopy=async(version,scope,isCurrent,{background=false}={})=>{
@@ -122,4 +122,65 @@ test('tab isolation also protects TravelIt and LiveIt workspace saves',async()=>
   assert.equal((await f.repo.openSingle(first.key)).version.payload,'newer workspace');
   assert.equal(older.state.payload,'independent local edit');
  }
+});
+
+test('LiveIt starts saving automatically and a fresh device reopens its workspace',async()=>{
+ const f=fixture('liveit'),mac=tab(f,'tasks and journal');
+ await mac.sync({quiet:true});const key=liveWorkspaceKey(f.scope);
+ assert.equal((await f.repo.openSingle(key)).version.payload,'tasks and journal');
+ const phone=tab({...f,shared:storage()},'blank');phone.state.identity='phone';phone.state.empty=true;
+ await phone.sync({quiet:true});assert.equal(phone.state.payload,'tasks and journal');
+ phone.state.payload='phone task edit';await phone.sync({quiet:true});
+ mac.env.lastRead=0;await mac.sync({quiet:true});assert.equal(mac.state.payload,'phone task edit');
+ assert.equal((await f.repo.list()).length,1);
+});
+test('LiveIt preserves independently created offline work on a second device',async()=>{
+ const f=fixture('liveit'),mac=tab(f,'Mac journal');await mac.sync({quiet:true});
+ const phone=tab({...f,shared:storage()},'offline phone task');phone.state.identity='phone';
+ await phone.sync({quiet:true});
+ assert.equal(phone.state.payload,'offline phone task');assert.match(phone.messages.at(-1),/review/);
+ assert.equal((await f.repo.openSingle(liveWorkspaceKey(f.scope))).version.payload,'Mac journal');
+ assert.equal(phone.bindings.load(),null);
+});
+test('LiveIt automatically reopens one legacy manual workspace, without guessing among copies',async()=>{
+ const f=fixture('liveit'),old=await seed(f,'legacy journal'),phone=tab({...f,shared:storage()},'blank');phone.state.empty=true;
+ await phone.sync({quiet:true});assert.equal(phone.state.payload,'legacy journal');assert.equal(phone.bindings.load().key,old.key);
+ const second=newFileKey('Another workspace');await f.repo.save({key:second,parent:'root',title:'Another workspace',payload:'other'});
+ const fresh=tab({...f,shared:storage()},'blank');fresh.state.empty=true;await fresh.sync({quiet:true});
+ assert.equal(fresh.state.payload,'blank');assert.match(fresh.messages.at(-1),/choose/);
+});
+test('LiveIt automatic opening never resurrects a workspace in Trash',async()=>{
+ const f=fixture('liveit'),mac=tab(f,'journal');await mac.sync();const binding=mac.bindings.load();await f.repo.trash(binding.key,binding.revision);
+ const phone=tab({...f,shared:storage()},'offline entry');await phone.sync({quiet:true});
+ assert.equal(phone.state.payload,'offline entry');assert.match(phone.messages.at(-1),/Trash/);
+ assert.equal((await f.repo.openSingle(binding.key)).state,'deleted');
+});
+test('LiveIt reconnect retries an interrupted first save with the same file identity',async()=>{
+ const f=fixture('liveit'),mac=tab(f,'offline tasks');f.setWrite(async()=>{throw Error('offline');});
+ await assert.rejects(()=>mac.sync(),/offline/);const key=mac.bindings.load().key;
+ f.setWrite(null);await mac.sync();assert.equal(mac.bindings.load().key,key);assert.equal((await f.repo.list()).length,1);
+});
+
+function liveAdapter(){
+ const source=readFileSync(new URL('../liveit/thinkit/connected-w18e-c15396/app-8.js',import.meta.url),'utf8');
+ const code=source.slice(source.indexOf('  async function captureKeepItLiveIt(){'),source.indexOf('  window.liveItOwnedAccess='));
+ const event={id:'event',type:'event',opId:'event-op',date:'2026-11-13'},task={id:'task',type:'task',opId:'task-op'};
+ let snapshot={stores:{meta:[{revision:5,initializedAt:'epoch'}],records:[event,task],spaces:[],note_associations:[{id:'event-link',entityType:'event'},{id:'task-link',entityType:'task'}],note_association_ops:[{associationId:'event-link'},{associationId:'task-link'}],operations:[{opId:'event-op'},{opId:'task-op'}],drafts:[{text:'unfinished draft'}]}};
+ const repository={revision:5,exportContents:async()=>structuredClone(snapshot),restoreContents:async incoming=>{snapshot=structuredClone(incoming);repository.revision++;snapshot.stores.meta[0].revision=repository.revision;},loadConsistentSnapshot:async()=>({data:{},drafts:{work:null,personal:null},parked:{work:[],personal:[]}})};
+ const env={window:{},ready:Promise.resolve(),storageReady:true,repository,composer:{open:false},details:{open:false},$:()=>null,workspaceSyncMessage:'',storeVerification(){},cachedDrafts:{},parkedDrafts:{},render(){},data:{}};
+ vm.runInNewContext(code,env);return {client:env.window.keepItAppFiles,repository,snapshot:()=>snapshot};
+}
+test('LiveIt workspace transfer retains calendar events, their links, and unfinished drafts',async()=>{
+ const t=liveAdapter(),before=await t.client.capture(),payload=JSON.parse(before.payload);
+ assert.deepEqual(payload.records.map(r=>r.id),['task']);assert.deepEqual(payload.notes.map(r=>r.id),['task-link']);
+ payload.records=[{id:'journal',type:'journal',opId:'journal-op'}];payload.notes=[];payload.noteOps=[];
+ await t.client.open(JSON.stringify(payload),before.token);
+ assert.deepEqual(t.snapshot().stores.records.map(r=>r.id),['event','journal']);
+ assert.deepEqual(t.snapshot().stores.note_associations.map(r=>r.id),['event-link']);
+ assert.deepEqual(t.snapshot().stores.drafts,[{text:'unfinished draft'}]);
+});
+test('LiveIt refuses an automatic open if local records changed since capture',async()=>{
+ const t=liveAdapter(),before=await t.client.capture();t.repository.revision=6;
+ await assert.rejects(()=>t.client.open(before.payload,4),/workspace changed/);
+ assert.equal(t.snapshot().stores.records[1].id,'task');
 });

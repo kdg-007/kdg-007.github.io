@@ -1,4 +1,4 @@
-import {APP_FOLDERS,createAppRepository,hashText,newFileKey,travelWorkspaceKey,findTravelWorkspace,projectFileKey} from './app-repository-store.mjs?v=trip-sync-1';
+import {APP_FOLDERS,createAppRepository,hashText,newFileKey,travelWorkspaceKey,findTravelWorkspace,projectFileKey,liveWorkspaceKey,findLiveWorkspace} from './app-repository-store.mjs?v=liveit-auto-1';
 import {mountTravelCalendar} from './travel-calendar.mjs?v=1';
 import {createSyncBindings} from './app-sync-bindings.mjs?v=1';
 
@@ -168,7 +168,6 @@ export function mountAppRepository({getLibrary}){
   const current=await client.capture();if(!current){if(quiet)return;throw Error('Open a saved workspace or project first.');}
   const cloud=await connected();
   let binding=loadBinding(current.identity,cloud.scope);
-  if(!newFile&&!binding&&!['travelit','thinkit'].includes(app)){if(quiet)return;throw Error('Save your current work as a KeepIt file first.');}
   if(!newFile&&binding?.trashed&&binding.identity===current.identity){status.textContent='This saved file is in Trash. Restore it or save a new copy to resume sync.';return;}
   if(!newFile&&app==='thinkit'&&(!binding||binding.identity!==current.identity)){
    if(current.empty)return;
@@ -181,10 +180,10 @@ export function mountAppRepository({getLibrary}){
     }else{status.textContent='This project has another saved version in KeepIt. Open ThinkIt files to review it.';return;}
    }else{binding={scope:cloud.scope,key,revision:'root',digest:'',identity:current.identity};saveBinding(binding);}
   }
-  if(!newFile&&!binding&&app==='travelit'){
+  if(!newFile&&!binding&&['travelit','liveit'].includes(app)){
    if(quiet&&Date.now()-lastRead<15000)return;
    lastRead=Date.now();
-   const found=await findTravelWorkspace(cloud.repo);
+   const found=app==='liveit'?await findLiveWorkspace(cloud.repo,cloud.scope):await findTravelWorkspace(cloud.repo);
    if(found.state==='ready'){
     const digest=await hashText(current.payload);
     if(current.empty){if(await openCopy(found.version,cloud.scope,cloud.isCurrent,{background:true}))adapter()?.syncStatus?.(contentLabel+' opened from KeepIt.');return;}
@@ -192,18 +191,19 @@ export function mountAppRepository({getLibrary}){
      saveBinding({scope:cloud.scope,key:found.version.key,revision:found.version.revision,digest,identity:current.identity});
      adapter()?.syncStatus?.(contentLabel+' saved in KeepIt.');return;
     }
-    adapter()?.syncStatus?.('Trips are saved on this device. Open TravelIt files to review the KeepIt workspace.');
-    if(!quiet)throw Error('This device has its own trips. Open the KeepIt workspace explicitly to keep a local recovery copy.');
+    const message=contentLabel+' saved on this device · Open '+folder+' files to review the KeepIt workspace.';
+    status.textContent=message;adapter()?.syncStatus?.(message);
+    if(!quiet)throw Error('This device has its own work. Open the KeepIt workspace explicitly to keep a local recovery copy.');
     return;
    }
-   if(found.state==='deleted'){status.textContent='The TravelIt workspace is in Trash. Restore it in TravelIt files.';return;}
+   if(found.state==='deleted'){status.textContent='The '+folder+' workspace is in Trash. Restore it in '+folder+' files.';adapter()?.syncStatus?.(status.textContent);return;}
    if(found.state==='review'){
-    adapter()?.syncStatus?.('Open TravelIt files to choose a KeepIt workspace.');
-    if(!quiet)throw Error('Choose which TravelIt workspace to open from KeepIt.');
+    adapter()?.syncStatus?.('Open '+folder+' files to choose a KeepIt workspace.');
+    if(!quiet)throw Error('Choose which '+folder+' workspace to open from KeepIt.');
     return;
    }
-   if(current.empty){adapter()?.syncStatus?.('No saved TravelIt workspace found in KeepIt.');return;}
-   const key=travelWorkspaceKey(cloud.scope);
+   if(current.empty){adapter()?.syncStatus?.('No saved '+folder+' workspace found in KeepIt.');return;}
+   const key=app==='liveit'?liveWorkspaceKey(cloud.scope):travelWorkspaceKey(cloud.scope);
    if(!cloud.isCurrent())return;
    binding={scope:cloud.scope,key,revision:'root',digest:'',identity:current.identity};
    saveBinding(binding);
@@ -211,7 +211,7 @@ export function mountAppRepository({getLibrary}){
   if(!newFile&&binding.identity!==current.identity){if(quiet)return;throw Error('Save this work as a new KeepIt file.');}
   const digest=await hashText(current.payload);
   const clean=!newFile&&digest===binding.digest;
-  if(clean&&quiet&&Date.now()-lastRead<(app==='travelit'?15000:60000))return;
+  if(clean&&quiet&&Date.now()-lastRead<(app==='thinkit'?60000:15000))return;
   if(!newFile&&cloud.scope!==binding.scope)throw Error('This file is linked to a different KeepIt folder.');
   if(clean){
    lastRead=Date.now();
@@ -219,7 +219,7 @@ export function mountAppRepository({getLibrary}){
    if(heads.length===1&&heads[0].id!==binding.revision){
     const newer=await cloud.repo.open(binding.key,heads[0].id);
     if(await openCopy(newer,cloud.scope,cloud.isCurrent,{background:true}))status.textContent=contentLabel+' updated from KeepIt.';
-   }else if(heads.length!==1)status.textContent='Review the file versions in KeepIt before continuing.';
+   }else if(heads.length!==1){status.textContent='Review the file versions in KeepIt before continuing.';client.syncStatus?.(status.textContent);}
    else{
     if(!quiet)status.textContent=`Up to date with KeepIt / ${folder}.`;
     client.syncStatus?.(contentLabel+' saved in KeepIt.');
@@ -317,7 +317,13 @@ export function mountAppRepository({getLibrary}){
  window.addEventListener('keepit-connection-state',event=>{if(['connected','signin','choose-folder','error'].includes(event.detail?.phase))resume();});
  window.addEventListener('storage',event=>{if(event.key==='keepit-app-file-binding-v1:travelit')resume();});
  let savedStatus=null,savedObserver=null;
+ let liveDocument=null;
  function observeSaves(){
+  if(app==='liveit'){
+   const frame=appFrame(),doc=frame?.contentDocument;
+   if(doc&&doc!==liveDocument){liveDocument=doc;frame.contentWindow.addEventListener('liveit-workspace-change',resume);}
+   return;
+  }
   if(app!=='thinkit')return;
   const node=appFrame()?.contentDocument?.getElementById('saveStatus');
   if(!node||node===savedStatus)return;savedObserver?.disconnect();savedStatus=node;

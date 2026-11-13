@@ -32,6 +32,7 @@
   }
   // D1 source remains unchanged. LiveIt W1 is local-only and requires IndexedDB to save.
   let data=D.emptyData(C);
+  let workspaceSyncMessage='Tasks and journal saved on this device · Connect KeepIt to sync';
   let calendarSyncState={phase:'offline',message:'Events saved on this device · waiting for OneDrive'};
   let projections=[],tripCalendarNotice='';
   let storageIssue='Opening local IndexedDB…';
@@ -104,7 +105,7 @@
     data=next;
     markBackupStale();
     if (clearDraftWorkspace){cachedDrafts[clearDraftWorkspace]=null;try{parkedDrafts[clearDraftWorkspace]=await repository.listParkedDrafts(clearDraftWorkspace);}catch{ /* commit succeeded; do not report a false save failure */ }}
-    storageIssue='';externalChangeDetected=false;if(!calendarImport&&next.records.some(r=>r._calendarSync?.pending)){calendarSyncState={phase:'pending',message:'Events saved on this device · waiting to sync'};paintCalendarStatus();}if(!calendarImport)window.dispatchEvent(new Event('liveit-calendar-change'));
+    storageIssue='';externalChangeDetected=false;if(!calendarImport&&next.records.some(r=>r._calendarSync?.pending)){calendarSyncState={phase:'pending',message:'Events saved on this device · waiting to sync'};paintCalendarStatus();}if(!calendarImport){workspaceSyncMessage='Tasks and journal saved on this device · KeepIt sync pending';paintWorkspaceStatus();window.dispatchEvent(new Event('liveit-workspace-change'));window.dispatchEvent(new Event('liveit-calendar-change'));}
   }
   async function reloadLatestLibrary(){
     if(!storageReady||!repository){notify('Local database is unavailable; no reload was attempted.');return false;}
@@ -485,9 +486,9 @@
       <section class="right-section"><h2 class="section-label">On this day</h2>${ui.scope==='work'?'<div class="notice">Hidden in Work by default to protect personal memories.</div>':historic.length?historic.map(x=>`<div class="small-record"><button data-action="${x.source==='travelit'?'travel-detail':'detail'}" data-id="${esc(x.id)}">${esc(x.body)}</button><div class="small-sub">${esc(dateShort(x.occurredOn||x.date))} · ${esc((x.occurredOn||x.date).slice(0,4))}</div></div>`).join(''):'<div class="notice">Older memories appear here when recorded.</div>'}</section>
       ${backupProtectionPanel()}
       <section class="right-section" aria-label="Application integration status"><h2 class="section-label">App connections</h2>
-        <div class="notice" role="status"><strong>KeepIt · Separate note owner</strong><p>Short entries remain on this device. An approved KeepIt host is required for native notes; LiveIt cannot certify OneDrive readback.</p>
+        <div class="notice" role="status"><strong>KeepIt · Separate note owner</strong><p>Tasks and journal entries save through your connected KeepIt library. The sync status above shows whether the workspace has reached KeepIt. Native notes use the KeepIt toolbar.</p>
         <strong>TravelIt · Not connected</strong><p>Travel schedules will appear here only after an approved connection. No events have been published.</p></div></section>
-      <section class="right-section"><h2 class="section-label">Storage transparency</h2><div class="notice"><strong>${storageReady?'Saved locally using IndexedDB (this browser profile).':'Local database unavailable; do not close unsaved notes.'}</strong> Short entries and note links stay in this browser. Native notes use KeepIt through the toolbar above; verify each cloud save there. Events sync through your selected KeepIt library; other short records remain on this device. Browser storage can be cleared or evicted. Export a local backup regularly. ${storageIssue?`<br><strong>${esc(storageIssue)}</strong>`:''}</div></section></aside>`;
+      <section class="right-section"><h2 class="section-label">Storage transparency</h2><div class="notice"><strong>${storageReady?'Saved locally using IndexedDB (this browser profile).':'Local database unavailable; do not close unsaved notes.'}</strong> Tasks, journal entries and note links are saved on this device and sync as a workspace through your selected KeepIt library. Events sync separately through the same library. Check both sync statuses above. Native notes use the KeepIt toolbar. Browser storage can be cleared or evicted. Export a local backup regularly. ${storageIssue?`<br><strong>${esc(storageIssue)}</strong>`:''}</div></section></aside>`;
   }
   function render() {
     window.dispatchEvent(new Event('liveit-owned-workspace-render'));
@@ -510,7 +511,7 @@
         <button type="button" class="utility-button mobile-search-toggle" data-action="mobile-search" aria-label="Search ${esc(scopes[ui.scope])} records" aria-expanded="${ui.mobileSearchOpen}" title="Search current workspace">⌕</button><button type="button" class="utility-button density-switch" data-action="density" aria-label="Switch dashboard density" aria-pressed="${ui.density==='compact'}" title="Switch between comfortable and compact layout">${ui.density==='compact'?'Compact':'Comfort'}</button>
       <button type="button" class="utility-button theme-toggle" data-action="theme" aria-label="Switch to ${ui.theme==='dark'?'light':'dark'} mode" title="Switch to ${ui.theme==='dark'?'light':'dark'} mode">${ui.theme==='dark'?'☼':'☾'}</button></div>
       <button class="button primary capture-top" data-action="capture">+ Capture</button></header>
-      <div class="workspace-context-banner" aria-live="polite"><span class="workspace-context-identity">${scopeLabels[ui.scope]}</span><span class="workspace-context-detail">${ui.scope==='work'?'Work records':'Personal records'} · Calendar shows Work + Personal</span><span class="workspace-context-local" id="calendarSyncStatus" role="status" data-phase="${calendarSyncState.phase}">${storageReady?esc(calendarSyncState.message):'Storage unavailable'}</span><span id="travelCalendarStatus" class="small" role="status" hidden></span></div>
+      <div class="workspace-context-banner" aria-live="polite"><span class="workspace-context-identity">${scopeLabels[ui.scope]}</span><span class="workspace-context-detail">${ui.scope==='work'?'Work records':'Personal records'} · Calendar shows Work + Personal</span><span class="workspace-context-local" id="calendarSyncStatus" role="status" data-phase="${calendarSyncState.phase}">${storageReady?esc(calendarSyncState.message):'Storage unavailable'}</span><span id="workspaceSyncStatus" class="small" role="status">${esc(workspaceSyncMessage)}</span><span id="travelCalendarStatus" class="small" role="status" hidden></span></div>
       <div id="calendarSyncConflicts"></div>
       ${externalChangeDetected?`<div class="freshness-banner" role="alert"><strong>Another LiveIt window changed this library.</strong> Your open edits are not automatically merged. Preserve your draft before reloading. <button type="button" class="button secondary" data-action="reload-library">Reload latest library</button></div>`:''}
       ${ui.mobileSearchOpen?`<div class="mobile-search-panel"><label for="mobileSearchField">Search ${esc(scopes[ui.scope])} records</label><input type="search" id="mobileSearchField" autocomplete="off" placeholder="Search current workspace" value="${esc(ui.query)}"/></div>`:''}
@@ -770,7 +771,7 @@
       if(didSwitch){ui.scope=destination;ui.taskKind='all';ui.taskStream='all';ui.query='';ui.category='';ui.mobileMore=false;}
       if(cap.type==='event'){ui.selected=cap.date||todayDate;ui.view='today';}
       else if(didSwitch){ui.view=cap.type==='journal'?'journal':(['task','reminder'].includes(cap.type)?'tasks':'inbox');}
-      applyAppearance();render();notify('Saved in '+scopes[destination]+(didSwitch?' · Now viewing '+scopes[destination]:'')+(cap.type==='event'?'. Saved on this device; event sync is queued for KeepIt.':'. Stored on this device only.'));if(cap.type==='event')window.dispatchEvent(new Event('liveit-calendar-change'));return true;
+      applyAppearance();render();notify('Saved in '+scopes[destination]+(didSwitch?' · Now viewing '+scopes[destination]:'')+(cap.type==='event'?'. Saved on this device; event sync is queued for KeepIt.':'. Saved on this device; KeepIt sync is queued when connected.'));if(cap.type==='event')window.dispatchEvent(new Event('liveit-calendar-change'));return true;
     } catch (err) {
       if(/Data changed in another LiveIt window/i.test(String(err?.message||''))){
         // Preserve a second editor's input when the conflicting window wrote
@@ -1546,7 +1547,8 @@
     const payload=JSON.stringify({schema:'liveit-app-file-v1',records,spaces:stores.spaces,notes,noteOps});
     return {title:'LiveIt workspace',identity:JSON.stringify([meta.initializedAt,meta.resetAt]),token:meta.revision,payload,empty:records.length===0};
   }
-  window.keepItAppFiles=Object.freeze({capture:captureKeepItLiveIt,async open(payload,expected){
+  function paintWorkspaceStatus(){const label=$('#workspaceSyncStatus');if(label)label.textContent=workspaceSyncMessage;}
+  window.keepItAppFiles=Object.freeze({capture:captureKeepItLiveIt,syncStatus(message){workspaceSyncMessage=message;paintWorkspaceStatus();},async open(payload,expected){
     const incoming=JSON.parse(payload);
     if(incoming.schema!=='liveit-app-file-v1'||!Array.isArray(incoming.records)||incoming.records.some(record=>record.type==='event')||!Array.isArray(incoming.notes)||incoming.notes.some(association=>association.entityType==='event')||!Array.isArray(incoming.noteOps))throw Error('Invalid LiveIt workspace file.');
     const local=await captureKeepItLiveIt();

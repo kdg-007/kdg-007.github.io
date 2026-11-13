@@ -158,6 +158,20 @@ export async function findTravelWorkspace(repo,key){
  return repo.openSingle(keys[0]);
 }
 
+export function liveWorkspaceKey(scope){
+ return travelWorkspaceKey(scope).replace('--travelit-workspace','--liveit-workspace');
+}
+export async function findLiveWorkspace(repo,scope){
+ const key=liveWorkspaceKey(scope);
+ if((await repo.heads(key)).length)return repo.openSingle(key);
+ // Existing manually saved workspaces stay usable. Never guess between copies,
+ // unreadable histories, or Trash, and never resurrect a deleted workspace.
+ const files=await repo.list({includeTrashed:true});
+ if(!files.length)return {state:'absent'};
+ if(files.length!==1)return {state:'review'};
+ return repo.openSingle(files[0].key);
+}
+
 export async function projectFileKey(scope,identity,title){
  if(!/^[0-9a-f]{64}$/.test(scope)||typeof identity!=='string'||!identity)throw Error('Invalid project identity.');
  const hash=await hashText(scope+':'+identity),label=newFileKey(title).split('--')[1];

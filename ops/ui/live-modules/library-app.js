@@ -1,7 +1,7 @@
 import { readCalendarNotes } from "/partners/connected/liveit-calendar-read.mjs?v=1";
 import { CALENDAR_SOURCE as ft, CALENDAR_TAG as mt, eventRecord as Qe, eventSignature as Fe, eventNoteId as Mt, eventEnvelope as $i, readEventEnvelope as $t } from "/partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1";
 import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=2";
-import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=save-continuity-1";
+import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=liveit-auto-1";
 import { a as qt } from "./chunk-W72KRQYW.js";
 import { b as Ri, c as pt } from "./chunk-C6CZGXK7.js";
 import { b as Dt } from "./chunk-I45DYT36.js";
