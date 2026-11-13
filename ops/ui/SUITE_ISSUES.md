@@ -4,7 +4,7 @@ Updated 2026-11-13. “Implemented” describes shipped code and checks; it does
 
 | User comment | Implementation / evidence | Still required |
 | --- | --- | --- |
-| OneDrive login loops, disconnects, folder choice | Bounded reads; explicit reconnect after rejected renewal; folder navigation rollback/retry; deployed synthetic sign-in checks | Owner-account stability over normal use |
+| OneDrive login loops, disconnects, folder choice | Bounded reads; explicit reconnect after rejected renewal; folder navigation rollback/retry; visible Connect KeepIt control for local-only mode; explicit local/connecting/waiting statuses; deployed synthetic sign-in checks | Owner-account stability over normal use |
 | KeepIt slow connect/save | Catalog refreshes now share one in-flight verification; saves require a fresh preflight and readback; interrupted reads release for retry | Full-library timing on the owner's actual repository |
 | KeepIt freezes after reopen / saves fail | Local recovery and connection safeguards retained | Reproduce any remaining freeze or failure; not closed |
 | Work on Mac and resume on iPhone | Immutable repository revisions; stale-tab protection; offline work retained; LiveIt automatic workspace save/open; separate calendar sync. Unread event originals no longer block unrelated saves; affected events remain pending until read recovery. Offline/background polling waits for reconnect or foreground | Actual Mac–iPhone round trip and the reported iPhone calendar issue remain open |

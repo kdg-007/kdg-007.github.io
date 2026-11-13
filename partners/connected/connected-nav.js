@@ -56,20 +56,20 @@
   list.append(toolsButton);
  }
  const connection=document.createElement('button');
- connection.type='button';connection.id='connected-cloud-status';connection.hidden=true;
+ connection.type='button';connection.id='connected-cloud-status';
  connection.setAttribute('aria-live','polite');
  connection.addEventListener('click',()=>document.getElementById('connect-onedrive')?.click());
  const updateConnection=detail=>{
   if(!detail?.message)return;
   connection.hidden=false;
-  const labels={connected:'KeepIt connected',connecting:'Connecting…',waiting:'Sync waiting',signin:'Reconnect KeepIt','choose-folder':'Choose KeepIt folder',error:'Connection needs attention'};
+  const labels={local:'Connect KeepIt',connected:'KeepIt connected',connecting:'Connecting…',waiting:'Sync waiting',signin:'Reconnect KeepIt','choose-folder':'Choose KeepIt folder',error:'Connection needs attention'};
   connection.textContent=labels[detail.phase]||'KeepIt connection';
-  connection.setAttribute('aria-label',detail.message);
+  connection.setAttribute('aria-label',connection.textContent+' · '+detail.message);
   connection.dataset.phase=detail.phase;
   connection.title=detail.message+' · Open connection details';
  };
  window.addEventListener('keepit-connection-state',event=>updateConnection(event.detail));
- updateConnection(window.keepItConnectionState);
+ updateConnection(window.keepItConnectionState||{phase:'local',message:'Work stays on this device. Connect your KeepIt library to sync across devices.'});
  const cloudButton=document.createElement('button');cloudButton.type='button';cloudButton.textContent='OneDrive connection';cloudButton.id='connected-onedrive-toggle';cloudButton.addEventListener('click',()=>{list.hidden=true;opener.setAttribute('aria-expanded','false');document.getElementById('connect-onedrive')?.click();});list.append(cloudButton);
  function mountShellBar(host){
   document.title=current==='liveit'?'LiveIt — Today':modes.find(mode=>mode.id===current).label+' — LiveIt';

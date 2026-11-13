@@ -306,12 +306,17 @@ export function mountAppRepository({getLibrary}){
   if(!navigator.onLine){adapter()?.syncStatus?.('Saved on this device · Waiting for a connection to sync.');return;}
   if(syncTravelCalendar)void syncTravelCalendar(force);
   if(getLibrary()?.isCloud){const pending=run(()=>sync({quiet:true}),{quiet:true,retry:true});if(mapsPending)void pending.then(()=>run(backupMaps,{quiet:true}));}
-  else if(['signin','choose-folder','error'].includes(window.keepItConnectionState?.phase))adapter()?.syncStatus?.('Saved on this device · Connect your KeepIt library to sync.');
+  else {
+   const phase=window.keepItConnectionState?.phase;
+   const next={connecting:'Connecting to KeepIt…',connected:'Opening your KeepIt library…',waiting:'Waiting for OneDrive. Sync will retry.',signin:'Reconnect KeepIt to resume sync.','choose-folder':'Choose your KeepIt folder to sync.',error:'Reconnect KeepIt to resume sync.'}[phase]||'Connect KeepIt to sync across devices.';
+   adapter()?.syncStatus?.('Saved on this device · '+next);
+  }
  }
  const resume=()=>{lastRead=0;auto(true);};
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)resume();});
  window.addEventListener('focus',resume);
  window.addEventListener('online',resume);
+ window.addEventListener('offline',()=>auto());
  window.addEventListener('keepit-library-ready',resume);
  window.addEventListener('connected-workspace-ready',resume);
  window.addEventListener('keepit-connection-state',event=>{if(['connected','signin','choose-folder','error'].includes(event.detail?.phase))resume();});
@@ -333,5 +338,6 @@ export function mountAppRepository({getLibrary}){
  window.addEventListener('connected-workspace-ready',observeSaves);
  const watchFrame=new MutationObserver(observeSaves);watchFrame.observe(document.body,{childList:true,subtree:true});
  if(app==='travelit')document.addEventListener('travelit-workspace-change',()=>{if(task)void task.then(resume);else resume();});
+ observeSaves();auto();
  setInterval(auto,15000);
 }

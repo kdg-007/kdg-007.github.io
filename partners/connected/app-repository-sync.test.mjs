@@ -184,3 +184,29 @@ test('LiveIt refuses an automatic open if local records changed since capture',a
  await assert.rejects(()=>t.client.open(before.payload,4),/workspace changed/);
  assert.equal(t.snapshot().stores.records[1].id,'task');
 });
+
+const autoSource=source.slice(source.indexOf(' function auto(force=false)'),source.indexOf(' const resume='));
+function automatic(t){
+ const context=t.env;context.run=t.run;context.sync=t.sync;
+ context.document={hidden:false};context.navigator={onLine:true};context.window={};context.mapsPending=false;context.syncTravelCalendar=null;
+ context.library=null;context.getLibrary=()=>context.library;
+ return vm.runInContext('('+autoSource+')',vm.createContext(context));
+}
+test('a local-only app exits checking state without reporting a cloud save or uploading',async()=>{
+ const f=fixture('travelit'),t=tab(f,'offline itinerary'),auto=automatic(t);
+ auto();assert.match(t.messages.at(-1),/Connect.*KeepIt/);
+ assert.equal((await f.repo.list()).length,0);
+ for(const phase of ['connecting','waiting','signin','choose-folder','error']){
+  t.env.window.keepItConnectionState={phase};auto();
+  assert.doesNotMatch(t.messages.at(-1),/saved in KeepIt/);
+  assert.match(t.messages.at(-1),/this device/);
+ }
+});
+test('offline app status resumes to a verified cloud save when the library is ready',async()=>{
+ const f=fixture('liveit'),t=tab(f,'local tasks and journal'),auto=automatic(t);
+ t.env.navigator.onLine=false;auto();assert.match(t.messages.at(-1),/Waiting for a connection/);
+ assert.equal((await f.repo.list()).length,0);
+ t.env.navigator.onLine=true;t.env.library={isCloud:true};auto();await t.env.task;
+ assert.equal((await f.repo.openSingle(liveWorkspaceKey(f.scope))).version.payload,'local tasks and journal');
+ assert.match(t.messages.at(-1),/saved in KeepIt/);
+});
