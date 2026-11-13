@@ -1,3 +1,4 @@
+import {createMapFullscreen} from './map-fullscreen.js';
 import {downloadRoadRegion} from './road-region-download.js';
 import {normalizeStopDependencies,planTripDependencies} from './trip-dependencies.js';
 import {keepItConnectionStatus} from './keepit-associations.js';
@@ -354,8 +355,9 @@ function renderMap(){
  const atlasStatus=active?.regionAtlas?`<div class="card" style="margin-top:12px"><h3>Offline atlas management</h3><p class="subtext">Complete map data are saved only in this browser until independently exported. Check every installed cell before a trip; verification does not guarantee iPhone storage persistence.</p><div class="action-line">${action('Verify all cells','verify-region-atlas','button button-primary button-small')}${action('Export regional atlas','export-region-atlas','button button-small')}</div>${audit?`<div role="status" class="alert ${audit.status==='valid'?'blue':'red'}" style="margin-top:9px">${audit.status==='checking'?'Checking map cells…':audit.status==='valid'?`${audit.verified}/${audit.total} map cells verified. Complete, as read today.`:audit.status==='damaged'?`${audit.verified}/${audit.total} verified; ${audit.failed} damaged/missing cells (first IDs): ${esc(audit.corruptedCells.join(', '))}`:esc(audit.message)}</div>`:''}</div>`:'';
  return `<div class="action-line">${action('Download offline map','download-road-map')}${action('Street map','map-mode:online','button button-primary button-small')+action('Full screen','map-fullscreen')}</div>`+mapMarkup({places:state.places,annotations:state.annotations,draft:state.mapDraft,fixedBounds:state.mapFixedBounds,pack,packList:state.mapPacks,esc,action})+status+atlasStatus+(state.mapFaults.length?`<div class="alert red" role="alert">${state.mapFaults.length} installed map pack(s) failed their manifest integrity check and were not displayed. Re-import trusted copies.</div>`:'');
 }
-function updateFullscreenButton(){for(const button of document.querySelectorAll('[data-action="map-fullscreen"]')){const active=!!document.fullscreenElement;button.textContent=active?'Exit full screen':'Full screen';button.setAttribute('aria-pressed',String(active));}}
-async function toggleMapFullscreen(){if(document.fullscreenElement)await document.exitFullscreen();else if(document.fullscreenEnabled&&document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else throw Error('Full screen is unavailable in this browser. Use the browser full-screen command.');updateFullscreenButton();}
+const mapFullscreen=createMapFullscreen({document});
+function updateFullscreenButton(){mapFullscreen.update();}
+async function toggleMapFullscreen(){await mapFullscreen.toggle();}
 function updateMapDraft(){const host=$('#map-editing-host');if(host)host.innerHTML=draftControlsMarkup(state.mapDraft,action);disposeStreetMap?.updateDraft?.(state.mapDraft);}
 function annotationEditor(){const draft=state.mapDraft;if(!draft)return;
  const choices=state.trips.map(t=>`<option value="${esc(t.id)}" ${t.id===state.selectedTrip?'selected':''}>${esc(t.title)}</option>`).join('');

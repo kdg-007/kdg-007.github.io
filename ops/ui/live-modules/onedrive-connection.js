@@ -708,6 +708,22 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     return d(a.size === t.bytes, "The file was changed or damaged outside KeepIt. Its original record was retained."), a;
   }
   async readHead() {
+    // Polling, calendar reads and gallery refreshes share one verification.
+    // Saves pass fresh:true so their readback cannot reuse a pre-write read.
+    return this.readCatalogHead();
+  }
+  async readCatalogHead({fresh=false}={}) {
+    if(this.catalogRead){
+      const pending=this.catalogRead;
+      if(!fresh)return structuredClone(await pending);
+      await pending.catch(()=>{});
+      return this.readCatalogHead({fresh:true});
+    }
+    const pending=this.readVerifiedHead();this.catalogRead=pending;
+    try{return structuredClone(await pending);}
+    finally{if(this.catalogRead===pending)this.catalogRead=null;}
+  }
+  async readVerifiedHead() {
     await this.permission();
     let [e, t] = await Promise.all([this.fs.item(this.index.headId), this.fs.children(this.legacyCommits.item.id)]), i = this.fs.validate(e, this.index.cloudId), s = /^head-([a-f0-9-]{36})\.json$/.exec(i.name);
     d(i.file && s && G.test(s[1]) && i.eTag, "The OneDrive catalog pointer is invalid.");
@@ -739,7 +755,7 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
   }
   async commit(e, t, i = {}) {
     await this.permission();
-    let s = await this.readHead();
+    let s = await this.readCatalogHead({fresh:true});
     d(s.commitId === this.state.commitId, "This library changed on another device. Refresh, then reopen the item before saving. Your edits were not overwritten.");
     let r = this.head, a = s.revision + 1, n = { format: i.printTemplates?.length || s.info?.printTemplates?.length || s.format === "mylibrary-folder-snapshot-4" ? "mylibrary-folder-snapshot-4" : s.format === "mylibrary-folder-snapshot-3" || e.some((c) => c.archivedAt || c.duplicateOf) ? "mylibrary-folder-snapshot-3" : "mylibrary-folder-snapshot-2", libraryId: this.identity.libraryId, commitId: crypto.randomUUID(), revision: a, parent: s.commitId, info: { ...s.info, ...i, revision: a }, items: e, paths: t }, o = await y(new Blob([JSON.stringify(n)]));
     d(we({ ...n, checksum: o }).size <= 256 * 1024 ** 2, "The catalog metadata exceeds the processing budget."), await this.createJSON(this.index.commitsId, n.commitId + ".json", { ...n, checksum: o });
@@ -748,7 +764,7 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     } catch (c) {
       if ((await this.fs.item(r.id).catch(() => null))?.name !== `head-${n.commitId}.json`) throw c.details?.status === 412 ? new Error("Another device saved first. Refresh, then reopen this item. Your existing files and metadata were retained.") : c;
     }
-    let l = await this.readHead(), u = l;
+    let l = await this.readCatalogHead({fresh:true}), u = l;
     for (; u.commitId !== n.commitId && u.revision > n.revision; ) {
       let c = await this.fs.child(this.index.commitsId, u.parent + ".json");
       d(c, "Save history could not be confirmed."), u = await this.fs.readJSON(c);
