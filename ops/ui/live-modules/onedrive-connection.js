@@ -942,31 +942,45 @@ var ve = class {
     }
   }
   async connectFiles(){
+    const interrupted=()=>{
+      if(this.auth.reconnectRequired)this.publish('signin','Reconnect Microsoft · local edits retained');
+      else if(this.bound){this.transportWaiting=true;this.publish('waiting','Waiting for OneDrive · local edits retained');}
+    };
     const fetcher=async(input,options={})=>{
-      if(new URL(input.url||input,location.origin).hostname!=='graph.microsoft.com'||(options.method||'GET')!=='GET'){
-        try{return await fetch(input,options);}catch(error){
-          if(this.bound){this.transportWaiting=true;this.publish('waiting','Waiting for OneDrive · local edits retained');}throw error;
-        }
+      // Upload-session URLs are preauthenticated. Never add a bearer token or
+      // replay a transfer whose outcome needs reconciliation by the provider.
+      if(new URL(input.url||input,location.origin).hostname!=='graph.microsoft.com'){
+        try{return await fetch(input,options);}catch(error){interrupted();throw error;}
       }
       const controller=new AbortController(),abort=()=>controller.abort();
       options.signal?.addEventListener('abort',abort,{once:true});if(options.signal?.aborted)abort();
-      try{
-        return await re(async()=>{
-          let response=await fetch(input,{...options,signal:controller.signal});
+      const method=(options.method||input.method||'GET').toUpperCase();
+      const request=async()=>{
+        let response=await fetch(input,{...options,signal:controller.signal});
+        // A 401 is a rejected request, so the same conditional write can safely
+        // retry once. Timeouts and ambiguous write failures are never replayed.
+        if(response.status===401){
+          void response.body?.cancel().catch(()=>{});
+          this.auth.invalidateToken?.();
+          const token=await this.auth.token(this.fs?.homeId||this.auth.account()?.homeAccountId);
+          const headers=new Headers(options.headers);headers.set('Authorization','Bearer '+token);
+          response=await fetch(input,{...options,headers,signal:controller.signal});
           if(response.status===401){
-            this.auth.invalidateToken?.();
-            const token=await this.auth.token(this.fs?.homeId||this.auth.account()?.homeAccountId);
-            const headers=new Headers(options.headers);headers.set('Authorization','Bearer '+token);
-            response=await fetch(input,{...options,headers,signal:controller.signal});
-            if(response.status===401){
-              this.auth.reconnectRequired=true;
-              this.publish('signin','Reconnect Microsoft · local edits retained');
-            }
+            this.auth.reconnectRequired=true;
+            this.publish('signin','Reconnect Microsoft · local edits retained');
           }
-          if(response.ok&&this.transportWaiting&&this.bound){this.transportWaiting=false;this.publish('connected','OneDrive / '+(S()?.path||'KeepIt')+' connected');}
-          return response;
-        },20000,'OneDrive did not respond in time. Retry the connection.');
-      }catch(error){controller.abort();if(this.bound){this.transportWaiting=true;this.publish('waiting','Waiting for OneDrive · local edits retained');}throw error;}
+        }
+        // Keep cancellation/deadlines attached until the metadata body is read,
+        // not just until its headers arrive. The returned body remains usable.
+        await response.clone().arrayBuffer();
+        if(response.ok&&this.transportWaiting&&this.bound){this.transportWaiting=false;this.publish('connected','OneDrive / '+(S()?.path||'KeepIt')+' connected');}
+        return response;
+      };
+      try{
+        return ['GET','HEAD'].includes(method)
+          ?await re(request,20000,'OneDrive did not respond in time. Retry the connection.')
+          :await request();
+      }catch(error){controller.abort();interrupted();throw error;}
       finally{options.signal?.removeEventListener('abort',abort);}
     };
     const fs=new _(this.auth,{onProgress:this.progress,fetcher}),root=await fs.initialize();

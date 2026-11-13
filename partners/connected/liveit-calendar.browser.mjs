@@ -22,7 +22,15 @@ try{
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));const origin='https://127.0.0.1:'+server.address().port;
  for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
   browser=await engine.launch({headless:true});const fixture=connectionFixture(origin,{writable:true}),contexts=[];uploadFixture=fixture;fixture.uploadEndpoint=origin+'/__calendar-upload';
-  async function device(){const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:393,height:852},isMobile:true,hasTouch:true});contexts.push(context);const network={offline:false};await context.route('**/*',route=>network.offline&&['graph.microsoft.com','fixture.storage.live.com'].includes(new URL(route.request().url()).hostname)?route.abort():fixture.route(route));const page=await context.newPage();page.setDefaultTimeout(15000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  async function device(){const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:393,height:852},isMobile:true,hasTouch:true});contexts.push(context);const network={offline:false,expireNextWrite:false,expiredWrites:0};await context.route('**/*',route=>{
+    const host=new URL(route.request().url()).hostname;
+    if(network.offline&&['graph.microsoft.com','fixture.storage.live.com'].includes(host))return route.abort();
+    if(network.expireNextWrite&&host==='graph.microsoft.com'&&['POST','PUT','PATCH'].includes(route.request().method())){
+      network.expireNextWrite=false;network.expiredWrites++;
+      return route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:{code:'InvalidAuthenticationToken',message:'Synthetic access expiry'}})});
+    }
+    return fixture.route(route);
+   });const page=await context.newPage();page.setDefaultTimeout(15000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
    console.log('CALENDAR_DEVICE_OPEN');
    await page.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1');await page.locator('#onedrive-dialog[open]').waitFor().catch(async error=>{console.error('STARTUP_ERROR',errors,await page.locator('#result-count').textContent(),await page.locator('#message').textContent());throw error;});await page.locator('#onedrive-signin').click();await page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});const frame=page.frameLocator('iframe[title="LiveIt journal workspace"]');await frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:20000}).catch(async error=>{console.error('INITIAL_CALENDAR_STATE',await frame.locator('#calendarSyncStatus').innerText(),errors);throw error;});console.log('CALENDAR_DEVICE_READY');return {context,page,frame,errors,network};}
   const a=await device();
@@ -94,10 +102,10 @@ try{
 
   const month=await a.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.getTodayDate().slice(0,7));
   const eventStart=`${month}-16`,eventMiddle=`${month}-18`,eventEnd=`${month}-20`;
-  await a.frame.locator('[data-action="capture"][data-type="event"]').first().click();await a.frame.locator('#captureBody').fill('ASEAN Summit');await a.frame.locator('#captureDate').fill(eventStart);await a.frame.locator('#captureEndDate').fill(eventEnd);await a.frame.locator('#captureAllDay').check();await attach(a.frame,'slides','Synthetic presentation · file');await a.frame.locator('#saveCapture').click();await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
+  await a.frame.locator('[data-action="capture"][data-type="event"]').first().click();await a.frame.locator('#captureBody').fill('ASEAN Summit');await a.frame.locator('#captureDate').fill(eventStart);await a.frame.locator('#captureEndDate').fill(eventEnd);await a.frame.locator('#captureAllDay').check();await attach(a.frame,'slides','Synthetic presentation · file');const signinsBeforeSave=fixture.signins;a.network.expireNextWrite=true;await a.frame.locator('#saveCapture').click();await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
   await a.frame.locator('#calendarSyncStatus[data-phase="synced"]').waitFor({timeout:30000}).catch(async error=>{console.error('CALENDAR_SAVE_FAILURE',engine.name(),await a.frame.locator('#calendarSyncStatus').innerText(),a.errors,JSON.stringify(fixture.requests.slice(-15)),await a.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records));throw error;});console.log('AFTER_SAVE',await a.frame.locator('#calendarSyncStatus').innerText());
   await a.page.waitForFunction(()=>{const f=document.querySelector('iframe[title="LiveIt journal workspace"]');return f.contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit'&&r._calendarSync?.pending===false);});
-  console.log('FIRST_DEVICE_EVENT_SAVED');const b=await device();await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit'));
+  assert.equal(a.network.expiredWrites,1);assert.equal(fixture.signins,signinsBeforeSave);console.log('LIVEIT_EXPIRED_WRITE_RENEWS_WITHOUT_SIGNIN_'+engine.name().toUpperCase()+'_PASS');console.log('FIRST_DEVICE_EVENT_SAVED');const b=await device();await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='ASEAN Summit'));
   const received=await b.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.find(r=>r.body==='ASEAN Summit'));
   assert.equal(received.endDate,eventEnd);assert.equal(received.allDay,true);
   assert.deepEqual(received.keepItLinks.map(({kind,title})=>({kind,title})),[{kind:'file',title:'Synthetic presentation'}]);

@@ -62,3 +62,42 @@ test('a second rejection requests sign-in without further automatic retries',asy
 test('opening a healthy connection only shows details and does not restart it',async()=>{
  const {c}=fixture();c.bound=true;c.fs={};c.start=async()=>{throw Error('Unexpected reconnect');};assert.equal(await c.show(),true);
 });
+
+test('a stalled metadata body times out and releases the connection for a successful retry',async()=>{
+ const f=fixture();await f.c.connectFiles();f.c.bound=true;
+ f.env.re=async work=>{let timer;try{return await Promise.race([work(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('metadata body timed out')),15);})]);}finally{clearTimeout(timer);}};
+ f.env.fetch=async(_,options)=>new Response(new ReadableStream({start(controller){
+  controller.enqueue(new TextEncoder().encode('{"value":'));
+  options.signal.addEventListener('abort',()=>controller.error(Error('aborted')),{once:true});
+ }}),{headers:{'Content-Type':'application/json'}});
+ await assert.rejects(()=>f.c.fs.fetcher('https://graph.microsoft.com/v1.0/me/drive'),/timed out/);
+ assert.equal(f.c.bound,true);assert.equal(f.c.transportWaiting,true);
+ f.env.fetch=async()=>new Response('{"id":"same-drive"}');
+ assert.deepEqual(await (await f.c.fs.fetcher('https://graph.microsoft.com/v1.0/me/drive')).json(),{id:'same-drive'});
+ assert.equal(f.c.transportWaiting,false);assert.equal(f.c.phase,'connected');
+});
+test('rejected authenticated saves renew once and preserve their method, bytes and concurrency guards',async()=>{
+ for(const method of ['POST','PUT','PATCH']){
+  const f=fixture();await f.c.connectFiles();f.c.bound=true;const calls=[];
+  f.env.fetch=async(url,options)=>{calls.push({url,options});return new Response('{}',{status:calls.length===1?401:200});};
+  const body=new Blob(['same pending save']);
+  const result=await f.c.fs.fetcher('https://graph.microsoft.com/v1.0/drives/drive/items/item',{method,body,headers:{Authorization:'Bearer expired','If-Match':'original-etag'}});
+  assert.equal(result.status,200);assert.equal(calls.length,2);assert.equal(f.c.auth.invalidations,1);
+  assert.equal(calls[1].options.method,method);assert.equal(calls[1].options.body,body);
+  assert.equal(new Headers(calls[1].options.headers).get('If-Match'),'original-etag');
+  assert.equal(new Headers(calls[1].options.headers).get('Authorization'),'Bearer renewed');
+ }
+});
+test('upload-session transfer URLs never receive a Microsoft bearer or an automatic replay',async()=>{
+ const f=fixture();await f.c.connectFiles();f.c.bound=true;let calls=0;
+ f.env.fetch=async(_,options)=>{calls++;assert.equal(new Headers(options.headers).has('Authorization'),false);return new Response('{}',{status:401});};
+ const result=await f.c.fs.fetcher('https://fixture.storage.live.com/upload-session',{method:'PUT',body:new Blob(['fragment'])});
+ assert.equal(result.status,401);assert.equal(calls,1);assert.equal(f.c.auth.invalidations,0);
+});
+test('renewal requiring sign-in is not overwritten by a generic waiting message',async()=>{
+ const f=fixture();await f.c.connectFiles();f.c.bound=true;
+ f.env.fetch=async()=>new Response('{}',{status:401});
+ f.c.auth.token=async()=>{f.c.auth.reconnectRequired=true;throw Object.assign(Error('Sign in needed'),{code:'AUTH_REQUIRED'});};
+ await assert.rejects(()=>f.c.fs.fetcher('https://graph.microsoft.com/v1.0/me/drive'),/Sign in/);
+ assert.equal(f.c.phase,'signin');assert.equal(f.c.bound,true);
+});
