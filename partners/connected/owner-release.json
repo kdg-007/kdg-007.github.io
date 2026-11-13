@@ -1,7 +1,7 @@
 {
   "schema": "keepit.owner-live-release.v1",
-  "buildId": "suite-sync-transport-recovery-20261113",
-  "entry": "/assets/library-app-d1ac93ef069c.js",
+  "buildId": "suite-device-copy-recovery-20261113",
+  "entry": "/assets/library-app-7256114edc7a.js",
   "target": "OneDrive / KeepIt",
   "sourceArchiveSha256": "d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a",
   "privateSourceBase": "f9b7a3fc5473df6b6ef06542ec3f9f4a0953984f",
@@ -9,7 +9,7 @@
   "cloudSignInVerified": false,
   "cloudOriginalReadbackVerified": false,
   "files": {
-    "partners/connected/index.html": "b58e77871bb926bd4cbb579df47e58847de512eb142a57d865dd61ed0b0f9faf",
+    "partners/connected/index.html": "ddf8334700515c1ed09cdc534b21947b97e7ab7fbb3a268137bc690ab1a99b5d",
     "partners/connected/owner-auth-callback.html": "0b54950fe912aa992dafa5c15f79fb020c5a50df96939ef20ceae032844c5e8e",
     "assets/chunk-SGTLM5CQ.js": "d8b3360139a617b3c6d7a53ec96230177ff6869b520a578c5bbea7f5529804f9",
     "assets/chunk-OZVKXUIX.js": "7d853cc51c52b7203db69e44c6d2fedcccc3c2712416f534f812c3dc5869aebc",
@@ -108,7 +108,7 @@
     "partners/liveit/thinkit/connected-w18e-c15396/app-8.js": "f84dd3d53acfee633294156132514a9085458fbf75e789c43553f80e7ef7a876",
     "partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs": "7c73a688ca87a417fc246edd931454087e650c12404fc386297962a5fdbc75e3",
     "partners/connected/app-repository-store.mjs": "13a7e29abb658790c8fd8fcdc17268a7209210312bf7d1bb4c4d6e7bfb590e11",
-    "partners/connected/app-repository-sync.mjs": "b4c0d736c26c46d8af7e40694bd382061561b61990a64cb76ad6e011c2e3838c",
+    "partners/connected/app-repository-sync.mjs": "cabfa8ac444991a86da33d6cdca518582e478b6e0cfdf48b0a2429d88ba9fa2d",
     "assets/keepit-note-entry-79b88dd8e8ec.js": "79b88dd8e8ecd04f0c71fdf0b48ff747f6b396834155c5c35e48e07490e24d96",
     "partners/connected/liveit-keepit-links.mjs": "895c82db9733bf8a507960b5ed01c27222c33b89a28ec0e476e477a5bc508900",
     "partners/liveit/thinkit/connected-w18e-c15396/style-2.css": "330aa2538cc93bb9885a4cb6ba9e12ebe1492c018e3f3a3927ef7141fc777179",
@@ -202,7 +202,7 @@
     "assets/keepit-onedrive-connect-38d1472a1a43.js": "38d1472a1a432a5bcbc643c222a8413c0adc74717113bda26e6ca4a00676e20f",
     "assets/keepit-note-ui-65ff2c2fdbc6.js": "65ff2c2fdbc670bc32a49c4923fe10dc7e4e792a064ba7a76ae61c977cf7e721",
     "assets/keepit-note-link-9addbfc2bc66.js": "9addbfc2bc6664d71e084873f8ca02b04b616c24dd95d58a8a4e18edf87fef5f",
-    "assets/library-app-d1ac93ef069c.js": "d1ac93ef069c92ec2454f80d23b5ae1152d42cb35506aabb59c9c109f09373ef",
+    "assets/library-app-7256114edc7a.js": "7256114edc7a50120fff1a69884ff7b284acfb6fcbf9ad2d639f8e17eec23b8c",
     "assets/keepit-note-ui-db4948167388.js": "db49481673885b8c82e9591d14f44bf98c64bb41bc1fd2eb13dafb434ae52fd7"
   },
   "normalEntry": "/",

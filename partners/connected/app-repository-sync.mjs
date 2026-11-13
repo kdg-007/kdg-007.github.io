@@ -85,21 +85,34 @@ export function mountAppRepository({getLibrary}){
   return task;
  }
  async function snapshot(){const client=adapter();if(!client)throw Error(`${folder} is still opening.`);return client.capture();}
+ async function openDeviceCopy(copy,scope,isCurrent=()=>true){
+  if(copy?.scope!==scope||copy.app!==app||typeof copy.payload!=='string')throw Error('This device copy does not belong to the selected app and library.');
+  const expected=copy.localOnly?copy.revision:copy.digest;
+  if(await hashText(copy.payload)!==expected)throw Error('This device copy could not be verified. Your open work is retained.');
+  if(!isCurrent())throw Error('The selected KeepIt folder changed.');
+  return openCopy(copy,scope,isCurrent);
+ }
+ async function browseDeviceCopies(reason=''){
+  list.replaceChildren();
+  const scope=loadBinding()?.scope||localStorage.getItem(scopeKey);
+  if(!scope){status.textContent='No KeepIt copies have been saved on this device yet. Your current work remains in the app.';return;}
+  const copies=await localFiles(scope);
+  const heads=copies.filter(copy=>!copies.some(next=>next.key===copy.key&&next.parent===copy.revision));
+  for(const row of heads)action(`${row.title} · device copy`,()=>run(()=>openDeviceCopy(row,scope)),list);
+  status.textContent=heads.length
+   ?(reason?reason+' ':'')+'Showing copies saved on this device. Newer OneDrive changes are not included.'
+   :(reason?reason+' ':'')+'No saved KeepIt copies are available on this device. Your current work remains in the app.';
+ }
  async function browse(){
   list.replaceChildren();status.textContent=showTrash?'Loading Trash…':'Loading saved files…';
-  const binding=loadBinding();
-  let cloud;
-  try{cloud=await connected();}catch(error){
-   const scope=binding?.scope||localStorage.getItem(scopeKey);
-   if(!scope)throw error;
-   const copies=await localFiles(scope);
-   for(const row of copies.filter(copy=>!copies.some(next=>next.key===copy.key&&next.parent===copy.revision))){
-    action(`${row.title} · local copy`,()=>run(()=>openCopy(row,scope)),list);
-   }
-   status.textContent=copies.length?'Showing copies saved on this device.':'Connect to KeepIt to browse files.';
-   return;
+  if(!navigator.onLine){await browseDeviceCopies('Offline.');return;}
+  let cloud,files;
+  try{
+   cloud=await connected();
+   files=(await cloud.repo.list({includeTrashed:true})).filter(file=>file.trashed===showTrash);
+  }catch{
+   await browseDeviceCopies('KeepIt could not be reached.');return;
   }
-  const files=(await cloud.repo.list({includeTrashed:true})).filter(file=>file.trashed===showTrash);
   for(const file of files){
    const row=make('div','',list);row.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap';
    if(file.trashed){action('Restore '+file.title,()=>run(()=>changeFileState(file,false)),row);continue;}
@@ -114,7 +127,7 @@ export function mountAppRepository({getLibrary}){
   }),row);
    if(file.revision)action('Move '+file.title+' to Trash',()=>run(()=>changeFileState(file,true)),row);
   }
-  for(const row of (await localFiles(cloud.scope)).filter(row=>row.localOnly))action(row.title,()=>run(()=>openCopy(row,cloud.scope,cloud.isCurrent)),list);
+  for(const row of (await localFiles(cloud.scope)).filter(row=>row.localOnly))action(row.title,()=>run(()=>openDeviceCopy(row,cloud.scope,cloud.isCurrent)),list);
   status.textContent=showTrash?(files.length?'Restore a file from Trash.':'Trash is empty.'):(files.length?'Choose a file in KeepIt.':'This folder is empty. New work saves here when KeepIt is connected.');
  }
  async function changeFileState(file,remove){
@@ -288,6 +301,7 @@ export function mountAppRepository({getLibrary}){
   if(maps.length)status.textContent='Offline maps saved and verified in KeepIt / TravelIt.';
  }
  if(app==='travelit')document.addEventListener('travelit-maps-change',()=>{mapsPending=true;localStorage.setItem('keepit-map-backup-pending','true');const work=()=>run(backupMaps);if(task)void task.then(work);else void work();});
+ action('Device copies',()=>run(()=>browseDeviceCopies()));
  action('Refresh files',()=>run(browse));
  action('Close',()=>panel.close());
  const openPanel=()=>{panel.showModal();void run(browse);};

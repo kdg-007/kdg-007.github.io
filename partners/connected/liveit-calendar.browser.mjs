@@ -201,6 +201,20 @@ try{
   await a.page.waitForFunction(previous=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:thinkit')).revision!==previous,lastRevision,{timeout:35000});
   await openAppFile(b.page,'ThinkIt','Edited offline');
   assert.equal(await b.page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]').locator('#docName').inputValue(),'Edited offline');
+  // A Microsoft-side outage can leave navigator.onLine true. Device copies
+  // must still be available after the cloud listing fails.
+  b.network.offline=true;
+  await b.page.locator('#connected-apps-toggle').click();
+  await b.page.locator('#connected-apps-list').getByRole('button',{name:'ThinkIt files',exact:true}).click();
+  const deviceFiles=b.page.getByRole('dialog',{name:'ThinkIt files in KeepIt'});
+  await deviceFiles.getByRole('status').filter({hasText:'Showing copies saved on this device'}).waitFor({timeout:30000});
+  const acceptDeviceCopy=dialog=>dialog.accept();b.page.on('dialog',acceptDeviceCopy);
+  try{await deviceFiles.getByRole('button',{name:'Edited offline · device copy',exact:true}).click();await deviceFiles.waitFor({state:'hidden'});}
+  finally{b.page.off('dialog',acceptDeviceCopy);}
+  assert.equal(await b.page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]').locator('#docName').inputValue(),'Edited offline');
+  b.network.offline=false;
+  console.log('KEEPIT_DEVICE_COPY_OPEN_DURING_PROVIDER_OUTAGE_'+engine.name().toUpperCase()+'_PASS');
+
 
   await a.page.goto(connectedPath('travelit'));await b.page.goto(connectedPath('travelit'));
   const travel=a.page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
