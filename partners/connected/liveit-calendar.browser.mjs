@@ -182,7 +182,10 @@ try{
   await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
   await a.page.waitForFunction(previous=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:liveit')).revision!==previous,beforeTask,{timeout:35000});
   await b.page.bringToFront();
-  await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='App folder task'));
+  await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='App folder task'),null,{timeout:45000}).catch(async error=>{
+   console.error('LIVEIT_WORKSPACE_AUTO_REOPEN_STATE',await a.frame.locator('#workspaceSyncStatus').textContent(),await b.frame.locator('#workspaceSyncStatus').textContent(),await b.page.evaluate(()=>({binding:JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:liveit')),visible:document.visibilityState,records:document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.filter(r=>r.type!=='event').map(r=>r.body)})));
+   throw error;
+  });
   assert.ok(await b.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.type==='event')));
 
   const connectedPath=app=>origin+'/partners/connected/?connected-app='+app;
