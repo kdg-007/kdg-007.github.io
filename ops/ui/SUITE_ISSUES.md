@@ -12,11 +12,11 @@ Updated 2026-11-13. “Implemented” describes shipped code and checks; it does
 | Crowded top bars / menus stay open / mobile stuck view | Compacted LiveIt header; removed TravelIt tablet padding; drawer closes on outside click/Escape; menus constrained to viewport; phone/tablet browser checks | Broader device/layout coverage |
 | TravelIt map full screen | Native fullscreen plus embedded/mobile expansion fallback; visible Exit; Escape; offline map support; loaded street tiles retained in browser check | Physical iPhone/iPad verification |
 | TravelIt map disappears / slow loading | Map resize handling exists; Excel preview remains loaded on demand | Remaining map-loss reproduction and startup profiling; not closed |
-| TravelIt Excel input, text and Gantt | Excel import, metadata preservation, scheduling dependencies, trip/document reference checks pass | Complete actual workbook workflow and readability review |
+| TravelIt Excel input, text and Gantt | Imported a synthetic six-day, 48-activity workbook through the browser; whole-trip Gantt retains blank days, overnight labels, flexible activities and source codes; sticky activity titles and phone scrolling checked | Actual owner workbook and physical-device review |
 | Packing by activity/environment, budgeting | Combined templates preserve existing entries; costs implementation exists | Full user workflow review; remaining requested improvements |
 | Offline map download | Bounded regional download and attribution checks pass; offline expansion works | Region coverage and on-device download/reopen review |
 | Delete trips, remove samples, destinations in Explore | Implementations exist | Final behavior audit against user comments |
-| Trip sequence and travel documents / KeepIt links | Dependencies and canonical KeepIt references exist and pass domain checks | Actual outline/reorder and document-opening workflows |
+| Trip sequence and travel documents / KeepIt links | Direct up/down controls reorder flexible activities; imported codes and order survive reopening; timed/fixed activities are protected. Dependencies and canonical KeepIt references pass domain checks | Full outline/mind-map rearranging and actual document-opening workflows |
 | ThinkIt collapsible hierarchy | H5 integrated in the connected suite | Remaining real-project observations |
 | ThinkIt contrast, horizontal/vertical print rulers, BMC rich text/images/tables/notes, outline reorder | Implementations exist in prior releases | Print accuracy and complete feature audit; not all closed |
 

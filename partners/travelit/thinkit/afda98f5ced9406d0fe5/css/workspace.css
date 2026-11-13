@@ -109,3 +109,24 @@ html[data-map-fullscreen="true"] #main:has(#street-map){display:flex;flex-direct
 html[data-map-fullscreen="true"] #main:has(#street-map)>.street-map-frame{flex:1 1 auto;height:auto!important;min-height:0}
 html[data-map-fullscreen="true"] #street-map{height:100%;min-height:0}
 html[data-map-fullscreen="true"] #main:has(#street-map)>:not(.street-map-frame){flex-shrink:0}
+
+/* Keep activity names readable while following a long itinerary timeline. */
+.gantt-table{width:max-content;min-width:100%;table-layout:fixed}
+.gantt-table thead th:first-child,.gantt-table tbody th{position:sticky;left:0;min-width:220px;width:220px;max-width:220px;white-space:normal;overflow-wrap:anywhere;background:var(--card);box-shadow:2px 0 0 var(--line)}
+.gantt-table tbody th{top:auto;z-index:3;font-weight:normal}
+.gantt-table thead th:first-child{z-index:5}
+.gantt-table td:nth-child(2),.gantt-table th:nth-child(2){min-width:90px}
+.gantt-table td:nth-child(3),.gantt-table td:nth-child(4){min-width:120px;font-variant-numeric:tabular-nums}
+.gantt-table thead th:last-child{min-width:var(--timeline-width,600px);width:var(--timeline-width,600px);padding-inline:12px}
+.gantt-track{width:var(--timeline-width,600px);min-width:0}
+.gantt-axis{margin:0}
+.gantt-axis span:first-child{transform:none}
+.gantt-axis span:last-child{transform:translateX(-100%)}
+.gantt-activity{line-height:1.45;white-space:normal;overflow-wrap:anywhere;min-height:44px}
+.gantt-help{font-size:14px;line-height:1.5;color:var(--muted);margin:10px 0}
+.gantt-unscheduled{font-size:13px;color:var(--muted)}
+.activity-source-code,.activity-booking-label{display:block;font-size:12px;line-height:1.5;color:var(--muted);margin-top:4px}
+.activity-grid-wrap{overflow-x:auto;overscroll-behavior:contain}
+.gantt-wrap:focus-visible,.activity-grid-wrap:focus-visible{outline:3px solid var(--teal,#267e78);outline-offset:2px}
+@media(max-width:600px){.gantt-table thead th:first-child,.gantt-table tbody th{min-width:150px;width:150px;max-width:150px}.activity-row-actions .action-menu-items{min-width:180px}}
+.activity-row-actions .activity-order-button{min-width:44px;min-height:44px;font-size:18px}
