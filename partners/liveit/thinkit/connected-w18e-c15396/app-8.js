@@ -245,7 +245,7 @@
       <div class="space-grid">${spaces.map(spaceTile).join('')}<button type="button" class="space-tile space-add" data-action="new-space"><span class="space-icon">+</span><span class="space-text">New Space</span></button></div>
       ${ui.category?`<button class="button subtle" style="margin-top:10px;width:100%" data-action="clear-space">Clear “${esc(ui.category)}” filter</button>`:''}</section>
       <div class="mobile-backup-tools">${backupProtectionPanel()}<section class="right-section" aria-label="Application connections"><h2 class="section-label">App connections</h2><div class="notice"><strong>KeepIt · Separate note owner</strong><p>Short entries stay on this device. Native-note access requires an authorized KeepIt host; standalone LiveIt cannot verify OneDrive saves.</p><strong>TravelIt · Not connected</strong><p>Trip calendar synchronization is unavailable.</p></div></section></div>
-      <div class="workspace-note">${ui.scope==='work'?'WORK workspace: only Work records are visible. Your data remains on this device; no employer account or cloud connection.':'PERSONAL workspace: private entries only. No travel, contacts, or cloud account is connected yet.'}</div>
+      <div class="workspace-note">${ui.scope==='work'?'WORK workspace: only Work records are visible. Local copies stay on this device. Check the sync statuses above for your KeepIt connection.':'PERSONAL workspace: private entries only. No travel, contacts, or cloud account is connected yet.'}</div>
       <p class="caption" style="margin-top:20px">Local controls · <button type="button" data-action="export" class="text-link">Encrypted backup</button> · <button type="button" data-action="restore" class="text-link">Restore backup</button> · <button type="button" data-action="reset" class="text-link">Erase local records</button></p>
     </aside>`;
   }
@@ -428,7 +428,7 @@
        ${ui.view==='today'&&!ui.query?quickActionPanel():''}
       ${ui.query?searchResults():({today,calendar,inbox,journal,tasks,archive:archiveView}[ui.view]||today)()}
       ${ui.view==='today'&&!ui.query?compactDailyPanels():''}
-      <div class="caption" style="margin-top:24px">LiveIt v0.6 · W17I-E KeepIt private QA candidate · TravelIt calendar disconnected</div>
+      <div class="caption" style="margin-top:24px">LiveIt · Local saving with KeepIt sync when connected</div>
     </main>`;
   }
   function backupProtectionPanel(){
