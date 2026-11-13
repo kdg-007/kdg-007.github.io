@@ -3,7 +3,7 @@
 import {a as bounded,b as MicrosoftAuth,c,d} from './chunk-ZJ27NWFH.js';
 export {bounded as a,c,d};
 export class ResilientMicrosoftAuth extends MicrosoftAuth {
-  invalidateToken(){this.forceNext=true;this.authInterrupted=true;this.publish('renewing');}
+  invalidateToken(){this.forceNext=true;this.authInterrupted=true;this.publish(this.reconnectRequired?'signin':'renewing');}
   publish(phase){
     globalThis.window?.dispatchEvent(new CustomEvent('keepit-auth-state',{detail:{phase,homeId:this.account()?.homeAccountId}}));
   }

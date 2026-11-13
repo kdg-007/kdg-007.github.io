@@ -175,11 +175,13 @@ try{
    finally{page.off('dialog',accept);}
   }
   await a.page.setViewportSize({width:1100,height:852});
+  const beforeTask=await a.page.evaluate(()=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:liveit')).revision);
   await a.frame.locator('[data-action="nav"][data-view="tasks"]:visible').first().click();
   await a.frame.locator('[data-action="capture"][data-type="task"]').first().click();
   await a.frame.locator('#captureBody').fill('App folder task');await a.frame.locator('#saveCapture').click();
   await a.frame.locator('#captureDialog').waitFor({state:'hidden'});
-  await saveAppFile(a.page,'LiveIt');await openAppFile(b.page,'LiveIt','LiveIt workspace');
+  await a.page.waitForFunction(previous=>JSON.parse(localStorage.getItem('keepit-app-file-binding-v1:liveit')).revision!==previous,beforeTask,{timeout:35000});
+  await b.page.bringToFront();
   await b.page.waitForFunction(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.body==='App folder task'));
   assert.ok(await b.page.evaluate(()=>document.querySelector('iframe[title="LiveIt journal workspace"]').contentWindow.LiveItDemo.state().records.some(r=>r.type==='event')));
 

@@ -1,7 +1,7 @@
 {
   "schema": "keepit.owner-live-release.v1",
   "buildId": "suite-sync-transport-recovery-20261113",
-  "entry": "/assets/library-app-1566e8ef5f6f.js",
+  "entry": "/assets/library-app-d1ac93ef069c.js",
   "target": "OneDrive / KeepIt",
   "sourceArchiveSha256": "d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a",
   "privateSourceBase": "f9b7a3fc5473df6b6ef06542ec3f9f4a0953984f",
@@ -9,7 +9,7 @@
   "cloudSignInVerified": false,
   "cloudOriginalReadbackVerified": false,
   "files": {
-    "partners/connected/index.html": "4745b6914fa25c9dd8cee269176ab9a3c58f12528360b78a33e44d8f17ff9e59",
+    "partners/connected/index.html": "b58e77871bb926bd4cbb579df47e58847de512eb142a57d865dd61ed0b0f9faf",
     "partners/connected/owner-auth-callback.html": "0b54950fe912aa992dafa5c15f79fb020c5a50df96939ef20ceae032844c5e8e",
     "assets/chunk-SGTLM5CQ.js": "d8b3360139a617b3c6d7a53ec96230177ff6869b520a578c5bbea7f5529804f9",
     "assets/chunk-OZVKXUIX.js": "7d853cc51c52b7203db69e44c6d2fedcccc3c2712416f534f812c3dc5869aebc",
@@ -198,11 +198,11 @@
     "partners/connected/app-sync-bindings.mjs": "c8a9493db73727a79c48f3b12627d826b18fb89b3140002f3849b8aa81c3bab0",
     "partners/travelit/thinkit/afda98f5ced9406d0fe5/js/map-fullscreen.js": "05c1c6c19cc7cc4fb636e6bf6356043295b57e89b0dbc03cf392a2cc58f00536",
     "partners/travelit/thinkit/afda98f5ced9406d0fe5/js/itinerary-gantt.js": "8d31009a968178525b9f933f1cfe79349929bbfdda0b902ce9cb6455c84423c6",
-    "assets/keepit-auth-live-95a7194c8d12.js": "95a7194c8d121e18afe97f51bbbf77cbda155fa69c8e48443c4bbeaccec9f173",
-    "assets/keepit-onedrive-connect-c1b380968c9a.js": "c1b380968c9a58e98a5b7af24b47ea5239591f9e77b6bd311d4d7363a99db2b0",
+    "assets/keepit-auth-live-5b14504bb2da.js": "5b14504bb2da020d8953b90108797d9d4741953573852e38ac68f93b76b94c80",
+    "assets/keepit-onedrive-connect-38d1472a1a43.js": "38d1472a1a432a5bcbc643c222a8413c0adc74717113bda26e6ca4a00676e20f",
     "assets/keepit-note-ui-65ff2c2fdbc6.js": "65ff2c2fdbc670bc32a49c4923fe10dc7e4e792a064ba7a76ae61c977cf7e721",
     "assets/keepit-note-link-9addbfc2bc66.js": "9addbfc2bc6664d71e084873f8ca02b04b616c24dd95d58a8a4e18edf87fef5f",
-    "assets/library-app-1566e8ef5f6f.js": "1566e8ef5f6fa7c2b04b0db81483743efc564042faecb20f86e63307c703205b",
+    "assets/library-app-d1ac93ef069c.js": "d1ac93ef069c92ec2454f80d23b5ae1152d42cb35506aabb59c9c109f09373ef",
     "assets/keepit-note-ui-db4948167388.js": "db49481673885b8c82e9591d14f44bf98c64bb41bc1fd2eb13dafb434ae52fd7"
   },
   "normalEntry": "/",

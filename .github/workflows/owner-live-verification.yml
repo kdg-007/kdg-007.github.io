@@ -1,8 +1,5 @@
 name: Verify published owner collection
 on:
-  push:
-    branches: [main]
-    paths: [".github/workflows/owner-live-verification.yml", "partners/connected/owner-deployed.test.mjs"]
   workflow_run:
     workflows: ["KeepIt guarded device-QA website"]
     types: [completed]
@@ -10,9 +7,12 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: owner-live-verification
+  cancel-in-progress: true
 jobs:
   live:
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install disposable Chromium runtime
+      - name: Install disposable Chromium and WebKit runtimes
         run: |
           printf '{"type":"module","private":true}\n' > package.json
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
