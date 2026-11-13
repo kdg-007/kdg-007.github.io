@@ -104,3 +104,8 @@ html[data-map-fullscreen="true"] .map-panel{height:calc(100dvh - 170px);min-heig
 html[data-map-fullscreen="true"] #geo-canvas{height:calc(100% - 50px);width:100%}
 html[data-map-fullscreen="true"] .map-command-bar{position:sticky;top:-10px;z-index:60;padding-block:6px;background:var(--card,var(--app-ground,#f7f5eb))}
 html[data-map-fullscreen="true"] #main>.action-line:first-child{position:sticky;top:-10px;z-index:60;padding-block:6px;background:var(--card,var(--app-ground,#f7f5eb))}
+/* Keep the loaded street map inside the remaining viewport beneath its tools. */
+html[data-map-fullscreen="true"] #main:has(#street-map){display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden}
+html[data-map-fullscreen="true"] #main:has(#street-map)>.street-map-frame{flex:1 1 auto;height:auto!important;min-height:0}
+html[data-map-fullscreen="true"] #street-map{height:100%;min-height:0}
+html[data-map-fullscreen="true"] #main:has(#street-map)>:not(.street-map-frame){flex-shrink:0}
