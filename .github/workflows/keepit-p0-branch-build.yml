@@ -32,6 +32,8 @@ jobs:
         run: node --test partners/connected/onedrive-recovery.test.mjs
       - name: Build content-addressed assets and signed-off release manifest
         run: node ops/ui/build-live-stability.mjs
+      - name: Verify pinned OneDrive transfer hosts, URL validation and browser CSP
+        run: node ops/ui/transfer-host-policy.test.mjs
       - name: Confirm that a second build is byte-identical
         run: |
           node ops/ui/build-live-stability.mjs
