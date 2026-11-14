@@ -26,8 +26,11 @@ let html=readFileSync('partners/connected/index.html','utf8');
 // metadata hostname. Keep CSP narrow, allowing documented Microsoft file hosts;
 // do not add wildcard Internet access or weaken script/object directives.
 const fileHosts='https://my.microsoftpersonalcontent.com https://api.onedrive.com';
-if(!html.includes(fileHosts))throw Error('Expected OneDrive CSP anchor not found');
-html=html.replace(fileHosts,'https://my.microsoftpersonalcontent.com https://*.my.microsoftpersonalcontent.com https://*.livefilestore.com https://api.onedrive.com');
+const allowedHosts='https://my.microsoftpersonalcontent.com https://*.my.microsoftpersonalcontent.com https://*.livefilestore.com https://api.onedrive.com';
+if(!html.includes(allowedHosts)){
+ if(!html.includes(fileHosts))throw Error('Expected OneDrive CSP anchor not found');
+ html=html.replace(fileHosts,allowedHosts);
+}
 html=html.replaceAll(proof.entry,'/'+paths.entry).replaceAll('//assets/','/assets/');
 writeFileSync('partners/connected/index.html',html);
 proof.entry='/'+paths.entry;
