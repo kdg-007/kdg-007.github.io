@@ -4,9 +4,11 @@
   "esbuild": "0.28.2",
   "paths": {
     "auth": "assets/keepit-auth-live-5b14504bb2da.js",
-    "connection": "assets/keepit-onedrive-connect-bcf695c68d94.js",
+    "transfer": "assets/keepit-transfer-hosts-6e9b7483e8b2.js",
+    "provider": "assets/keepit-graph-provider-a6dfefa333bb.js",
+    "connection": "assets/keepit-onedrive-connect-87f41e63acfe.js",
     "ui": "assets/keepit-note-ui-65ff2c2fdbc6.js",
     "link": "assets/keepit-note-link-9addbfc2bc66.js",
-    "entry": "assets/library-app-e29a7757e0ba.js"
+    "entry": "assets/library-app-8aa77579ebee.js"
   }
 }
