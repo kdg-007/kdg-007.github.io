@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = 'refs/heads/fix/keepit-transport-error-classification-20261114'
-          git add assets/keepit-auth-live-*.js assets/keepit-onedrive-connect-*.js assets/keepit-note-ui-*.js assets/keepit-note-link-*.js assets/library-app-*.js partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json
+          git add assets/keepit-auth-live-*.js assets/keepit-onedrive-connect-*.js assets/keepit-transfer-hosts-*.js assets/keepit-graph-provider-*.js assets/keepit-note-ui-*.js assets/keepit-note-link-*.js assets/library-app-*.js partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json
           if ! git diff --cached --quiet; then
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Compile P0 OneDrive transport diagnostics for browser verification'
             git push origin HEAD:refs/heads/fix/keepit-transport-error-classification-20261114
