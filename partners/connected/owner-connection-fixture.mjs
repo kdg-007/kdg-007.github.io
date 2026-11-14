@@ -1,4 +1,6 @@
 // Synthetic OAuth and read-only OneDrive fixture. Never contacts an account.
+// This preauthenticated download host exercises the actual browser CSP decision
+// against a Microsoft-documented OneDrive consumer storage domain.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 export function connectionFixture(origin,{nested=false,writable=false}={}){
@@ -7,7 +9,7 @@ export function connectionFixture(origin,{nested=false,writable=false}={}){
  const items=new Map(),bytes=new Map();
  const add=(id,parent,name,value)=>{
   const folder=value===undefined,data=folder?null:Buffer.isBuffer(value)?value:Buffer.from(JSON.stringify(value));
-  items.set(id,{id,name,eTag:'"fixture-'+id+'"',parentReference:{id:parent,driveId:'fixture-drive'},...(folder?{folder:{}}:{file:{mimeType:'application/json'},size:data.length,'@microsoft.graph.downloadUrl':'https://fixture.storage.live.com/download/'+id})});if(data)bytes.set(id,data);
+  items.set(id,{id,name,eTag:'"fixture-'+id+'"',parentReference:{id:parent,driveId:'fixture-drive'},...(folder?{folder:{}}:{file:{mimeType:'application/json'},size:data.length,'@microsoft.graph.downloadUrl':'https://fixture.livefilestore.com/download/'+id})});if(data)bytes.set(id,data);
  };
  add('root',null,'root');if(nested){add('documents','root','Documents');add('other','root','Family photos');add('unrelated','other','family.jpg',{retained:'unrelated content'});add('empty','documents','New library');}add('library',nested?'documents':'root',nested?'Travel Library':'KeepIt');add('catalog','library','_Catalog');add('files','library','Files');add('legacy','catalog','commits');add('cloud','catalog','keepit-cloud');add('commits','cloud','commits');
  const identity={format:'mylibrary-folder-1',libraryId,createdAt:'2026-11-01T00:00:00.000Z'};
@@ -23,7 +25,7 @@ export function connectionFixture(origin,{nested=false,writable=false}={}){
  fixture.route=async route=>{
   const req=route.request(),url=new URL(req.url()),method=req.method();
   if(url.origin===origin)return route.continue();
-  if(fixture.offline&&(url.hostname==='graph.microsoft.com'||url.hostname==='fixture.storage.live.com'))return route.abort();
+  if(fixture.offline&&(url.hostname==='graph.microsoft.com'||url.hostname==='fixture.livefilestore.com'))return route.abort();
   const cors={'access-control-allow-origin':origin,'access-control-allow-headers':'*','access-control-allow-methods':'GET,POST,PUT,PATCH,OPTIONS','access-control-expose-headers':'*'};
   const json=(value,status=200)=>route.fulfill({status,headers:cors,contentType:'application/json',body:JSON.stringify(value)});
   if(method==='OPTIONS')return route.fulfill({status:204,headers:cors});
@@ -69,7 +71,7 @@ export function connectionFixture(origin,{nested=false,writable=false}={}){
    if(suffix.startsWith(':/')){const found=[...items.values()].find(item=>item.parentReference.id===id&&item.name===suffix.slice(2));return json(found||{},found?200:404);}
    throw Error('Unmocked Graph GET '+url.pathname);
   }
-  if(url.hostname==='fixture.storage.live.com'){
+  if(url.hostname==='fixture.livefilestore.com'){
    assert.ok(!req.headers()['authorization'],'Signed downloads must not receive bearer tokens');const data=bytes.get(url.pathname.split('/').pop());return route.fulfill({status:data?200:404,headers:cors,contentType:'application/json',body:data||''});
   }
   return route.abort();
