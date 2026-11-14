@@ -909,6 +909,8 @@ var ve = class {
     return t = t || e.name, i.displayPath = t, localStorage.setItem(Q, JSON.stringify({ homeId: this.auth.account().homeAccountId, driveId: this.fs.driveId, rootId: e.id, path: t })), localStorage.setItem(M, "onedrive"), await this.ready(i), this.bound = true, this.selecting = false, this.status(), this.$("onedrive-message").hidden = true, this.publish("connected", "OneDrive / " + t + " connected"), this.$("onedrive-dialog").close(), true;
   }
   async restore({ force: e = false, interactive: t = false, selected: i = null, priorBound: s = false } = {}) {
+    // Never let a prior failure label a new attempt. No URLs or credentials are recorded.
+    this.lastNetworkFailure = null;
     try {
       if (i) return await this.bindLibrary(i.root, i.path);
       if (!e && !t && !ye()) return false;
@@ -930,6 +932,13 @@ var ve = class {
     } catch (r) {
       this.bound = !!s && !!this.fs && this.auth.account()?.homeAccountId === S()?.homeId;
       let a = H(r);
+      if (r?.code === "NETWORK_UNKNOWN" && this.lastNetworkFailure) {
+        // The provider deliberately hides URLs/tokens. State only which transport failed.
+        a = this.lastNetworkFailure.kind === "transfer"
+          ? "OneDrive folders are accessible, but KeepIt could not download a required library file (KI-OD-TRANSFER). The library and pending edits were not changed."
+          : "KeepIt could not finish a Microsoft Graph request (KI-OD-GRAPH). The selected library and pending edits were not changed.";
+      }
+      this.lastNetworkFailure = null;
       if (this.note(a, true), this.progress({ error: "OneDrive could not connect. " + a }), this.status(), this.fs && t) {
         this.selecting = true, this.present();
         try {
@@ -950,7 +959,11 @@ var ve = class {
       // Upload-session URLs are preauthenticated. Never add a bearer token or
       // replay a transfer whose outcome needs reconciliation by the provider.
       if(new URL(input.url||input,location.origin).hostname!=='graph.microsoft.com'){
-        try{return await fetch(input,options);}catch(error){interrupted();throw error;}
+        try{return await fetch(input,options);}catch(error){
+          // Classify without retaining preauthenticated download URLs or secrets.
+          this.lastNetworkFailure={kind:"transfer"};
+          interrupted();throw error;
+        }
       }
       const controller=new AbortController(),abort=()=>controller.abort();
       options.signal?.addEventListener('abort',abort,{once:true});if(options.signal?.aborted)abort();
@@ -980,7 +993,7 @@ var ve = class {
         return ['GET','HEAD'].includes(method)
           ?await re(request,20000,'OneDrive did not respond in time. Retry the connection.')
           :await request();
-      }catch(error){controller.abort();interrupted();throw error;}
+      }catch(error){this.lastNetworkFailure={kind:"graph"};controller.abort();interrupted();throw error;}
       finally{options.signal?.removeEventListener('abort',abort);}
     };
     const fs=new _(this.auth,{onProgress:this.progress,fetcher}),root=await fs.initialize();
