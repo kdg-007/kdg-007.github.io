@@ -205,6 +205,8 @@ jobs:
         run: |
           node ops/ui/build-live-stability.mjs
           git diff --exit-code -- assets partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json
+      - name: Verify transfer host safety and content-addressed owner imports
+        run: node ops/ui/transfer-host-policy.test.mjs
       - name: Verify interrupted note saving, connection renewal and nonoverlapping headers
         run: node partners/connected/save-connection-layout.browser.mjs
       - name: Verify single-tab draft saves and copy recovery
