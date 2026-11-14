@@ -101,3 +101,18 @@ test('renewal requiring sign-in is not overwritten by a generic waiting message'
  await assert.rejects(()=>f.c.fs.fetcher('https://graph.microsoft.com/v1.0/me/drive'),/Sign in/);
  assert.equal(f.c.phase,'signin');assert.equal(f.c.bound,true);
 });
+
+test('download transport failures are classified without storing signed URLs or credentials',async()=>{
+ const f=fixture();await f.c.connectFiles();
+ const signedUrl='https://sample.files.1drv.com/download?token=PRIVATE-SIGNATURE';
+ f.env.fetch=async()=>{throw Error('Simulated browser transport failure');};
+ await assert.rejects(()=>f.c.fs.fetcher(signedUrl),/Simulated browser transport failure/);
+ assert.deepEqual(f.c.lastNetworkFailure,{kind:'transfer'});
+ assert.doesNotMatch(JSON.stringify(f.c.lastNetworkFailure),/PRIVATE-SIGNATURE|files\\.1drv\\.com|Bearer/);
+});
+test('Graph transport failures are distinguished from signed-file download failures',async()=>{
+ const f=fixture();await f.c.connectFiles();
+ f.env.fetch=async()=>{throw Error('Simulated Graph network failure');};
+ await assert.rejects(()=>f.c.fs.fetcher('https://graph.microsoft.com/v1.0/me/drive'),/Simulated Graph network failure/);
+ assert.deepEqual(f.c.lastNetworkFailure,{kind:'graph'});
+});
