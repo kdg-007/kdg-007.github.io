@@ -28,3 +28,9 @@ This is a draft candidate, not a deployed change.
 - Gantt fit model now draws clock ticks, gridlines and bars from the *same* normalized timeline coordinates. The old unrelated repeating 25%-column grid has been replaced.
 - Reproducible pinned build completed on the latest edited source. The compiler bot refreshed the fingerprinted startup bundle and owner release proof. First-party browser regression must run against the **postcompiler source SHA**, not the preceding unrebuilt CSS/JS commit; all those initial provenance failures are expected and non-acceptance.
 - The candidate remains draft; no owner OneDrive file was accessed or changed.
+
+## Final fitted-axis source checkpoint
+
+- On iPhone, place the compact edit fields above each activity's **full-width horizontal timeline**, not in a narrow side column. This preserves a useful chart width without time-axis scrolling.
+- On desktop, reserve approximately 64% of Gantt width for the same full-span timeline and derive vertical gridlines from actual tick positions. PR #48's separate desktop alignment proposal was closed unmerged; these compatible alignment principles are incorporated here to avoid competing releases.
+- Pinned source rebuild and owner release manifest regeneration succeeded on the feature branch. Browser acceptance must use this *postcompiler* source SHA. CSS, editor JS and PDM model are draft only; do not deploy until all acceptance gates pass.
