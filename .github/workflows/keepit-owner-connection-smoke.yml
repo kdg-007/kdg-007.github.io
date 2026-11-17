@@ -1,0 +1,28 @@
+name: KeepIt P0 owner connection fast gate
+on:
+  push:
+    branches: [fix/keepit-transport-error-classification-20261114]
+    paths:
+      - partners/connected/owner-connection.test.mjs
+      - partners/connected/owner-connection-fixture.mjs
+      - .github/workflows/keepit-owner-connection-smoke.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  owner-reconnect:
+    if: github.ref == 'refs/heads/fix/keepit-transport-error-classification-20261114'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser testing runtime
+        run: |
+          printf '{"type":"module","private":true}\n' > package.json
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium webkit
+      - name: Owner sign-in callback, nested folder, timeouts, and retry
+        run: node partners/connected/owner-connection.test.mjs
