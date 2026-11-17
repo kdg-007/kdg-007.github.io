@@ -600,7 +600,10 @@ var T = encodeURIComponent, B = () => new DOMException("File not found in OneDri
       // Do not pass null into the legacy catalog parser, which would dereference
       // null.size and hide the actual missing-file boundary on Safari/macOS.
       const fileHandle = { kind: "file", name: e.name, getFile: async () => {
-        const file = await this.fs.read(e, { cache: true });
+        let file = await this.fs.read(e, { cache: true });
+        // Read-only cache bypass is safe. A transient missing browser cache
+        // result must not prevent a legitimate existing library from opening.
+        if (!(file instanceof Blob)) file = await this.fs.read(e, { cache: false });
         d(file instanceof Blob, "A OneDrive catalog file returned no original bytes (KI-OD-NULL-FILE). The existing library was not changed.");
         return file;
       } };
@@ -741,7 +744,8 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     let r = JSON.stringify(t.map((p) => [p.id, p.name, p.eTag, p.size, !!p.folder]).sort((p, I) => p[0] < I[0] ? -1 : p[0] > I[0] ? 1 : 0)), a = this.verified, n = a && a.legacySignature === r;
     if (n && a.headId === i.id && a.headName === i.name && a.headETag === i.eTag) return this.head = i, structuredClone(a.state);
     let o = t.map((p) => [p.name, p.folder ? this.fs.directory(p) : { kind: "file", getFile: async () => {
-      const file = await this.fs.read(p, { cache: true });
+      let file = await this.fs.read(p, { cache: true });
+      if (!(file instanceof Blob)) file = await this.fs.read(p, { cache: false });
       d(file instanceof Blob, "OneDrive catalog history returned no file bytes (KI-OD-NULL-HISTORY). Original files were retained.");
       return file;
     } }]), l = { identity: this.identity, commits: { async *entries() {
