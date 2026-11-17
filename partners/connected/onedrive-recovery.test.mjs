@@ -129,7 +129,9 @@ test('a null OneDrive catalog original produces a safe readback error, not null.
  const entry=await(async()=>{for await(const [,item] of folder.entries())return item;})();
  await assert.rejects(()=>entry.getFile(),/KI-OD-NULL-FILE/);
  const healthy=new Blob(['safe unchanged original']);
- adapter.read=async()=>healthy;
+ let attempts=0;
+ adapter.read=async()=>++attempts===1?null:healthy;
  const item=await(async()=>{for await(const [,file] of folder.entries())return file;})();
  assert.equal(await item.getFile(),healthy);
+ assert.equal(attempts,2,'Transient null cache result must recover with exactly one read-only bypass');
 });
