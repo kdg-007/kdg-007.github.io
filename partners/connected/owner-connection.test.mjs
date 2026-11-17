@@ -71,7 +71,7 @@ try{
   await picker.route('**/*',nested.route);const phone=await picker.newPage();currentPage=phone;
   await phone.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1');await phone.locator('#onedrive-dialog[open]').waitFor();await phone.locator('#onedrive-signin').click();
   await phone.locator('#onedrive-folders button').filter({hasText:'Documents'}).waitFor();assert.equal(await phone.locator('#onedrive-use').isDisabled(),true);
-  assert.equal(await phone.locator('#connected-cloud-status').getAttribute('aria-label'),'Choose your OneDrive folder');
+  assert.match(await phone.locator('#connected-cloud-status').getAttribute('aria-label'),/^Choose KeepIt folder · Choose your OneDrive folder$/,'The folder picker must communicate the required KeepIt library choice');
   assert.ok(nested.requests.every(r=>r.method==='GET'),'Browsing never initializes or writes a library');
   await phone.locator('#onedrive-folders button').filter({hasText:'Family photos'}).click();await phone.locator('#onedrive-path').filter({hasText:'Family photos'}).waitFor();
   await phone.locator('#onedrive-use').click();await phone.locator('#onedrive-message').filter({hasText:'This folder contains files but is not a KeepIt library'}).waitFor();assert.ok(nested.requests.every(r=>r.method==='GET'));
