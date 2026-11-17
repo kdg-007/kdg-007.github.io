@@ -79,7 +79,8 @@ async function checkWorkspace(browser,index){
 
   const exported=page.waitForEvent('download');
   await shell.locator('#diMenuTabs [data-tab=File]').click();
-  await shell.locator('#diMenuPopup [data-dcmd="file.saveAs"]').click();
+  // Save As creates a new local project in current ThinkIt; the portable JSON export is Save Copy.
+  await shell.locator('#diMenuPopup [data-dcmd="file.saveCopy"]').click();
   const project=JSON.parse(await readFile(await (await exported).path(),'utf8'));
   const original=project.pages.find(item=>item.mode==='bmc');
   assert.match(original.bmcData.blocks.value,/Passenger journey evidence/);
