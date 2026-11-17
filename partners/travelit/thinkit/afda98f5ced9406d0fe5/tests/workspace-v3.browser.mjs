@@ -12,7 +12,47 @@ export async function checkWorkspaceV3(browser,origin){
   for(const [i,title,time,duration,date] of [[0,'Morning walk','08:00','60','2026-12-05'],[1,'Lunch','12:00','45','2026-12-05'],[2,'Next day swim','09:00','90','2026-12-06']]){const row=rows.nth(i);await row.locator('[data-field=title]').fill(title);await row.locator('[data-field=time]').fill(time);await row.locator('[data-field=durationMinutes]').fill(duration);await row.locator('[data-field=date]').fill(date);}
   await page.getByRole('button',{name:'Save activities',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});
   assert.equal(await page.locator('.activity-summary-table td small').count(),0);assert.ok(await page.locator('.activity-summary-table').evaluate(el=>parseFloat(getComputedStyle(el).fontSize))>=15);
-  await page.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');assert.equal(await page.locator('.gantt-bar').count(),2);await page.getByLabel('Gantt period',{exact:true}).selectOption('trip');assert.equal(await page.locator('.gantt-bar').count(),3);assert.match(await page.locator('.gantt-axis').innerText(),/12-05/);assert.match(await page.locator('.gantt-table tbody tr').first().locator('td').nth(1).innerText(),/12-05 08:00/);await page.screenshot({path:'appearance-qa/travelit-gantt-'+browser.browserType().name()+'.png'});
+  await page.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');assert.equal(await page.locator('.gantt-bar').count(),2);
+  // Source of the November desktop screenshots: a fixed 600px axis let the
+  // last date/time tick collide with 22:00. Start/End scrolled away from the
+  // activities, and 12.5% painted gridlines did not match 2-hour ticks.
+  const ganttGeometry=()=>page.locator('.gantt-table').evaluate(table=>{
+    const wrap=table.closest('.gantt-wrap'),axis=table.querySelector('.gantt-axis'),
+      track=table.querySelector('.gantt-track');
+    const a=axis.getBoundingClientRect(),t=track.getBoundingClientRect();
+    const head=[...table.querySelectorAll('thead th')].slice(0,4)
+      .map(el=>el.getBoundingClientRect().left);
+    const tickBoxes=[...axis.querySelectorAll('span')].map(el=>{
+      const b=el.getBoundingClientRect();return {left:b.left,right:b.right};
+    });
+    const gridLines=[...track.querySelectorAll('.gantt-gridline')].map(el=>({
+      left:el.getBoundingClientRect().left,position:parseFloat(el.style.left)
+    }));
+    return {head,axisLeft:a.left,axisWidth:a.width,trackLeft:t.left,
+      trackWidth:t.width,gridLines,tickBoxes,scrollWidth:wrap.scrollWidth,
+      clientWidth:wrap.clientWidth};
+  });
+  const initial=await ganttGeometry();
+  assert.ok(initial.tickBoxes.length>=8,'Day Gantt must expose legible, useful time labels');
+  assert.ok(initial.tickBoxes.every((b,i)=>i===0||b.left>=initial.tickBoxes[i-1].right+2),
+    'Each time-axis label must remain distinct with at least 2px separation');
+  assert.ok(Math.abs(initial.axisLeft-initial.trackLeft)<2&&
+    Math.abs(initial.axisWidth-initial.trackWidth)<2,
+    'Time ticks and bar track must share the exact left edge and width');
+  assert.ok(initial.gridLines.length===initial.tickBoxes.length);
+  assert.ok(initial.gridLines.every(g=>Math.abs(g.left-
+    (initial.axisLeft+initial.axisWidth*g.position/100))<2),
+    'Gridline x positions must exactly follow the same time-axis percentages');
+  assert.ok(initial.scrollWidth>initial.clientWidth,
+    'At MacBook width the axis should scroll instead of compressing tick labels');
+  await page.locator('.gantt-wrap').evaluate(el=>{el.scrollLeft=el.scrollWidth;});
+  const scrolled=await ganttGeometry();
+  for(let i=0;i<4;i++)assert.ok(Math.abs(initial.head[i]-scrolled.head[i])<2,
+    'Activity, duration, start and end columns must remain frozen while chart scrolls');
+  assert.ok(Math.abs(scrolled.axisLeft-scrolled.trackLeft)<2,
+    'Chart scroll must not decouple time labels and bar/grid positions');
+  await page.screenshot({path:'appearance-qa/travelit-desktop-gantt-sticky-'+browser.browserType().name()+'.png'});
+  await page.locator('.gantt-wrap').evaluate(el=>{el.scrollLeft=0;});await page.getByLabel('Gantt period',{exact:true}).selectOption('trip');assert.equal(await page.locator('.gantt-bar').count(),3);assert.match(await page.locator('.gantt-axis').innerText(),/12-05/);assert.match(await page.locator('.gantt-table tbody tr').first().locator('td').nth(1).innerText(),/12-05 08:00/);await page.screenshot({path:'appearance-qa/travelit-gantt-'+browser.browserType().name()+'.png'});
   await page.getByRole('button',{name:'Calendar',exact:true}).click();assert.equal(await page.locator('.calendar-day.has-schedule').count(),2);assert.ok(await page.locator('.calendar-day.has-schedule').first().isVisible());
   await page.getByRole('button',{name:'Packing',exact:true}).click();await page.getByRole('button',{name:'Use a template',exact:true}).click();await page.getByLabel('Swimming',{exact:true}).check();await page.getByLabel('Beach',{exact:true}).check();await page.getByLabel('Mountain',{exact:true}).check();await page.getByRole('button',{name:'Add missing items',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});const checks=page.locator('[data-pack-id]'),count=await checks.count();assert.ok(count>=15);await checks.first().check();await page.getByRole('button',{name:'Use a template',exact:true}).click();await page.getByLabel('Swimming',{exact:true}).check();await page.getByLabel('Beach',{exact:true}).check();await page.getByLabel('Mountain',{exact:true}).check();await page.getByRole('button',{name:'Add missing items',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});assert.equal(await checks.count(),count);assert.equal(await checks.first().isChecked(),true);
   await page.getByRole('button',{name:'Budget',exact:true}).click();const field=(index,key)=>page.locator('.budget-input-table tbody tr').nth(index).locator('[data-budget-field="'+key+'"]');
