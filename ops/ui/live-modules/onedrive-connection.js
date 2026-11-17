@@ -595,7 +595,17 @@ var T = encodeURIComponent, B = () => new DOMException("File not found in OneDri
     } };
   }
   async *entries() {
-    for (let e of await this.fs.children(this.item.id)) yield [e.name, e.folder ? this.fs.directory(e) : { kind: "file", name: e.name, getFile: () => this.fs.read(e, { cache: true }) }];
+    for (let e of await this.fs.children(this.item.id)) {
+      // A cloud listing may be valid while an individual original is unavailable.
+      // Do not pass null into the legacy catalog parser, which would dereference
+      // null.size and hide the actual missing-file boundary on Safari/macOS.
+      const fileHandle = { kind: "file", name: e.name, getFile: async () => {
+        const file = await this.fs.read(e, { cache: true });
+        d(file instanceof Blob, "A OneDrive catalog file returned no original bytes (KI-OD-NULL-FILE). The existing library was not changed.");
+        return file;
+      } };
+      yield [e.name, e.folder ? this.fs.directory(e) : fileHandle];
+    }
   }
   async removeEntry(e) {
     return this.fs.remove(this.item.id, e);
@@ -614,6 +624,7 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     this.fs.guard();
     let e = this.root.item;
     d(e.parentReference?.id, "Choose your library folder rather than the OneDrive root."), this.fs.allow(e.id);
+    this.onConnectProgress?.(0);
     let [t, i] = await Promise.all([this.fs.child(e.id, "_Catalog"), this.fs.child(e.id, "Files")]), s = t && await this.fs.child(t.id, "library.json");
     if (s) this.catalog = this.fs.directory(t);
     else {
@@ -729,7 +740,11 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     d(i.file && s && G.test(s[1]) && i.eTag, "The OneDrive catalog pointer is invalid.");
     let r = JSON.stringify(t.map((p) => [p.id, p.name, p.eTag, p.size, !!p.folder]).sort((p, I) => p[0] < I[0] ? -1 : p[0] > I[0] ? 1 : 0)), a = this.verified, n = a && a.legacySignature === r;
     if (n && a.headId === i.id && a.headName === i.name && a.headETag === i.eTag) return this.head = i, structuredClone(a.state);
-    let o = t.map((p) => [p.name, p.folder ? this.fs.directory(p) : { kind: "file", getFile: () => this.fs.read(p, { cache: true }) }]), l = { identity: this.identity, commits: { async *entries() {
+    let o = t.map((p) => [p.name, p.folder ? this.fs.directory(p) : { kind: "file", getFile: async () => {
+      const file = await this.fs.read(p, { cache: true });
+      d(file instanceof Blob, "OneDrive catalog history returned no file bytes (KI-OD-NULL-HISTORY). Original files were retained.");
+      return file;
+    } }]), l = { identity: this.identity, commits: { async *entries() {
       yield* o;
     } } }, u = n ? a.legacyState : await A.prototype.readHead.call(l);
     d((u?.commitId || null) === this.index.legacyCommitId, "This library was changed through a local folder connection. Close local writers before using OneDrive. No cloud changes were overwritten.");
@@ -897,15 +912,30 @@ var ve = class {
     }), this.startTask;
   }
   async bindLibrary(e, t) {
-    let i = await ee(this.fs, e, async (s) => {
+    this.connectPhase = "folder-preflight";
+    let i;
+    try {
+      i = await ee(this.fs, e, async (s) => {
+      this.connectPhase = "catalog-readback";
       const lib = new L(this.fs, s);
-      lib.onConnectProgress = (count) => this.progress({ stage: "Verifying OneDrive catalog \xB7 " + count + " revisions checked" });
+      lib.onConnectProgress = (count) => this.progress({ stage: count ? "Verifying OneDrive catalog · " + count + " revisions checked" : "Inspecting existing OneDrive catalog · original files protected" });
       try {
         return await lib.open();
       } finally {
         lib.onConnectProgress = null;
       }
-    });
+      });
+    } catch (error) {
+      // This is a catalog-readback defect, not an instruction to disconnect or
+      // create a replacement library. Keep transport details private.
+      if (this.connectPhase === "catalog-readback" &&
+          error instanceof TypeError && /null.*(?:reading ['"]size['"]|\.size)/i.test(error.message)) {
+        const safe = new Error("A missing catalog file or record interrupted OneDrive verification (KI-OD-CATALOG-NULL). The existing library was not reset. Retry this same folder; do not reconnect to a new library.");
+        safe.code = "CATALOG_NULL";
+        throw safe;
+      }
+      throw error;
+    } finally { this.connectPhase = null; }
     return t = t || e.name, i.displayPath = t, localStorage.setItem(Q, JSON.stringify({ homeId: this.auth.account().homeAccountId, driveId: this.fs.driveId, rootId: e.id, path: t })), localStorage.setItem(M, "onedrive"), await this.ready(i), this.bound = true, this.selecting = false, this.status(), this.$("onedrive-message").hidden = true, this.publish("connected", "OneDrive / " + t + " connected"), this.$("onedrive-dialog").close(), true;
   }
   async restore({ force: e = false, interactive: t = false, selected: i = null, priorBound: s = false } = {}) {
