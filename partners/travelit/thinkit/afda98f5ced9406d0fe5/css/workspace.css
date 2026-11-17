@@ -332,6 +332,12 @@ html[data-suite-app="travelit"] .itinerary-table-card:has(.gantt-fit){margin-top
  .gantt-fit-fields :is(input,output){font-size:11px;padding:3px 2px}
 }
 @media(max-width:720px){
+ /* A phone needs its entire width for the clock. Put compact edit fields
+    above each activity bar instead of squashing the timescale to 46%. */
+ .gantt-fit-heading,.gantt-fit-row{display:flex;flex-direction:column}
+ .gantt-fit-heading>span{display:none}
+ .gantt-fit-axis{flex:1;width:calc(100% - 12px);margin-inline:6px}
+ .gantt-fit-row .gantt-fit-track{flex:0 0 27px;min-height:27px;height:27px}
  html[data-suite-app="travelit"] .gantt-fit{border-radius:8px}
  .gantt-fit-toolbar{padding:5px 6px;gap:5px}
  .gantt-fit-toolbar>strong{font-size:12px}
