@@ -322,10 +322,19 @@ try{
     'section[aria-label="TravelIt connected workspace"] select')?.options.length>0,
     null,{timeout:25000});
    assert.ok((await travelTarget.locator('option').count())>0);
+   // A refresh may finish while the connected navigation is settling.
+   // Require a concrete selected record rather than just an option element.
+   await page.waitForFunction(()=>{
+     const select=document.querySelector('section[aria-label="TravelIt connected workspace"] select[aria-label="TravelIt note target"]');
+     return !!select?.value && select.selectedIndex>=0;
+   },null,{timeout:25000});
    await reopenNoteTools(page);await travelHost.getByRole('button',{name:'Open native note'}).click();
-   await note.waitFor({state:'visible',timeout:35000}).catch(async()=>{
+   await note.waitFor({state:'visible',timeout:35000}).catch(async(error)=>{
      throw Error('TravelIt native editor not opened: '+JSON.stringify({
-      status:await travelHost.getByRole('status').textContent(),errors
+      cause:error.message,
+      count:await note.count().catch(()=>-1),
+      selectedValueLength:(await travelTarget.inputValue().catch(()=>'')).length,
+      status:await travelHost.getByRole('status').textContent().catch(()=>'unavailable'),errors
      }));
    });
    const travelEditor=note.locator('.note-editor [contenteditable="true"]');

@@ -121,7 +121,8 @@ async function checkLauncher(browser,origin,layout){
     await editor.locator('#modalRoot .modal-footer').getByRole('button',{name:'Create blank project',exact:true}).tap();
     await editor.locator('#diFocusToggle').tap();
     await editor.locator('#diMenuBar').waitFor({state:'hidden'});
-    const exit=editor.getByRole('button',{name:'Back to editor',exact:true});
+    const exit=editor.locator('#diFocusExit');
+     assert.match((await exit.innerText()).trim(),/^(?:Back to editor|Exit Focus · Esc)$/,'Unexpected ThinkIt focus-exit control');
     const touchTarget=await exit.boundingBox();
     assert.ok(touchTarget&&touchTarget.x>=0&&touchTarget.y>=0&&touchTarget.x+touchTarget.width<=layout.width&&touchTarget.y+touchTarget.height<=layout.height&&touchTarget.height>=44);
     await exit.tap();
