@@ -939,7 +939,7 @@ var ve = class {
           : "KeepIt could not finish a Microsoft Graph request (KI-OD-GRAPH). The selected library and pending edits were not changed.";
       }
       this.lastNetworkFailure = null;
-      if (this.note(a, true), this.progress({ error: "OneDrive could not connect. " + a }), this.status(), this.fs && t) {
+      if (this.note(a, true), this.progress({ error: "OneDrive could not connect. " + a + (this.auth.reconnectRequired ? " Reconnect Microsoft to continue." : " Select the OneDrive status to retry.") }), this.status(), this.fs && t) {
         this.selecting = true, this.present();
         try {
           await this.browse();
