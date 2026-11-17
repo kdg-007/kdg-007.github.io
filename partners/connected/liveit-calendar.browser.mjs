@@ -275,10 +275,13 @@ try{
   },null,{timeout:45000});
   const otherTravel=b.page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await otherTravel.locator('#view-select').selectOption('trips');
-  await otherTravel.getByRole('heading',{name:'App folder trip',exact:true}).waitFor({timeout:45000}).catch(async error=>{
+  // Mobile hides the duplicate heading: verify actual cloud-restored trip data.
+  await otherTravel.locator('#trip-select option').filter({hasText:'App folder trip'}).waitFor({state:'attached',timeout:45000}).catch(async error=>{
    console.error('TRAVELIT_RESTORE_STATE',await otherTravel.locator('#trip-cloud-status').textContent(),await b.page.locator('#connected-cloud-status').textContent(),b.errors);
    throw error;
   });
+  assert.equal((await otherTravel.locator('#trip-select option:checked').textContent()).trim(),'App folder trip');
+  await otherTravel.locator('#trip-cloud-status').filter({hasText:'Trips saved in KeepIt.'}).waitFor({timeout:30000});
   await otherTravel.locator('[data-trip-tab="documents"]').click();
   const restoredDocs=otherTravel.getByRole('region',{name:'Trip documents'});
   await restoredDocs.getByText('Synthetic meeting note',{exact:true}).waitFor({timeout:45000});
