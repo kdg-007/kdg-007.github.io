@@ -1,4 +1,5 @@
 import {itineraryGantt} from './itinerary-gantt.js';
+import {renderFitGantt,ganttEndLabel} from './gantt-editor.js';
 import {createMapFullscreen} from './map-fullscreen.js';
 import {loadStreetMapRuntime} from './street-map-loader.js';
 import {downloadRoadRegion} from './road-region-download.js';
@@ -34,7 +35,8 @@ let modalDirty=false,modalReturnFocus=null,modalBaseRevisions={},modalBasePresen
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const navigation=[['explore','Explore','◉'],['map','Map','⌖'],['trips','Trips','▤'],['today','Today','◷'],['packing','Packing','✓'],['more','More','⋯']];
 let disposeStreetMap=null,externalRenderPending=false;
-let itineraryMode='table',ganttScope='day';
+let itineraryMode='table',ganttScope='day',ganttDependencies=false,ganttFullscreen=false;
+const ganttDrafts=new Map();
 const budgetDrafts=new Map();
 const state={mapMode:'online',streetViewport:null,db:null,recovery:null,view:'explore',places:[],trips:[],stops:[],packing:[],vehicles:[],expenses:[],outbox:[],keepitAssociations:[],annotations:[],mapPacks:[],activePackId:null,mapFaults:[],atlasView:null,atlasLoading:null,atlasRequest:0,atlasAudit:null,mapDraft:null,mapFixedBounds:null,storageState:'Checking storage…',storageHealth:null,localAudit:null,shellCached:false,shellReport:null,selectedTrip:null,tripTab:'itinerary',search:'',category:'All',stageFilter:'All',calendarMonth:'',chosenDay:'',toastTimer:null};
 state.tripSync=window.parent===window?'Trips on this device. Open TravelIt from LiveIt’s Apps menu to sync.':'Trips on this device. Checking KeepIt…';
@@ -245,10 +247,105 @@ function renderActivitiesTable(entries){
   return `<tr data-activity-id="${esc(stop.id)}"><td><strong>${esc(stop.title)}</strong>${stop.importSource?.code?`<small class="activity-source-code">${esc(stop.importSource.code)}</small>`:''}${stop.fixed?'<small class="activity-booking-label">Fixed booking</small>':''}</td><td>${durationLabel(stop.durationMinutes||0)}</td><td>${stop.time||'Flexible'}</td><td>${stopEnd(stop)}</td><td>${esc(stop.importSource?.originalType||stop.kind)}</td><td><div class="activity-row-actions">${action('Details','edit-stop:'+stop.id)}${order}${menu('More',action('Remove','delete-stop:'+stop.id,'button button-small button-danger'))}</div></td></tr>`;
  }).join('')}</tbody></table></div>`;
 }
+function ganttDraft(trip){
+ let draft=ganttDrafts.get(trip.id);
+ if(!draft){
+  draft={rows:new Map(),dirty:false,epoch:state.workspaceEpoch,revision:state.workspaceRevision,
+   revisions:{...state.recordRevisions},presence:{...state.recordPresence}};
+  ganttDrafts.set(trip.id,draft);
+ }
+ return draft;
+}
+function ganttPreview(trip){
+ const draft=ganttDraft(trip);
+ const all=byTrip(state.stops).map(stop=>({...stop,...draft.rows.get(stop.id)}));
+ try{
+  const plan=planTripDependencies(all,trip,{deriveStarts:true});
+  const updated=new Map(plan.updates.map(stop=>[stop.id,stop]));
+  return {rows:all.map(stop=>updated.get(stop.id)||stop),issues:plan.issues,plan};
+ }catch(error){return {rows:all,issues:[error.message],plan:null};}
+}
 function renderGantt(entries){
- const model=itineraryGantt(entries,{scope:ganttScope,trip:selected(),day:state.chosenDay});
- if(!entries.length)return '<p class="empty-inline">No activities in this period.</p>';
- return `<p class="gantt-help"><span class="gantt-help-full">${ganttScope==='trip'?'Whole trip, including days without activities.':'Selected day, including overnight finishes.'} Flexible activities are listed without bars. Scroll horizontally to follow the timeline.</span><span class="gantt-help-compact">Swipe timeline sideways · Tap an activity to edit</span></p><div class="gantt-wrap" role="region" aria-label="Itinerary Gantt chart" tabindex="0"><table class="gantt-table" style="--timeline-width:${model.timelineWidth}px"><thead><tr><th scope="col">Activity</th><th scope="col">Duration</th><th scope="col">Start</th><th scope="col">End</th><th scope="col"><div class="gantt-axis">${model.ticks.map(tick=>`<span style="left:${tick.position}%">${esc(tick.label)}</span>`).join('')}</div></th></tr></thead><tbody>${model.rows.map(row=>`<tr><th scope="row"><button class="gantt-activity" data-action="edit-stop:${esc(row.stop.id)}">${esc(row.stop.title)}</button>${row.stop.importSource?.code?`<small class="activity-source-code">${esc(row.stop.importSource.code)}</small>`:''}</th><td>${durationLabel(row.duration)}</td><td>${esc(row.startLabel)}</td><td>${esc(row.endLabel)}</td><td><div class="gantt-track">${row.start===null?'<span class="gantt-unscheduled">Flexible</span>':`<span class="gantt-bar" role="img" aria-label="${esc(row.stop.title)}: ${esc(row.startLabel)} to ${esc(row.endLabel)}" style="left:${row.left}%;width:${row.width}%"></span>`}</div></td></tr>`).join('')}</tbody></table></div>`;
+ const trip=selected(),draft=ganttDraft(trip),preview=ganttPreview(trip);
+ const byId=new Map(preview.rows.map(stop=>[stop.id,stop]));
+ const visible=entries.map(stop=>byId.get(stop.id)||stop);
+ return renderFitGantt(visible,{trip,day:state.chosenDay,scope:ganttScope,allStops:preview.rows,
+  showDependencies:ganttDependencies,fullscreen:ganttFullscreen,savePending:draft.dirty,issues:preview.issues});
+}
+function toggleGanttFullscreen(){
+ ganttFullscreen=!ganttFullscreen;
+ document.documentElement.dataset.ganttFullscreen=String(ganttFullscreen);
+ // The connected app is same-origin and mounted in a named iframe. CSS
+ // fullscreen works on iPhone Safari, where element.requestFullscreen()
+ // is not supported for arbitrary document elements.
+ try{window.frameElement?.closest('section[aria-label="TravelIt connected workspace"]')
+   ?.classList.toggle('gantt-shell-fullscreen',ganttFullscreen);}catch{}
+ render();
+}
+function updateGanttDraft(input){
+ const trip=selected(),stopId=input.closest('[data-gantt-stop]')?.dataset.ganttStop;
+ if(!trip||!stopId)return;
+ const stop=state.stops.find(item=>item.id===stopId&&item.tripId===trip.id);
+ if(!stop)return;
+ const draft=ganttDraft(trip),patch={...(draft.rows.get(stopId)||{})};
+ const field=input.dataset.ganttField;
+ if(['date','time','durationMinutes'].includes(field))patch[field]=input.value;
+ else if(['predecessor','dependencyType','lagMinutes'].includes(field)){
+  const row=input.closest('[data-gantt-stop]');
+  const original=(patch.dependencies||stop.dependencies||[]);
+  const predecessor=row.querySelector('[data-gantt-field="predecessor"]')?.value||'';
+  const type=row.querySelector('[data-gantt-field="dependencyType"]')?.value||'FS';
+  const lagMinutes=Number(row.querySelector('[data-gantt-field="lagMinutes"]')?.value||0);
+  patch.dependencies=predecessor?[{id:predecessor,type,lagMinutes},...original.slice(1).filter(d=>d.id!==predecessor)]:original.slice(1);
+  // For a new dependency the start will be computed from the predecessor.
+  if(predecessor)patch.time='';
+ }
+ else return;
+ draft.rows.set(stopId,patch);draft.dirty=true;
+ const preview=ganttPreview(trip),byId=new Map(preview.rows.map(item=>[item.id,item]));
+ const model=itineraryGantt([...document.querySelectorAll('[data-gantt-stop]')].map(row=>byId.get(row.dataset.ganttStop)).filter(Boolean),
+  {scope:ganttScope,trip,day:state.chosenDay});
+ for(const row of document.querySelectorAll('[data-gantt-stop]')){
+  const next=byId.get(row.dataset.ganttStop);
+  if(!next)continue;
+  const output=row.querySelector('[data-gantt-end]');
+  if(output)output.textContent=ganttEndLabel(next);
+  const start=row.querySelector('[data-gantt-field="time"]');
+  if(start&&next.dependencies?.length){start.value=next.time||'';start.readOnly=true;}
+  else if(start)start.readOnly=false;
+  const visual=model.rows.find(item=>item.stop.id===next.id),track=row.querySelector('.gantt-fit-track');
+  if(track&&visual){
+   const bar=track.querySelector('.gantt-fit-bar');
+   if(bar&&visual.left!==null){bar.style.left=visual.left+'%';bar.style.width=visual.width+'%';}
+  }
+ }
+ const status=document.querySelector('#gantt-save-status');
+ if(status)status.textContent=preview.issues.length?'Review: '+preview.issues.join(' · '):'Unsaved schedule edits · Save schedule to commit atomically.';
+ const save=document.querySelector('[data-action="gantt-save"]');
+ if(save)save.disabled=false;
+}
+async function saveGanttSchedule(){
+ const trip=selected(),draft=ganttDraft(trip);
+ if(!draft.dirty)return;
+ const preview=ganttPreview(trip);
+ if(preview.issues.length)throw Error(preview.issues.join(' '));
+ const current=new Map(byTrip(state.stops).map(stop=>[stop.id,stop]));
+ const changed=[];
+ for(const candidate of preview.rows){
+  const old=current.get(candidate.id);
+  if(!old)continue;
+  const difference=['date','time','durationMinutes'].some(key=>String(old[key]??'')!==String(candidate[key]??''))||
+   JSON.stringify(old.dependencies||[])!==JSON.stringify(candidate.dependencies||[]);
+  if(difference)changed.push(normalizeStop({...old,...candidate},trip));
+ }
+ if(!changed.length){ganttDrafts.delete(trip.id);render();return;}
+ const guard={expectedEpoch:draft.epoch,expectedWorkspaceRevision:draft.revision,
+  expectedRevisionByKey:Object.fromEntries(changed.map(stop=>['stop:'+stop.id,draft.revisions['stop:'+stop.id]??0])),
+  expectedPresenceByKey:Object.fromEntries(changed.map(stop=>['stop:'+stop.id,Boolean(draft.presence['stop:'+stop.id])]))};
+ // Stale-workspace/record checks and the database batch commit are atomic.
+ // No cloud write is attempted directly by this view.
+ await writeLocally(()=>guardedSaveRecords(state.db,'stop',changed,guard));
+ ganttDrafts.delete(trip.id);render();toast('Schedule saved locally and queued for KeepIt synchronization.');
 }
 const peso=n=>'₱'+Number(n).toLocaleString('en-PH',{maximumFractionDigits:0});
 function emptyBudgetRow(){return {id:crypto.randomUUID(),label:'',category:'Accommodation',date:'',plannedPhp:'',actualPhp:'',notes:''};}
