@@ -116,3 +116,20 @@ test('Graph transport failures are distinguished from signed-file download failu
  await assert.rejects(()=>f.c.fs.fetcher('https://graph.microsoft.com/v1.0/me/drive'),/Simulated Graph network failure/);
  assert.equal(f.c.lastNetworkFailure?.kind,'graph');
 });
+
+test('a null OneDrive catalog original produces a safe readback error, not null.size',async()=>{
+ const start=source.indexOf('V = class {'),end=source.indexOf('\nvar G',start);
+ assert.ok(start>0&&end>start,'Directory adapter source boundary must remain present');
+ const Directory=vm.runInNewContext('('+source.slice(start+4,end).replace(/;\s*$/,'')+')',{
+  Blob,d:(ok,message)=>{if(!ok)throw Error(message);},B:()=>Error('Not found')
+ });
+ const adapter={children:async()=>[{id:'snapshot',name:'0000000001-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json',file:{}}],
+  read:async()=>null,directory:()=>null};
+ const folder=new Directory(adapter,{id:'commits',name:'commits'});
+ const entry=await(async()=>{for await(const [,item] of folder.entries())return item;})();
+ await assert.rejects(()=>entry.getFile(),/KI-OD-NULL-FILE/);
+ const healthy=new Blob(['safe unchanged original']);
+ adapter.read=async()=>healthy;
+ const item=await(async()=>{for await(const [,file] of folder.entries())return file;})();
+ assert.equal(await item.getFile(),healthy);
+});
