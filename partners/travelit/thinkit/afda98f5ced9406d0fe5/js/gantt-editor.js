@@ -19,6 +19,8 @@ export function renderFitGantt(entries,{trip,day,scope='day',allStops=entries,
  if(!entries.length)return '<p class="empty-inline">No activities in this period.</p>';
  const model=itineraryGantt(entries,{trip,day,scope});
  const lines=ticks(model,scope);
+ // Grid lines and bars share itineraryGantt's exact normalized clock.
+ const gridLines=model.ticks.map(tick=>`<span class="gantt-fit-gridline" style="left:${tick.position}%"></span>`).join('');
  const rowMarkup=model.rows.map(row=>{
   const stop=row.stop,dependency=stop.dependencies?.[0]||null,rest=(stop.dependencies?.length||0)-1;
   const selectable=allStops.filter(candidate=>candidate.id!==stop.id).map(candidate=>
@@ -42,6 +44,7 @@ export function renderFitGantt(entries,{trip,day,scope='day',allStops=entries,
     </div>`:''}
    </div>
    <div class="gantt-fit-track" role="presentation" aria-label="Full ${h(scope)} timescale">
+    ${gridLines}
     ${bar}
    </div>
   </div>`;
