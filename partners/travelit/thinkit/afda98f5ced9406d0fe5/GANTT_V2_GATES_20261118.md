@@ -22,3 +22,9 @@ This is a draft candidate, not a deployed change.
 - PDM derivation unit tests for all four relation types, blank starts, multiple links, fixed constraints, cycles, cross-midnight.
 - 390 px iPhone and desktop Chromium/WebKit: whole timeline fits, controls readable, Start/Duration edit updates End, save/reload retains changes, fullscreen enters/exits without clipping.
 - Full connected suite: KeepIt native note, LiveIt events, TravelIt cloud-persistence simulations, Microsoft callback and reconnection.
+
+## Regenerated candidate checkpoint
+
+- Gantt fit model now draws clock ticks, gridlines and bars from the *same* normalized timeline coordinates. The old unrelated repeating 25%-column grid has been replaced.
+- Reproducible pinned build completed on the latest edited source. The compiler bot refreshed the fingerprinted startup bundle and owner release proof. First-party browser regression must run against the **postcompiler source SHA**, not the preceding unrebuilt CSS/JS commit; all those initial provenance failures are expected and non-acceptance.
+- The candidate remains draft; no owner OneDrive file was accessed or changed.
