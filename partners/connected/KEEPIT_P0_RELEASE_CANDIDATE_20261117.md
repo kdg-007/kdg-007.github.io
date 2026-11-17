@@ -28,3 +28,10 @@ Synthetic Microsoft and browser fixtures cannot demonstrate an authenticated phy
 4. Controlled production deploy and rollback verification after approval.
 
 Do not disconnect the owner's account, reinstall, use a replacement library, auto-migrate app data or replay ambiguous writes to make the tests appear green.
+
+## Transport error action and final rebuild checkpoint
+
+- The first full QA attempt on the unrebuilt source change (`bff6e740`) correctly refused mismatched pinned JavaScript. This was a provenance gate, not a runtime regression.
+- Branch-only compiler run `44063406523` succeeded and committed new fingerprinted connection and entry assets (post-build head `ac7cf09e`).
+- Error state now says **Select the OneDrive status to retry** for recoverable Graph transport failures, and **Reconnect Microsoft** for expired/revoked authentication; no local edit deletion.
+- The release test still asserts a visible actionable retry instruction and then performs a successful retry. A new full QA run must target the compiled-asset commit or its descendants, not the precompiler SHA.
