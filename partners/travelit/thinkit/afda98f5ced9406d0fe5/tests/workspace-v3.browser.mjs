@@ -45,3 +45,62 @@ export async function checkStartupBundle(browser,origin){
  assert.ok(results[0].jsRequests>=30);assert.ok(results[1].jsRequests<=2);assert.ok(results[1].ms<results[0].ms,'Bundling must improve cold startup with simulated 150 ms request latency');
  writeFileSync('appearance-qa/travelit-startup-'+browser.browserType().name()+'.json',JSON.stringify(results,null,2));console.log('TRAVELIT_COLD_START_'+browser.browserType().name().toUpperCase(),JSON.stringify(results));
 }
+
+
+export async function checkMobileTripDensity(browser,origin){
+ const context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:390,height:844},
+  isMobile:true,hasTouch:true,serviceWorkers:'block'});
+ try{
+  await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
+  const page=await context.newPage();
+  await page.goto(origin+'/partners/connected/?connected-app=travelit',{waitUntil:'domcontentloaded'});
+  const frame=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
+  await frame.locator('html[data-travelit-ready="true"]').waitFor({timeout:20000});
+  await frame.getByLabel('Workspace',{exact:true}).selectOption('trips');
+  await frame.getByRole('button',{name:'+ New trip',exact:true}).click();
+  await frame.locator('#f-title').fill('Compact layout acceptance trip');
+  await frame.locator('#f-startDate').fill('2026-12-05');
+  await frame.locator('#f-endDate').fill('2026-12-10');
+  await frame.locator('#modal-form button[type=submit]').click();
+  await frame.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await frame.getByRole('button',{name:'Activities table',exact:true}).click();
+  const first=frame.locator('#activity-entry-rows tr').first();
+  await first.locator('[data-field=title]').fill('Morning departure');
+  await first.locator('[data-field=time]').fill('07:00');
+  await first.locator('[data-field=durationMinutes]').fill('60');
+  await frame.getByRole('button',{name:'Save activities',exact:true}).click();
+  await frame.locator('#modal-backdrop').waitFor({state:'hidden'});
+  await frame.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');
+  const layout=await frame.locator('html').evaluate(root=>{
+    const chart=document.querySelector('.gantt-wrap'),tabs=document.querySelector('.view-tabs');
+    const dates=document.querySelector('.day-strip');
+    return {chartTop:chart?.getBoundingClientRect().top??Infinity,
+      docOverflow:root.scrollWidth-root.clientWidth,
+      tabsRows:new Set([...tabs.querySelectorAll('button')].map(el=>Math.round(el.getBoundingClientRect().top))).size,
+      tabsScrollable:tabs.scrollWidth>tabs.clientWidth,
+      dayToolsVisible:getComputedStyle(document.querySelector('.day-tools')).display!=='none',
+      quickSaveVisible:getComputedStyle(document.querySelector('#quick-save')).display!=='none',
+      datesVisible:dates.getBoundingClientRect().height>40};
+  });
+  assert.ok(layout.chartTop<475,'Actual trip Gantt must start within the first 475 CSS px: '+JSON.stringify(layout));
+  assert.ok(layout.docOverflow<=3,'Mobile trip must not overflow full page horizontally: '+JSON.stringify(layout));
+  assert.equal(layout.tabsRows,1,'Trip tabs must remain on one horizontal scroll row');
+  assert.ok(layout.tabsScrollable&&layout.datesVisible,'Trip tabs scroll while the day strip remains visible');
+  assert.equal(layout.dayToolsVisible,false);
+  assert.equal(layout.quickSaveVisible,false);
+  await frame.locator('.trip-command-bar>.action-menu>summary').click();
+  assert.equal(await frame.locator('.mobile-trip-menu-actions [data-action=preview-excel]').isVisible(),true);
+  assert.equal(await frame.locator('.mobile-trip-menu-actions [data-action=new-trip]').isVisible(),true);
+  await frame.locator('.trip-command-bar>.action-menu>summary').click();
+  await frame.locator('.day-strip+.row-between .action-menu>summary').click();
+  assert.equal(await frame.locator('.mobile-day-menu-actions [data-action=review-trip-dependencies]').isVisible(),true);
+  await frame.locator('.mobile-day-menu-actions [data-action=day-next]').click();
+  await frame.locator('.day-tile.active').getByText('06',{exact:true}).waitFor();
+  await frame.getByRole('button',{name:'Packing',exact:true}).click();
+  await frame.getByRole('button',{name:'Itinerary',exact:true}).click();
+  await frame.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');
+  if(browser.browserType().name()==='chromium')
+    await page.screenshot({path:'appearance-qa/travelit-compact-connected-iphone.png'});
+  console.log('TRAVELIT_COMPACT_CONNECTED_IPHONE_'+browser.browserType().name().toUpperCase()+'_PASS',JSON.stringify(layout));
+ }finally{await context.close();}
+}
