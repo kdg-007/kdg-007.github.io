@@ -1,4 +1,4 @@
-import {checkWorkspaceV3,checkStartupBundle} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.browser.mjs';
+import {checkWorkspaceV3,checkStartupBundle,checkMobileTripDensity} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.browser.mjs';
 import {checkExcelImport} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-import.browser.mjs';
 import {checkExcelPreview} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-preview.browser.mjs';
 // Presentation-only browser regression. Disposable HTTPS and no real user data.
@@ -299,7 +299,7 @@ async function checkTravelActivities(browser,origin){
   const reopened=await context.newPage();
   await reopened.goto(origin+path+'?view=trips',{waitUntil:'domcontentloaded'});
   await reopened.locator('.activity-summary-table tbody tr').filter({hasText:'Drive north revised'}).waitFor({state:'visible'});
-  await reopened.locator('[data-action="day-next"]').click();
+  await reopened.locator('.day-tools [data-action="day-next"]').click();
   await reopened.locator('.activity-summary-table tbody tr').filter({hasText:'Beach visit'}).waitFor({state:'visible'});
   assert.equal((await stops(reopened)).length,3,'Reopening must retain all three activities without duplication');
   console.log('TRAVELIT_MAP_AND_ATOMIC_ACTIVITY_TABLE_'+browser.browserType().name().toUpperCase()+'_PASS');
@@ -501,7 +501,7 @@ try {
   await checkTravelActivities(browser,origin);
   await checkExcelPreview(browser,origin);
   await checkExcelImport(browser,origin);
-  for(const [label,check] of [['workspace',checkWorkspaceV3],['startup',checkStartupBundle],['map',checkStreetMap],['ThinkIt order',checkThinkitTopicOrder]]){
+  for(const [label,check] of [['workspace',checkWorkspaceV3],['mobile trip',checkMobileTripDensity],['startup',checkStartupBundle],['map',checkStreetMap],['ThinkIt order',checkThinkitTopicOrder]]){
    try{await check(browser,origin);}catch(error){featureFailures.push(engine.name()+' '+label+': '+error.message);console.error('FEATURE_FAILURE',engine.name(),label,error?.stack||String(error));}
   }
   await browser.close();browser=null;

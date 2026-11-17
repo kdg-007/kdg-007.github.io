@@ -130,3 +130,117 @@ html[data-map-fullscreen="true"] #main:has(#street-map)>:not(.street-map-frame){
 .gantt-wrap:focus-visible,.activity-grid-wrap:focus-visible{outline:3px solid var(--teal,#267e78);outline-offset:2px}
 @media(max-width:600px){.gantt-table thead th:first-child,.gantt-table tbody th{min-width:150px;width:150px;max-width:150px}.activity-row-actions .action-menu-items{min-width:180px}}
 .activity-row-actions .activity-order-button{min-width:44px;min-height:44px;font-size:18px}
+
+/* M1 — content-first trip itinerary on narrow touch screens.
+   Keep the day strip, current trip, cloud status and view choice in sight.
+   Move secondary actions to accessible disclosure menus (app.js); do not
+   discard actions, map controls, bookings, or save/recovery affordances. */
+.mobile-trip-menu-actions,.mobile-day-menu-actions,.gantt-help-compact{display:none}
+@media (max-width:720px){
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .topbar{
+    min-height:44px;padding:5px 10px;gap:6px;flex-wrap:nowrap
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .topbar #quick-save{display:none!important}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .workspace-navigation{gap:8px;flex:1;min-width:0}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .workspace-navigation select{max-width:115px;min-height:34px;padding:4px 7px}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] #navigation-toggle{min-width:38px;min-height:38px;padding:5px}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] main{padding:6px 10px 16px}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] #trip-cloud-status{
+    font-size:12px;line-height:1.3;margin:0 0 5px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-command-bar.has-trip{
+    display:flex;flex-wrap:nowrap;align-items:center;gap:8px;margin:0 0 6px
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-command-bar.has-trip .trip-select-label{
+    max-width:none;min-width:0;flex:1;gap:0;font-size:0
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-command-bar.has-trip #trip-select{
+    width:100%;max-width:none;min-width:0;min-height:36px;
+    padding:5px 9px;font-size:14px
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-command-bar.has-trip .trip-creation-actions{display:none}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-command-bar.has-trip>.action-menu{flex:0 0 auto}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .mobile-trip-menu-actions{
+    display:grid;gap:6px;padding:0 0 7px;margin-bottom:4px;border-bottom:1px solid var(--line)
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-workspace{margin-top:0}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row{
+    flex-wrap:nowrap;margin:0 0 6px;gap:6px;align-items:center
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row>div{flex:1;min-width:0}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row h2{display:none}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row .subtext{
+    margin:0;font-size:12px;line-height:1.3;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row .button{
+    min-height:34px;padding:5px 9px;font-size:12px;white-space:nowrap;flex:0 0 auto
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .view-tabs{
+    display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-width:100%;
+    gap:4px;margin:0 0 5px;padding:0 0 3px;white-space:nowrap;
+    scroll-snap-type:x proximity;scrollbar-width:none;-webkit-overflow-scrolling:touch
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .view-tabs::-webkit-scrollbar{display:none}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .view-tabs button{
+    flex:0 0 auto;min-height:34px;padding:6px 10px;font-size:13px;scroll-snap-align:start
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tools,
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-dependencies-link{display:none}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip{
+    gap:5px;margin:0 0 6px;padding:1px 0 5px;scroll-snap-type:x proximity;
+    -webkit-overflow-scrolling:touch
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile{
+    flex:0 0 54px;min-width:54px;min-height:53px;padding:3px 3px;
+    gap:0;border-radius:9px;align-items:center
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile.active{padding:2px}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile span{font-size:10px}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile strong{font-size:17px;line-height:1.1}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile small{font-size:9px;line-height:1.2}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap{
+    gap:0;margin:0;flex-wrap:nowrap
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap>.pill{display:none}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap>.row{
+    width:100%;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:nowrap
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap>.row>label{
+    display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap select{
+    min-height:34px;padding:4px 6px;font-size:13px;max-width:130px
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] #gantt-scope{max-width:116px;font-size:12px}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap .action-menu{margin-left:auto}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .action-menu>summary{
+    min-height:34px;padding:5px 8px;font-size:12px;white-space:nowrap
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .action-menu-items{
+    max-width:min(280px,calc(100vw - 24px));min-width:205px
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .mobile-day-menu-actions{
+    display:grid;gap:6px;padding:0 0 7px;margin-bottom:4px;border-bottom:1px solid var(--line)
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .mobile-day-menu-actions .button:disabled{
+    opacity:.45;cursor:not-allowed
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .itinerary-table-card{margin-top:5px!important}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-help{
+    font-size:12px;line-height:1.25;margin:3px 0 4px
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-help-full{display:none}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-help-compact{display:inline}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-wrap{
+    max-height:calc(100dvh - 215px);min-height:250px
+  }
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-table{font-size:14px}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-table th,
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-table td{padding:8px 7px}
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-table thead th:first-child,
+  html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-table tbody th{
+    min-width:146px;width:146px;max-width:146px
+  }
+}
