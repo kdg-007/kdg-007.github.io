@@ -226,6 +226,11 @@ jobs:
           diff -u /tmp/keepit-before.sha256 /tmp/keepit-after.sha256
       - name: Verify transfer host safety and content-addressed owner imports
         run: node ops/ui/transfer-host-policy.test.mjs
+      - name: Verify shared navigation across devices in Chromium and WebKit
+        if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
+        shell: bash
+        timeout-minutes: 6
+        run: node partners/design/app-ui-v1.test.mjs
       - name: Verify interrupted note saving, connection renewal and nonoverlapping headers
         run: node partners/connected/save-connection-layout.browser.mjs
       - name: Verify single-tab draft saves and copy recovery
@@ -236,11 +241,6 @@ jobs:
         env:
           CI: "true"
         run: node partners/connected/first-party-native-notes.test.mjs
-      - name: Verify shared navigation across devices in Chromium and WebKit
-        if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
-        shell: bash
-        timeout-minutes: 6
-        run: node partners/design/app-ui-v1.test.mjs
       - name: Verify app-file trash, restore and automatic ThinkIt saving
         run: node partners/connected/app-file-lifecycle.browser.mjs
       - name: Verify calendar, contrast, measured rulers and TravelIt refinements
