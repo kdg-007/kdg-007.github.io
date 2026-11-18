@@ -441,11 +441,17 @@ try{
     throw Error('ThinkIt Mind Map notes control not visible after selecting page: '+JSON.stringify(state));
    });
    await thinkFrame.locator('#btnMindNotes').click();
+   // Explicitly select a real topic: WebKit does not guarantee that a canvas
+   // selection persists when switching from the Mind Map page to topic notes.
+   const topic=thinkFrame.locator('#mindTopicList [data-mind-node]').first();
+   await topic.waitFor({state:'visible',timeout:15000});
+   await topic.click();
    await thinkFrame.locator('#mindOpenKeepItNative').waitFor({state:'visible',timeout:15000});
    await thinkFrame.locator('#mindOpenKeepItNative').click();
    await note.waitFor({state:'visible',timeout:30000}).catch(async()=>{
      throw Error('ThinkIt native note editor failed to open: '+JSON.stringify({
-       body:(await page.locator('#thinkit-host-panel').innerText()).slice(0,600),errors
+       body:(await page.locator('#thinkit-host-panel').innerText()).slice(0,600),
+       thinkitStatus:(await thinkFrame.locator('body').innerText()).slice(-450),errors
      }));
    });
    const thinkEditor=note.locator('.note-editor [contenteditable="true"]');
