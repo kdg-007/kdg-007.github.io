@@ -12,7 +12,9 @@ export async function checkWorkspaceV3(browser,origin){
   for(const [i,title,time,duration,date] of [[0,'Morning walk','08:00','60','2026-12-05'],[1,'Lunch','12:00','45','2026-12-05'],[2,'Next day swim','09:00','90','2026-12-06']]){const row=rows.nth(i);await row.locator('[data-field=title]').fill(title);await row.locator('[data-field=time]').fill(time);await row.locator('[data-field=durationMinutes]').fill(duration);await row.locator('[data-field=date]').fill(date);}
   await page.getByRole('button',{name:'Save activities',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});
   assert.equal(await page.locator('.activity-summary-table td small').count(),0);assert.ok(await page.locator('.activity-summary-table').evaluate(el=>parseFloat(getComputedStyle(el).fontSize))>=15);
-  await page.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');assert.equal(await page.locator('.gantt-bar').count(),2);await page.getByLabel('Gantt period',{exact:true}).selectOption('trip');assert.equal(await page.locator('.gantt-bar').count(),3);assert.match(await page.locator('.gantt-axis').innerText(),/12-05/);assert.match(await page.locator('.gantt-table tbody tr').first().locator('td').nth(1).innerText(),/12-05 08:00/);await page.screenshot({path:'appearance-qa/travelit-gantt-'+browser.browserType().name()+'.png'});
+  await page.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');assert.equal(await page.locator('.gantt-fit-bar').count(),2);await page.getByLabel('Gantt period',{exact:true}).selectOption('trip');assert.equal(await page.locator('.gantt-fit-bar').count(),3);assert.match(await page.locator('.gantt-fit-axis').innerText(),/12-05/);assert.equal(await page.locator('.gantt-fit-row').first().locator('[data-gantt-field=time]').inputValue(),'08:00');
+  const fullFit=await page.locator('.gantt-fit').evaluate(el=>({width:el.getBoundingClientRect().width,scrollWidth:el.scrollWidth}));
+  assert.ok(fullFit.scrollWidth<=fullFit.width+2,'Whole Gantt timescale must fit available desktop width');await page.screenshot({path:'appearance-qa/travelit-gantt-'+browser.browserType().name()+'.png'});
   await page.getByRole('button',{name:'Calendar',exact:true}).click();assert.equal(await page.locator('.calendar-day.has-schedule').count(),2);assert.ok(await page.locator('.calendar-day.has-schedule').first().isVisible());
   await page.getByRole('button',{name:'Packing',exact:true}).click();await page.getByRole('button',{name:'Use a template',exact:true}).click();await page.getByLabel('Swimming',{exact:true}).check();await page.getByLabel('Beach',{exact:true}).check();await page.getByLabel('Mountain',{exact:true}).check();await page.getByRole('button',{name:'Add missing items',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});const checks=page.locator('[data-pack-id]'),count=await checks.count();assert.ok(count>=15);await checks.first().check();await page.getByRole('button',{name:'Use a template',exact:true}).click();await page.getByLabel('Swimming',{exact:true}).check();await page.getByLabel('Beach',{exact:true}).check();await page.getByLabel('Mountain',{exact:true}).check();await page.getByRole('button',{name:'Add missing items',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});assert.equal(await checks.count(),count);assert.equal(await checks.first().isChecked(),true);
   await page.getByRole('button',{name:'Budget',exact:true}).click();const field=(index,key)=>page.locator('.budget-input-table tbody tr').nth(index).locator('[data-budget-field="'+key+'"]');
@@ -72,7 +74,7 @@ export async function checkMobileTripDensity(browser,origin){
   await frame.locator('#modal-backdrop').waitFor({state:'hidden'});
   await frame.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');
   const layout=await frame.locator('html').evaluate(root=>{
-    const chart=document.querySelector('.gantt-wrap'),tabs=document.querySelector('.view-tabs');
+    const chart=document.querySelector('.gantt-fit'),tabs=document.querySelector('.view-tabs');
     const dates=document.querySelector('.day-strip');
     return {chartTop:chart?.getBoundingClientRect().top??Infinity,
       docOverflow:root.scrollWidth-root.clientWidth,
@@ -88,6 +90,20 @@ export async function checkMobileTripDensity(browser,origin){
   assert.ok(layout.tabsScrollable&&layout.datesVisible,'Trip tabs scroll while the day strip remains visible');
   assert.equal(layout.dayToolsVisible,false);
   assert.equal(layout.quickSaveVisible,false);
+  // Edit within the Gantt itself: End derives from saved Start + Duration.
+  await frame.locator('.gantt-fit-row [data-gantt-field=durationMinutes]').fill('90');
+  await frame.locator('.gantt-fit-row [data-gantt-end]').filter({hasText:'08:30'}).waitFor();
+  await frame.getByRole('button',{name:'Save schedule',exact:true}).click();
+  assert.equal(await frame.locator('.gantt-fit-row [data-gantt-field=durationMinutes]').inputValue(),'90');
+  await frame.getByRole('button',{name:'Full screen',exact:true}).click();
+  await frame.locator('html[data-gantt-fullscreen=true]').waitFor();
+  await page.locator('section.gantt-shell-fullscreen').waitFor();
+  const full=await frame.locator('.gantt-fit').evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,
+   viewport:document.documentElement.clientWidth,scrollWidth:el.scrollWidth,width:el.clientWidth}));
+  assert.ok(full.left>=0&&full.right<=full.viewport+1&&full.scrollWidth<=full.width+3,
+   'Fullscreen must show the entire Gantt timescale: '+JSON.stringify(full));
+  await frame.getByRole('button',{name:'Exit full screen',exact:true}).click();
+  await page.locator('section.gantt-shell-fullscreen').waitFor({state:'detached'});
   await frame.locator('.trip-command-bar>.action-menu>summary').click();
   assert.equal(await frame.locator('.mobile-trip-menu-actions [data-action=preview-excel]').isVisible(),true);
   assert.equal(await frame.locator('.mobile-trip-menu-actions [data-action=new-trip]').isVisible(),true);
