@@ -323,8 +323,25 @@ function updateGanttDraft(input){
   else if(start)start.readOnly=false;
   const visual=model.rows.find(item=>item.stop.id===next.id),track=row.querySelector('.gantt-fit-track');
   if(track&&visual){
-   const bar=track.querySelector('.gantt-fit-bar');
-   if(bar&&visual.left!==null){bar.style.left=visual.left+'%';bar.style.width=visual.width+'%';}
+   let bar=track.querySelector('.gantt-fit-bar');
+   let flexible=track.querySelector('.gantt-flexible');
+   if(visual.left===null){
+    bar?.remove();
+    if(!flexible){
+     flexible=document.createElement('span');
+     flexible.className='gantt-flexible';flexible.textContent='No start';
+     track.append(flexible);
+    }
+   }else{
+    flexible?.remove();
+    if(!bar){
+     bar=document.createElement('span');
+     bar.className='gantt-fit-bar';bar.setAttribute('role','img');
+     track.append(bar);
+    }
+    bar.style.left=visual.left+'%';bar.style.width=visual.width+'%';
+    bar.setAttribute('aria-label',next.title+': '+visual.startLabel+'–'+visual.endLabel);
+   }
   }
  }
  const status=document.querySelector('#gantt-save-status');
