@@ -379,3 +379,63 @@ html[data-suite-app="travelit"][data-gantt-fullscreen="true"] .trip-workspace{ma
 html[data-suite-app="travelit"][data-gantt-fullscreen="true"] .gantt-fit-toolbar{
  position:sticky;top:-8px;z-index:10;background:var(--card)
 }
+
+/* G3 — content-first MacBook trip workspace. The selector carries the title;
+   secondary date navigation and dependency review remain in Day actions.
+   Desktop no longer spends half the screen before the Gantt begins. */
+@media(min-width:721px){
+ html[data-suite-app="travelit"][data-workspace-view="trips"] #quick-save{display:none!important}
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .topbar{
+  min-height:46px;padding-block:5px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] main{padding-top:7px}
+ html[data-suite-app="travelit"][data-workspace-view="trips"] #trip-cloud-status{
+  margin:0 0 4px;font-size:12px;line-height:1.3
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-command-bar{
+  margin:0 0 5px;gap:8px;align-items:center
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-workspace{margin-top:0}
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row{
+  margin:0 0 5px;align-items:center;gap:8px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row h2{display:none}
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row .subtext{
+  font-size:12px;margin:0;line-height:1.3
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .trip-title-row .button{
+  min-height:32px;padding:5px 9px;font-size:12px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .view-tabs{
+  gap:5px;margin:0 0 4px;padding:0 0 3px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .view-tabs button{
+  min-height:32px;padding:6px 10px;font-size:12px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tools,
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-dependencies-link{display:none}
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .mobile-day-menu-actions{
+  display:grid;gap:5px;border-bottom:1px solid var(--line);
+  padding:0 0 6px;margin-bottom:4px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip{
+  gap:5px;margin:0 0 4px;padding:0 0 3px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile{
+  min-width:57px;min-height:54px;flex:0 0 57px;padding:3px;
+  gap:0;border-radius:9px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile span{font-size:10px}
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile strong{font-size:18px;line-height:1.1}
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-tile small{font-size:10px;line-height:1.15}
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap{
+  margin:0 0 3px;gap:5px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap>.pill{
+  font-size:11px;padding:4px 7px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .day-strip+.row-between.wrap select{
+  min-height:32px;padding:4px 6px;font-size:12px
+ }
+ html[data-suite-app="travelit"][data-workspace-view="trips"] .gantt-fit-help{margin:3px 8px}
+}
