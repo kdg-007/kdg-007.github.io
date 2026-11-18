@@ -42,3 +42,7 @@ This successor branch begins at main commit `0e1a4112c8a8b482905d9aa99946043e43f
 ## Postcompiled WebKit 320px check
 
 A pinned Playwright container caught a 2px document-name collision with the shared ThinkIt header at 320px (bar ends at y=50; field starts at y=48). The candidate adds 4px separation only to that embedded ThinkIt frame. The deterministic compiler re-hashed `partners/connected/connected-nav.css` in the owner manifest. This documentation change triggers the full browser suite **after** the compiler commit so the exact hash and source are verified together. No owner records were modified.
+
+## Desktop screenshot correction
+
+The first 1440×950 Gantt screenshot had the chart starting around y=539, despite fitting the clock to page width. The revised desktop Trips workspace hides the duplicate large trip title, separate Previous/Next/date strip, independent dependency-review row and irrelevant Save place button while retaining the actions in menus. Mobile retains its compact layout. Regression now enforces Gantt top under 400 CSS px and keeps day navigation and Review dependencies available in Day actions. Added screenshots of the *populated* iPhone Gantt in normal and fullscreen modes; previously the screenshot was taken on an empty day. Latest source and content hashes were rebuilt on the Mac-safe KeepIt baseline before this final acceptance trigger.
