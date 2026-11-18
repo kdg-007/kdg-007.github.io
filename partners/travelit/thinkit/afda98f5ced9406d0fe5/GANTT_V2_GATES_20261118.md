@@ -38,3 +38,7 @@ This is a draft candidate, not a deployed change.
 ## Reconciled KeepIt baseline
 
 This successor branch begins at main commit `0e1a4112c8a8b482905d9aa99946043e43f4ad57` (Mac-safe OneDrive catalog readback). No older OneDrive bundle or owner manifest was copied from the predecessor branch. The branch compiler must regenerate TravelIt and preserve the Mac recovery source and content hashes. This branch supersedes overlapping PR #49 for release purposes.
+
+## Postcompiled WebKit 320px check
+
+A pinned Playwright container caught a 2px document-name collision with the shared ThinkIt header at 320px (bar ends at y=50; field starts at y=48). The candidate adds 4px separation only to that embedded ThinkIt frame. The deterministic compiler re-hashed `partners/connected/connected-nav.css` in the owner manifest. This documentation change triggers the full browser suite **after** the compiler commit so the exact hash and source are verified together. No owner records were modified.
