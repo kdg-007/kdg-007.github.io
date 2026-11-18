@@ -215,9 +215,15 @@ jobs:
       - name: Verify classified OneDrive request failures without actual credentials
         run: node --test partners/connected/onedrive-recovery.test.mjs
       - name: Verify reproducible live save and connection modules
+        shell: bash
         run: |
+          set -euo pipefail
+          find assets -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/keepit-before.sha256
+          sha256sum partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json >> /tmp/keepit-before.sha256
           node ops/ui/build-live-stability.mjs
-          git diff --exit-code -- assets partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json
+          find assets -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/keepit-after.sha256
+          sha256sum partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json >> /tmp/keepit-after.sha256
+          diff -u /tmp/keepit-before.sha256 /tmp/keepit-after.sha256
       - name: Verify transfer host safety and content-addressed owner imports
         run: node ops/ui/transfer-host-policy.test.mjs
       - name: Verify interrupted note saving, connection renewal and nonoverlapping headers
