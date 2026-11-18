@@ -302,7 +302,9 @@ function updateGanttDraft(input){
   const predecessor=row.querySelector('[data-gantt-field="predecessor"]')?.value||'';
   const type=row.querySelector('[data-gantt-field="dependencyType"]')?.value||'FS';
   const lagMinutes=Number(row.querySelector('[data-gantt-field="lagMinutes"]')?.value||0);
-  patch.dependencies=predecessor?[{id:predecessor,type,lagMinutes},...original.slice(1).filter(d=>d.id!==predecessor)]:original.slice(1);
+  // "Manual start" means no predecessors. Preserve additional links only
+  // when replacing the primary link, never silently leave a hidden successor constraint.
+  patch.dependencies=predecessor?[{id:predecessor,type,lagMinutes},...original.slice(1).filter(d=>d.id!==predecessor)]:[];
   // For a new dependency the start will be computed from the predecessor.
   if(predecessor)patch.time='';
  }
