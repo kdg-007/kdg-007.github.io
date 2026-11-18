@@ -1,4 +1,5 @@
 import {itineraryGantt} from './itinerary-gantt.js';
+import {renderFitGantt,ganttEndLabel} from './gantt-editor.js';
 import {createMapFullscreen} from './map-fullscreen.js';
 import {loadStreetMapRuntime} from './street-map-loader.js';
 import {downloadRoadRegion} from './road-region-download.js';
@@ -34,7 +35,8 @@ let modalDirty=false,modalReturnFocus=null,modalBaseRevisions={},modalBasePresen
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const navigation=[['explore','Explore','◉'],['map','Map','⌖'],['trips','Trips','▤'],['today','Today','◷'],['packing','Packing','✓'],['more','More','⋯']];
 let disposeStreetMap=null,externalRenderPending=false;
-let itineraryMode='table',ganttScope='day';
+let itineraryMode='table',ganttScope='day',ganttDependencies=false,ganttFullscreen=false;
+const ganttDrafts=new Map();
 const budgetDrafts=new Map();
 const state={mapMode:'online',streetViewport:null,db:null,recovery:null,view:'explore',places:[],trips:[],stops:[],packing:[],vehicles:[],expenses:[],outbox:[],keepitAssociations:[],annotations:[],mapPacks:[],activePackId:null,mapFaults:[],atlasView:null,atlasLoading:null,atlasRequest:0,atlasAudit:null,mapDraft:null,mapFixedBounds:null,storageState:'Checking storage…',storageHealth:null,localAudit:null,shellCached:false,shellReport:null,selectedTrip:null,tripTab:'itinerary',search:'',category:'All',stageFilter:'All',calendarMonth:'',chosenDay:'',toastTimer:null};
 state.tripSync=window.parent===window?'Trips on this device. Open TravelIt from LiveIt’s Apps menu to sync.':'Trips on this device. Checking KeepIt…';
@@ -53,7 +55,13 @@ function notifyTripSync(){
   try{parent.document.dispatchEvent(new parent.Event('travelit-workspace-change'));}catch{}
  },0);
 }
-async function setNav(view){document.documentElement.dataset.navOpen='false';$('#navigation-toggle').setAttribute('aria-expanded','false');state.view=view;const url=new URL(location.href);url.searchParams.set('view',view);['title','text','url'].forEach(k=>url.searchParams.delete(k));history.replaceState(null,'',url);try{if(view==='more'||view==='map'&&state.mapMode==='offline')await refresh();}catch(error){toast(error.message,true);}render();if(view==='trips')notifyTripSync();}
+async function setNav(view){
+ if(view!=='trips'&&ganttFullscreen){
+  ganttFullscreen=false;
+  document.documentElement.dataset.ganttFullscreen='false';
+  try{window.frameElement?.closest('section[aria-label="TravelIt connected workspace"]')?.classList.remove('gantt-shell-fullscreen');}catch{}
+ }
+ document.documentElement.dataset.navOpen='false';$('#navigation-toggle').setAttribute('aria-expanded','false');state.view=view;const url=new URL(location.href);url.searchParams.set('view',view);['title','text','url'].forEach(k=>url.searchParams.delete(k));history.replaceState(null,'',url);try{if(view==='more'||view==='map'&&state.mapMode==='offline')await refresh();}catch(error){toast(error.message,true);}render();if(view==='trips')notifyTripSync();}
 async function refresh(){const data=await allData(state.db);const info=await getWorkspaceMetadata(state.db);state.recordRevisions=Object.fromEntries(data.records.map(r=>[r.key,r.localRevision??0]));state.recordPresence=Object.fromEntries(data.records.map(r=>[r.key,true]));state.workspaceEpoch=info.epoch;state.workspaceRevision=info.revision;state.mapRevision=info.mapRevision;const of=type=>data.records.filter(r=>r.type===type).map(r=>r.data);state.places=of('place').sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));state.trips=of('trip').sort((a,b)=>a.startDate.localeCompare(b.startDate));state.stops=of('stop');state.packing=of('packing');state.vehicles=of('vehicle');state.expenses=of('expense');state.annotations=of('annotation');state.keepitAssociations=of('keepitAssociation');state.outbox=data.outbox;state.recovery=await recoveryInfo(state.db);if(state.loadedMapRevision!==info.mapRevision&&(state.view==='more'||state.view==='map'&&state.mapMode==='offline')){const packs=await listMapPacks(state.db);state.mapPacks=[];state.mapFaults=[];for(const pack of packs){if(await verifyMapPack(pack))state.mapPacks.push(pack);else state.mapFaults.push(pack.name||'Unnamed corrupt map');}for(const region of await listAtlasRegions(state.db)){if(await verifyRegionManifest(region))state.mapPacks.push(region);else state.mapFaults.push(region.name||'Corrupt regional atlas');}const active=await getSetting(state.db,'active-map-pack-id');state.activePackId=active==='__none__'?null:(state.mapPacks.some(p=>p.id===active)?active:(state.mapPacks[0]?.id||null));state.loadedMapRevision=info.mapRevision;}if(!selected()&&state.trips.length)state.selectedTrip=state.trips[0].id;}
 async function finishMapChange(){await refresh();workspaceChannel?.announce('map-edit');}
 async function commit(type,value){const guard=guardedContext(type,value.id);await writeLocally(()=>guardedSaveRecord(state.db,type,value,guard));}
@@ -245,10 +253,124 @@ function renderActivitiesTable(entries){
   return `<tr data-activity-id="${esc(stop.id)}"><td><strong>${esc(stop.title)}</strong>${stop.importSource?.code?`<small class="activity-source-code">${esc(stop.importSource.code)}</small>`:''}${stop.fixed?'<small class="activity-booking-label">Fixed booking</small>':''}</td><td>${durationLabel(stop.durationMinutes||0)}</td><td>${stop.time||'Flexible'}</td><td>${stopEnd(stop)}</td><td>${esc(stop.importSource?.originalType||stop.kind)}</td><td><div class="activity-row-actions">${action('Details','edit-stop:'+stop.id)}${order}${menu('More',action('Remove','delete-stop:'+stop.id,'button button-small button-danger'))}</div></td></tr>`;
  }).join('')}</tbody></table></div>`;
 }
+function ganttDraft(trip){
+ let draft=ganttDrafts.get(trip.id);
+ if(!draft){
+  draft={rows:new Map(),dirty:false,epoch:state.workspaceEpoch,revision:state.workspaceRevision,
+   revisions:{...state.recordRevisions},presence:{...state.recordPresence}};
+  ganttDrafts.set(trip.id,draft);
+ }
+ return draft;
+}
+function ganttPreview(trip){
+ const draft=ganttDraft(trip);
+ const all=byTrip(state.stops).map(stop=>({...stop,...draft.rows.get(stop.id)}));
+ try{
+  const plan=planTripDependencies(all,trip,{deriveStarts:true});
+  const updated=new Map(plan.updates.map(stop=>[stop.id,stop]));
+  return {rows:all.map(stop=>updated.get(stop.id)||stop),issues:plan.issues,plan};
+ }catch(error){return {rows:all,issues:[error.message],plan:null};}
+}
 function renderGantt(entries){
- const model=itineraryGantt(entries,{scope:ganttScope,trip:selected(),day:state.chosenDay});
- if(!entries.length)return '<p class="empty-inline">No activities in this period.</p>';
- return `<p class="gantt-help"><span class="gantt-help-full">${ganttScope==='trip'?'Whole trip, including days without activities.':'Selected day, including overnight finishes.'} Flexible activities are listed without bars. Scroll horizontally to follow the timeline.</span><span class="gantt-help-compact">Swipe timeline sideways · Tap an activity to edit</span></p><div class="gantt-wrap" role="region" aria-label="Itinerary Gantt chart" tabindex="0"><table class="gantt-table" style="--timeline-width:${model.timelineWidth}px"><thead><tr><th scope="col">Activity</th><th scope="col">Duration</th><th scope="col">Start</th><th scope="col">End</th><th scope="col"><div class="gantt-axis">${model.ticks.map(tick=>`<span style="left:${tick.position}%">${esc(tick.label)}</span>`).join('')}</div></th></tr></thead><tbody>${model.rows.map(row=>`<tr><th scope="row"><button class="gantt-activity" data-action="edit-stop:${esc(row.stop.id)}">${esc(row.stop.title)}</button>${row.stop.importSource?.code?`<small class="activity-source-code">${esc(row.stop.importSource.code)}</small>`:''}</th><td>${durationLabel(row.duration)}</td><td>${esc(row.startLabel)}</td><td>${esc(row.endLabel)}</td><td><div class="gantt-track">${row.start===null?'<span class="gantt-unscheduled">Flexible</span>':`<span class="gantt-bar" role="img" aria-label="${esc(row.stop.title)}: ${esc(row.startLabel)} to ${esc(row.endLabel)}" style="left:${row.left}%;width:${row.width}%"></span>`}</div></td></tr>`).join('')}</tbody></table></div>`;
+ const trip=selected(),draft=ganttDraft(trip),preview=ganttPreview(trip);
+ const byId=new Map(preview.rows.map(stop=>[stop.id,stop]));
+ const visible=entries.map(stop=>byId.get(stop.id)||stop);
+ return renderFitGantt(visible,{trip,day:state.chosenDay,scope:ganttScope,allStops:preview.rows,
+  showDependencies:ganttDependencies,fullscreen:ganttFullscreen,savePending:draft.dirty,issues:preview.issues});
+}
+function toggleGanttFullscreen(){
+ ganttFullscreen=!ganttFullscreen;
+ document.documentElement.dataset.ganttFullscreen=String(ganttFullscreen);
+ // The connected app is same-origin and mounted in a named iframe. CSS
+ // fullscreen works on iPhone Safari, where element.requestFullscreen()
+ // is not supported for arbitrary document elements.
+ try{window.frameElement?.closest('section[aria-label="TravelIt connected workspace"]')
+   ?.classList.toggle('gantt-shell-fullscreen',ganttFullscreen);}catch{}
+ render();
+}
+function updateGanttDraft(input){
+ const trip=selected(),stopId=input.closest('[data-gantt-stop]')?.dataset.ganttStop;
+ if(!trip||!stopId)return;
+ const stop=state.stops.find(item=>item.id===stopId&&item.tripId===trip.id);
+ if(!stop)return;
+ const draft=ganttDraft(trip),patch={...(draft.rows.get(stopId)||{})};
+ const field=input.dataset.ganttField;
+ if(['date','time','durationMinutes'].includes(field))patch[field]=input.value;
+ else if(['predecessor','dependencyType','lagMinutes'].includes(field)){
+  const row=input.closest('[data-gantt-stop]');
+  const original=(patch.dependencies||stop.dependencies||[]);
+  const predecessor=row.querySelector('[data-gantt-field="predecessor"]')?.value||'';
+  const type=row.querySelector('[data-gantt-field="dependencyType"]')?.value||'FS';
+  const lagMinutes=Number(row.querySelector('[data-gantt-field="lagMinutes"]')?.value||0);
+  // "Manual start" means no predecessors. Preserve additional links only
+  // when replacing the primary link, never silently leave a hidden successor constraint.
+  patch.dependencies=predecessor?[{id:predecessor,type,lagMinutes},...original.slice(1).filter(d=>d.id!==predecessor)]:[];
+  // For a new dependency the start will be computed from the predecessor.
+  if(predecessor)patch.time='';
+ }
+ else return;
+ draft.rows.set(stopId,patch);draft.dirty=true;
+ const preview=ganttPreview(trip),byId=new Map(preview.rows.map(item=>[item.id,item]));
+ const model=itineraryGantt([...document.querySelectorAll('[data-gantt-stop]')].map(row=>byId.get(row.dataset.ganttStop)).filter(Boolean),
+  {scope:ganttScope,trip,day:state.chosenDay});
+ for(const row of document.querySelectorAll('[data-gantt-stop]')){
+  const next=byId.get(row.dataset.ganttStop);
+  if(!next)continue;
+  const output=row.querySelector('[data-gantt-end]');
+  if(output)output.textContent=ganttEndLabel(next);
+  const start=row.querySelector('[data-gantt-field="time"]');
+  if(start&&next.dependencies?.length){start.value=next.time||'';start.readOnly=true;}
+  else if(start)start.readOnly=false;
+  const visual=model.rows.find(item=>item.stop.id===next.id),track=row.querySelector('.gantt-fit-track');
+  if(track&&visual){
+   let bar=track.querySelector('.gantt-fit-bar');
+   let flexible=track.querySelector('.gantt-flexible');
+   if(visual.left===null){
+    bar?.remove();
+    if(!flexible){
+     flexible=document.createElement('span');
+     flexible.className='gantt-flexible';flexible.textContent='No start';
+     track.append(flexible);
+    }
+   }else{
+    flexible?.remove();
+    if(!bar){
+     bar=document.createElement('span');
+     bar.className='gantt-fit-bar';bar.setAttribute('role','img');
+     track.append(bar);
+    }
+    bar.style.left=visual.left+'%';bar.style.width=visual.width+'%';
+    bar.setAttribute('aria-label',next.title+': '+visual.startLabel+'–'+visual.endLabel);
+   }
+  }
+ }
+ const status=document.querySelector('#gantt-save-status');
+ if(status)status.textContent=preview.issues.length?'Review: '+preview.issues.join(' · '):'Unsaved schedule edits · Save schedule to commit atomically.';
+ const save=document.querySelector('[data-action="gantt-save"]');
+ if(save)save.disabled=false;
+}
+async function saveGanttSchedule(){
+ const trip=selected(),draft=ganttDraft(trip);
+ if(!draft.dirty)return;
+ const preview=ganttPreview(trip);
+ if(preview.issues.length)throw Error(preview.issues.join(' '));
+ const current=new Map(byTrip(state.stops).map(stop=>[stop.id,stop]));
+ const changed=[];
+ for(const candidate of preview.rows){
+  const old=current.get(candidate.id);
+  if(!old)continue;
+  const difference=['date','time','durationMinutes'].some(key=>String(old[key]??'')!==String(candidate[key]??''))||
+   JSON.stringify(old.dependencies||[])!==JSON.stringify(candidate.dependencies||[]);
+  if(difference)changed.push(normalizeStop({...old,...candidate},trip));
+ }
+ if(!changed.length){ganttDrafts.delete(trip.id);render();return;}
+ const guard={expectedEpoch:draft.epoch,expectedWorkspaceRevision:draft.revision,
+  expectedRevisionByKey:Object.fromEntries(changed.map(stop=>['stop:'+stop.id,draft.revisions['stop:'+stop.id]??0])),
+  expectedPresenceByKey:Object.fromEntries(changed.map(stop=>['stop:'+stop.id,Boolean(draft.presence['stop:'+stop.id])]))};
+ // Stale-workspace/record checks and the database batch commit are atomic.
+ // No cloud write is attempted directly by this view.
+ await writeLocally(()=>guardedSaveRecords(state.db,'stop',changed,guard));
+ ganttDrafts.delete(trip.id);render();toast('Schedule saved locally and queued for KeepIt synchronization.');
 }
 const peso=n=>'₱'+Number(n).toLocaleString('en-PH',{maximumFractionDigits:0});
 function emptyBudgetRow(){return {id:crypto.randomUUID(),label:'',category:'Accommodation',date:'',plannedPhp:'',actualPhp:'',notes:''};}
@@ -256,10 +378,16 @@ function budgetDraft(trip){
  if(!budgetDrafts.has(trip.id)){const existing=byTrip(state.expenses);budgetDrafts.set(trip.id,{rows:[...existing.map(e=>({...e,notes:e.notes||'',label:e.label||'',plannedPhp:e.plannedPhp??'',actualPhp:e.actualPhp??'',date:e.date||''})),emptyBudgetRow(),emptyBudgetRow(),emptyBudgetRow()],epoch:state.workspaceEpoch,revision:state.workspaceRevision,revisions:{...state.recordRevisions},presence:{...state.recordPresence},dirty:false,error:''});}return budgetDrafts.get(trip.id);
 }
 function handleWorkspaceInput(event){
- const el=event.target;if(el.dataset.budgetField){const draft=budgetDrafts.get(selected()?.id),row=draft?.rows.find(r=>r.id===el.dataset.budgetId);if(row){row[el.dataset.budgetField]=el.value;draft.dirty=true;}return true;}
+ const el=event.target;
+ if(el.dataset.ganttField){updateGanttDraft(el);return true;}if(el.dataset.budgetField){const draft=budgetDrafts.get(selected()?.id),row=draft?.rows.find(r=>r.id===el.dataset.budgetId);if(row){row[el.dataset.budgetField]=el.value;draft.dirty=true;}return true;}
  if(event.type!=='change')return false;
  if(el.id==='trip-select'){state.selectedTrip=el.value;state.chosenDay='';state.calendarMonth='';render();return true;}
- if(el.id==='itinerary-mode'){itineraryMode=el.value;render();return true;}
+ if(el.id==='itinerary-mode'){
+  itineraryMode=el.value;
+  if(ganttFullscreen&&itineraryMode!=='gantt')toggleGanttFullscreen();
+  else render();
+  return true;
+ }
  if(el.id==='gantt-scope'){ganttScope=el.value;render();return true;}
  return false;
 }
@@ -742,6 +870,9 @@ function currentMapBounds(){
  return (pack?.regionAtlas||pack?.dataProfile==='osm-street-reference-v1')?streetReferenceBounds(pack.bounds):mapBounds(all);
 }
 async function handler(target){const actionName=target.dataset.action;if(!actionName)return;try{
+ if(actionName==='gantt-toggle-deps'){ganttDependencies=!ganttDependencies;render();return;}
+ if(actionName==='gantt-fullscreen'){toggleGanttFullscreen();return;}
+ if(actionName==='gantt-save'){await saveGanttSchedule();return;}
  if(actionName==='link-trip-document'){pickTripDocument(selected());return;}
  if(['open-trip-document','download-trip-document','unlink-trip-document'].includes(actionName)){await useTripDocument(target,actionName);return;}
  if(actionName==='prep-jump:documents'){
@@ -799,7 +930,16 @@ else if(actionName.startsWith('calendar-month:')){state.calendarMonth=actionName
 else if(actionName==='calendar-open-day'){state.tripTab='itinerary';render();}
 else if(actionName.startsWith('move-flex-up:')||actionName.startsWith('move-flex-down:')){const up=actionName.startsWith('move-flex-up:');const id=actionName.slice(up?13:15);const changed=reorderFlexibleStops(state.stops,state.selectedTrip,id,up?-1:1);if(changed.length){await writeLocally(()=>guardedSaveRecords(state.db,'stop',changed,{expectedEpoch:state.workspaceEpoch,expectedRevisionByKey:Object.fromEntries(changed.map(item=>[`stop:${item.id}`,state.recordRevisions[`stop:${item.id}`]??0])),expectedPresenceByKey:Object.fromEntries(changed.map(item=>[`stop:${item.id}`,Boolean(state.recordPresence[`stop:${item.id}`])]))}));toast('Flexible activity order saved locally.');}}else if(actionName==='new-trip')tripEditor();else if(actionName==='edit-trip')tripEditor(selected());else if(actionName==='add-stop')activityTableEditor();else if(actionName==='add-packing')packingEditor();else if(actionName==='packing-template')packingTemplateEditor();else if(actionName==='show-map'){state.mapDraft=null;state.mapFixedBounds=null;state.view='map';render();}else if(actionName.startsWith('start-map:')){const kind=actionName.slice(10);state.mapDraft={kind,points:[]};state.mapFixedBounds=(activePack()?.regionAtlas||activePack()?.dataProfile==='osm-street-reference-v1')?streetReferenceBounds(activePack().bounds):mapBounds([...state.places.filter(p=>p.lat!==null),...state.annotations.flatMap(a=>a.points),...(activePack()?.bounds?[{lat:activePack().bounds.minLat,lng:activePack().bounds.minLng},{lat:activePack().bounds.maxLat,lng:activePack().bounds.maxLng}]:[])]);state.view='map';render();}else if(actionName==='cancel-map'){state.mapDraft=null;state.mapFixedBounds=null;render();}else if(actionName==='undo-map'){state.mapDraft?.points.pop();render();}else if(actionName==='finish-map'){if(!state.mapDraft)return;const min=state.mapDraft.kind==='pin'?1:state.mapDraft.kind==='line'?2:3;if(state.mapDraft.points.length<min)throw Error(`Add at least ${min} point(s) before saving.`);annotationEditor();}else if(actionName.startsWith('remove-annotation:')){const id=actionName.slice(18);if(confirm('Remove this local map annotation?'))await erase('annotation',id);}else if(actionName==='verify-offline-shell'){await checkOfflineShell(true);}else if(actionName==='request-persistence'){if(!navigator.storage?.persist)throw Error('Persistent storage is not supported here.');const granted=await navigator.storage.persist();await checkStorage();toast(granted?'Browser granted persistent storage. Keep external backups.':'Persistent storage was not granted. Keep external backups.',!granted);}else if(actionName==='go-explore')setNav('explore');else if(actionName==='today-open-trip'){const t=pickTodayTrip(state.trips,new Date(),state.selectedTrip);state.selectedTrip=t?.id||state.selectedTrip;if(t)state.chosenDay=t.onTrip?t.localDate:t.startDate;state.tripTab='itinerary';setNav('trips');}else if(actionName==='export-backup')await exportBackup();else if(actionName==='import-backup')importBackup();else if(actionName==='undo-restore'){if(!state.recovery)throw Error('No restore recovery is available.');if(!confirm('Swap this workspace with the previous pre-restore snapshot? You can undo this swap if necessary.'))return;const outcome=await undoRestore(state.db,{expectedWorkspaceRevision:state.workspaceRevision});workspaceChannel?.announce('undo-restore');state.selectedTrip=null;state.mapDraft=null;await refresh();render();toast(`Recovered ${outcome.records} local record(s).`);}else if(actionName.startsWith('place:'))placeDetails(actionName.slice(6));else if(actionName.startsWith('annotation:')){const a=state.annotations.find(x=>x.id===actionName.slice(11));if(a)openModal(a.label,`<div class="stack"><p>${esc(a.notes||'No additional notes.')}</p><p class="subtext">${esc(a.kind)} · ${a.points.length} geographic point(s). Not calculated navigation.</p><div class="action-line">${action('Close','close-annotation')}</div></div>`);}else if(actionName==='close-annotation')closeModal();else if(actionName.startsWith('choose-trip:')){state.selectedTrip=actionName.slice(12);state.chosenDay='';state.calendarMonth='';state.tripTab='itinerary';render();}else if(actionName.startsWith('edit-stop:'))stopEditor(state.stops.find(x=>x.id===actionName.slice(10)));else if(actionName.startsWith('delete-stop:')){const id=actionName.slice(12);if(confirm('Remove this itinerary activity?'))await erase('stop',id);}else if(actionName.startsWith('edit-pack:'))packingEditor(state.packing.find(x=>x.id===actionName.slice(10)));else if(actionName.startsWith('delete-pack:')){const id=actionName.slice(12);if(confirm('Remove this packing item?'))await erase('packing',id);}
 }catch(err){toast(err.message||'Action failed',true);}}
-async function init(){try{const startupView=new URL(location.href).searchParams.get('view');if(['map','trips','today','packing','more'].includes(startupView))state.view=startupView;if(!navigator.onLine)state.mapMode='offline';state.db=await openDatabase(warnVersionChange);await refresh();workspaceChannel=createWorkspaceCoordinator({onChange:()=>scheduleExternalRefresh()});window.addEventListener('focus',scheduleExternalRefresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleExternalRefresh();});const v=new URL(location.href).searchParams.get('view');if(['explore','map','trips','today','packing','more'].includes(v))state.view=v;render();$('#side-nav').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)setNav(b.dataset.view);});$('#mobile-nav').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)setNav(b.dataset.view);});$('#quick-save').addEventListener('click',()=>placeEditor());$('#today-shortcut').addEventListener('click',()=>setNav('today'));$('#modal-close').addEventListener('click',()=>closeModal());$('#modal-backdrop').addEventListener('click',e=>{if(e.target.id==='modal-backdrop')closeModal();});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#modal-backdrop').classList.contains('hidden'))closeModal();});$('#main').addEventListener('click',e=>{const target=e.target.closest('[data-action]');if(target){target.closest('details.action-menu')?.removeAttribute('open');handler(target);}else if(state.mapDraft&&e.target.closest('#geo-canvas')){const svg=e.target.closest('#geo-canvas');const p=mapClickToGeo(svg,e);if(!p)return;if(state.mapDraft.kind==='pin')state.mapDraft.points=[p];else if(state.mapDraft.points.length<200)state.mapDraft.points.push(p);render();}});$('#view-select').addEventListener('change',e=>setNav(e.target.value));$('#navigation-toggle').addEventListener('click',()=>handler($('#navigation-toggle')));$('#main').addEventListener('change',async e=>{if(handleWorkspaceInput(e))return;if(e.target.id==='category-filter'){state.category=e.target.value;render();}else if(e.target.id==='trip-day'){state.chosenDay=e.target.value;render();}else if(e.target.dataset.packId){await handlePackingChange(e.target);}});$('#main').addEventListener('input',e=>{if(handleWorkspaceInput(e))return;if(e.target.id==='explore-search'){const cursor=e.target.selectionStart;state.search=e.target.value;render();const inp=$('#explore-search');inp.focus();inp.setSelectionRange(cursor,cursor);}});$('#main').addEventListener('click',e=>{const b=e.target.closest('[data-trip-tab]');if(b){state.tripTab=b.dataset.tripTab;render();return;}const f=e.target.closest('[data-stage-filter]');if(f){state.stageFilter=f.dataset.stageFilter;render();}});window.addEventListener('online',colorStatus);window.addEventListener('offline',colorStatus);checkStorage();void checkOfflineShell();navigator.serviceWorker?.addEventListener('controllerchange',()=>{void checkOfflineShell();});state.shellCached=false;$('#view-select').disabled=false;$('#navigation-toggle').disabled=false;document.documentElement.dataset.travelitReady='true';performance.mark('travelit-interactive');
+async function init(){try{const startupView=new URL(location.href).searchParams.get('view');if(['map','trips','today','packing','more'].includes(startupView))state.view=startupView;if(!navigator.onLine)state.mapMode='offline';state.db=await openDatabase(warnVersionChange);await refresh();workspaceChannel=createWorkspaceCoordinator({onChange:()=>scheduleExternalRefresh()});window.addEventListener('focus',scheduleExternalRefresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleExternalRefresh();});const v=new URL(location.href).searchParams.get('view');if(['explore','map','trips','today','packing','more'].includes(v))state.view=v;render();$('#side-nav').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)setNav(b.dataset.view);});$('#mobile-nav').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)setNav(b.dataset.view);});$('#quick-save').addEventListener('click',()=>placeEditor());$('#today-shortcut').addEventListener('click',()=>setNav('today'));$('#modal-close').addEventListener('click',()=>closeModal());$('#modal-backdrop').addEventListener('click',e=>{if(e.target.id==='modal-backdrop')closeModal();});document.addEventListener('keydown',e=>{
+ if(e.key!=='Escape')return;
+ if(!$('#modal-backdrop').classList.contains('hidden'))closeModal();
+ else if(ganttFullscreen)toggleGanttFullscreen();
+});$('#main').addEventListener('click',e=>{const target=e.target.closest('[data-action]');if(target){target.closest('details.action-menu')?.removeAttribute('open');handler(target);}else if(state.mapDraft&&e.target.closest('#geo-canvas')){const svg=e.target.closest('#geo-canvas');const p=mapClickToGeo(svg,e);if(!p)return;if(state.mapDraft.kind==='pin')state.mapDraft.points=[p];else if(state.mapDraft.points.length<200)state.mapDraft.points.push(p);render();}});$('#view-select').addEventListener('change',e=>setNav(e.target.value));$('#navigation-toggle').addEventListener('click',()=>handler($('#navigation-toggle')));$('#main').addEventListener('change',async e=>{if(handleWorkspaceInput(e))return;if(e.target.id==='category-filter'){state.category=e.target.value;render();}else if(e.target.id==='trip-day'){state.chosenDay=e.target.value;render();}else if(e.target.dataset.packId){await handlePackingChange(e.target);}});$('#main').addEventListener('input',e=>{if(handleWorkspaceInput(e))return;if(e.target.id==='explore-search'){const cursor=e.target.selectionStart;state.search=e.target.value;render();const inp=$('#explore-search');inp.focus();inp.setSelectionRange(cursor,cursor);}});$('#main').addEventListener('click',e=>{const b=e.target.closest('[data-trip-tab]');if(b){
+ state.tripTab=b.dataset.tripTab;
+ if(ganttFullscreen&&state.tripTab!=='itinerary')toggleGanttFullscreen();
+ else render();
+ return;
+}const f=e.target.closest('[data-stage-filter]');if(f){state.stageFilter=f.dataset.stageFilter;render();}});window.addEventListener('online',colorStatus);window.addEventListener('offline',colorStatus);checkStorage();void checkOfflineShell();navigator.serviceWorker?.addEventListener('controllerchange',()=>{void checkOfflineShell();});state.shellCached=false;$('#view-select').disabled=false;$('#navigation-toggle').disabled=false;document.documentElement.dataset.travelitReady='true';performance.mark('travelit-interactive');
     const params=new URLSearchParams(location.search),sourceText=params.get('text')||'',sourceUrl=params.get('url')||(sourceText.match(/https?:\/\/\S+/)?.[0]||'');if(sourceUrl||params.get('title')){placeEditor(null,{url:sourceUrl,title:params.get('title')||'',notes:sourceText.replace(sourceUrl,'').trim()});}
     if(false){navigator.serviceWorker.register('./sw.js').then(reg=>checkOfflineShell().catch(()=>{})).catch(()=>toast('Offline shell could not be installed; local records still work.',true));}
   }catch(err){$('#main').innerHTML=`<div class="alert red"><strong>TravelIt could not open local storage.</strong><p>${esc(err.message)}</p><p>Do not clear browser data before recovering any existing content.</p></div>`;console.error(err);}}
