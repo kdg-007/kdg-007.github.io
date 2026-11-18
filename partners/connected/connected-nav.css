@@ -220,11 +220,12 @@ section.gantt-shell-fullscreen iframe[title="TravelIt trip planning workspace"]{
  min-height:100dvh!important;max-height:100dvh!important;border:0!important
 }
 
-/* WebKit compact ThinkIt outer-shell clearance: at a 320px viewport the
-   document-name field can protrude ~2px above the embedded frame's top
-   and overlap the connected bar. Add 4px vertical separation to the single
-   ThinkIt iframe, preserving all toolbar functions and release data. */
-@media(max-width:360px){
+/* WebKit compact ThinkIt outer-shell clearance: at viewport widths up
+   through 1099px, the document-name field can protrude ~2px above the
+   embedded frame's top (measured at 320px and 393px) and overlap the 50px
+   connected bar. Add 4px to the embedded ThinkIt frame at all such widths.
+   At 1100px and wider the shared bar is separately positioned at the right. */
+@media(max-width:1099px){
  html[data-connected-app="thinkit"] #thinkit-host-panel iframe{
   margin-top:4px!important;
  }
