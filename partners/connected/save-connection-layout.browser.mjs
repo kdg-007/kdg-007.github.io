@@ -128,7 +128,10 @@ async function headers(browser){
     const geometry=await page.evaluate(app=>{
      const bar=document.querySelector('.connected-shell-bar').getBoundingClientRect(),frame=app==='keepit'?null:document.querySelector('iframe'),f=frame?frame.getBoundingClientRect():{left:0,top:0};
      const controls=[...(frame?frame.contentDocument:document).querySelectorAll(app==='keepit'?'.library-top button,.library-top input,.library-top select':'.topbar button,.topbar input,.topbar select')].filter(e=>e.getBoundingClientRect().width&&getComputedStyle(e).visibility!=='hidden');
-     const overlap=controls.filter(e=>{const r=e.getBoundingClientRect(),x=r.left+f.left,y=r.top+f.top;return x<bar.right&&x+r.width>bar.left&&y<bar.bottom&&y+r.height>bar.top;}).map(e=>e.textContent||e.id);
+     const overlap=controls.filter(e=>{const r=e.getBoundingClientRect(),x=r.left+f.left,y=r.top+f.top;return x<bar.right&&x+r.width>bar.left&&y<bar.bottom&&y+r.height>bar.top;}).map(e=>{
+      const r=e.getBoundingClientRect();
+      return {name:e.textContent||e.id,x:r.left+f.left,y:r.top+f.top,w:r.width,h:r.height,frameTop:f.top,barTop:bar.top,barBottom:bar.bottom};
+     });
      return {left:bar.left,right:bar.right,width:innerWidth,overlap};
     },app);
     assert.ok(geometry.left>=0&&geometry.right<=width+1,app+' bar '+JSON.stringify(geometry));assert.deepEqual(geometry.overlap,[],app+' '+width+' controls overlap');
