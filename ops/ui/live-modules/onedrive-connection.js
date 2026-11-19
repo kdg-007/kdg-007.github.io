@@ -1003,6 +1003,32 @@ var ve = class {
       // replay a transfer whose outcome needs reconciliation by the provider.
       if(new URL(input.url||input,location.origin).hostname!=='graph.microsoft.com'){
         try{return await fetch(input,options);}catch(error){
+          // Microsoft documents a credential-free XHR for signed downloads.
+          // Retry only a rejected GET. Uploads require outcome reconciliation.
+          if ((options.method || input.method || 'GET').toUpperCase() === 'GET' &&
+              !options.signal?.aborted && typeof XMLHttpRequest === 'function') {
+            try {
+              return await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                const cleanup = () => options.signal?.removeEventListener('abort', abort);
+                const fail = () => { cleanup(); reject(error); };
+                const abort = () => { xhr.abort(); fail(); };
+                xhr.open('GET', input.url || input, true);
+                xhr.responseType = 'blob';
+                xhr.withCredentials = false;
+                xhr.timeout = 20000;
+                xhr.onload = () => {
+                  cleanup();
+                  if (!xhr.status) { reject(error); return; }
+                  resolve(new Response(xhr.response, { status: xhr.status }));
+                };
+                xhr.onerror = xhr.ontimeout = xhr.onabort = fail;
+                options.signal?.addEventListener('abort', abort, { once: true });
+                if (options.signal?.aborted) { abort(); return; }
+                xhr.send();
+              });
+            } catch {}
+          }
           // Classify without retaining preauthenticated download URLs or secrets.
           this.lastNetworkFailure={kind:"transfer"};
           interrupted();throw error;

@@ -20,7 +20,15 @@ try{
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));const origin='https://127.0.0.1:'+server.address().port;
  for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
   browser=await engine.launch({headless:true});const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'}),fixture=connectionFixture(origin),errors=[];
-  await context.route('**/*',fixture.route);const page=await context.newPage();currentPage=page;currentEngine=engine.name();page.on('pageerror',e=>errors.push(e.message));
+  let recoverDownloads=true,failedFetchDownloads=0,xhrDownloads=0;
+  await context.route('**/*',async route=>{
+   const request=route.request(),url=new URL(request.url());
+   if(url.hostname==='fixture.livefilestore.com'&&recoverDownloads){
+    if(request.resourceType()==='fetch'){failedFetchDownloads++;return route.abort('failed');}
+    if(request.resourceType()==='xhr')xhrDownloads++;
+   }
+   return fixture.route(route);
+  });const page=await context.newPage();currentPage=page;currentEngine=engine.name();page.on('pageerror',e=>errors.push(e.message));
   await page.goto(origin+'/partners/connected/?connected-app=keepit');
   await page.waitForFunction(()=>typeof document.getElementById('settings-onedrive').onclick==='function');
   await page.locator('#sidebar-settings').click();
@@ -39,6 +47,10 @@ try{
   await workspace().waitFor({state:'visible'});assert.equal(await page.locator('#onedrive-dialog[open]').count(),0);
   assert.match(await page.locator('#connected-cloud-status').getAttribute('aria-label'),/OneDrive \/ KeepIt connected/);
   assert.equal(fixture.signins,1);assert.equal(fixture.driveRequests,1);
+  assert.ok(failedFetchDownloads>0,'Fixture must reproduce rejected signed-file fetches');
+  assert.equal(xhrDownloads,failedFetchDownloads,'Every rejected download must recover using credential-free XHR');
+  recoverDownloads=false;
+  console.log('OWNER_SIGNED_DOWNLOAD_XHR_RECOVERY_'+engine.name().toUpperCase()+'_PASS');
   await page.locator('#connected-cloud-status').click();await page.locator('#onedrive-dialog[open]').waitFor();assert.equal(fixture.driveRequests,1,'Viewing the connected account must not reconnect');await page.locator('#onedrive-close').click();
   assert.deepEqual(nav.filter(p=>!p.startsWith('/consumers/')),['/partners/connected/?connected-app=liveit','/auth/callback/','/partners/connected/?connected-app=liveit']);
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('keepit-onedrive-owner-1')).rootId),'library');

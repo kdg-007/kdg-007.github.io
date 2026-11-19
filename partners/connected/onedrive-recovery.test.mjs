@@ -149,6 +149,34 @@ test('download transport failures are classified without storing signed URLs or 
  assert.equal(f.c.lastNetworkFailure?.kind,'transfer');
  assert.doesNotMatch(JSON.stringify(f.c.lastNetworkFailure),/PRIVATE-SIGNATURE|files\\.1drv\\.com|Bearer/);
 });
+test('a rejected signed download can use credential-free XHR and preserve the bytes',async()=>{
+ const f=fixture();await f.c.connectFiles();let fetches=0,xhrs=0;
+ f.env.fetch=async()=>{fetches++;throw TypeError('Fetch download blocked');};
+ f.env.XMLHttpRequest=class{
+  open(method,url,async){assert.equal(method,'GET');assert.equal(url,'https://sample.files.1drv.com/signed');assert.equal(async,true);}
+  setRequestHeader(){assert.fail('Signed downloads must not add authentication or preflight headers');}
+  send(){xhrs++;assert.equal(this.withCredentials,false);assert.equal(this.responseType,'blob');assert.equal(this.timeout,20000);this.status=200;this.response=new Blob(['verified original bytes']);this.onload();}
+ };
+ const response=await f.c.fs.fetcher('https://sample.files.1drv.com/signed',{method:'GET',signal:new AbortController().signal});
+ assert.equal(await response.text(),'verified original bytes');assert.equal(fetches,1);assert.equal(xhrs,1);
+ assert.equal(f.c.lastNetworkFailure,undefined);
+});
+test('failed uploads and cancelled downloads never enter XHR recovery',async()=>{
+ for(const method of ['PUT','POST','PATCH','DELETE','GET']){
+  const f=fixture();await f.c.connectFiles();const controller=new AbortController();
+  if(method==='GET')controller.abort();
+  f.env.fetch=async()=>{throw TypeError('Interrupted request');};
+  f.env.XMLHttpRequest=class{constructor(){assert.fail('Request must not be replayed');}};
+  await assert.rejects(()=>f.c.fs.fetcher('https://sample.storage.live.com/signed',{method,signal:controller.signal}),/Interrupted request/);
+ }
+});
+test('XHR recovery failure retains the safe transfer diagnostic',async()=>{
+ const f=fixture();await f.c.connectFiles();
+ f.env.fetch=async()=>{throw TypeError('Rejected download');};
+ f.env.XMLHttpRequest=class{open(){}send(){this.onerror();}};
+ await assert.rejects(()=>f.c.fs.fetcher('https://sample.files.1drv.com/signed?secret=hidden'),/Rejected download/);
+ assert.deepEqual(JSON.parse(JSON.stringify(f.c.lastNetworkFailure)),{kind:'transfer'});
+});
 test('Graph transport failures are distinguished from signed-file download failures',async()=>{
  const f=fixture();await f.c.connectFiles();
  f.env.fetch=async()=>{throw Error('Simulated Graph network failure');};
