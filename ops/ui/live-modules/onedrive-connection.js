@@ -945,18 +945,27 @@ var ve = class {
   async restore({ force: e = false, interactive: t = false, selected: i = null, priorBound: s = false } = {}) {
     // Never let a prior failure label a new attempt. No URLs or credentials are recorded.
     this.lastNetworkFailure = null;
+    let savedRootLocated = false;
     try {
       if (i) return await this.bindLibrary(i.root, i.path);
       if (!e && !t && !ye()) return false;
       if (this.progress({ stage: "Checking Microsoft sign-in\u2026" }), await this.prepareAuth(), !this.auth.account()) return this.status(), t && this.present(), this.publish("signin", "Sign in to OneDrive"), false;
       S()?.homeId && S().homeId !== this.auth.account().homeAccountId && await this.clearPreview?.(), this.progress({ stage: "Connecting to OneDrive\u2026" }), await this.connectFiles();
       let r = S();
-      if (r && r.homeId === this.auth.account().homeAccountId && r.driveId === this.fs.driveId) try {
+      if (r && r.homeId === this.auth.account().homeAccountId && r.driveId === this.fs.driveId) {
         this.progress({ stage: "Opening your OneDrive library\u2026" });
-        let a = await this.fs.item(r.rootId);
-        return await this.bindLibrary(a, r.path);
-      } catch (a) {
-        if (a.details?.status !== 404) throw a;
+        let savedRoot;
+        try {
+          savedRoot = await this.fs.item(r.rootId);
+        } catch (error) {
+          if (error.details?.status !== 404) throw error;
+        }
+        // A missing catalog item inside an existing folder does not invalidate its binding.
+        if (savedRoot) {
+          savedRootLocated = true;
+          this.selecting = false;
+          return await this.bindLibrary(savedRoot, r.path);
+        }
       }
       if ((e || t) && !r) {
         let a = await this.fs.child(this.stack[0].id, "KeepIt");
@@ -973,7 +982,7 @@ var ve = class {
           : "KeepIt could not finish a Microsoft Graph request (KI-OD-GRAPH). The selected library and pending edits were not changed.";
       }
       this.lastNetworkFailure = null;
-      if (this.note(a, true), this.progress({ error: "OneDrive could not connect. " + a + (this.auth.reconnectRequired ? " Reconnect Microsoft to continue." : " Select the OneDrive status to retry.") }), this.status(), this.fs && t) {
+      if (this.note(a, true), this.progress({ error: "OneDrive could not connect. " + a + (this.auth.reconnectRequired ? " Reconnect Microsoft to continue." : " Select the OneDrive status to retry.") }), this.status(), this.fs && t && !savedRootLocated) {
         this.selecting = true, this.present();
         try {
           await this.browse();
@@ -994,6 +1003,32 @@ var ve = class {
       // replay a transfer whose outcome needs reconciliation by the provider.
       if(new URL(input.url||input,location.origin).hostname!=='graph.microsoft.com'){
         try{return await fetch(input,options);}catch(error){
+          // Microsoft documents a credential-free XHR for signed downloads.
+          // Retry only a rejected GET. Uploads require outcome reconciliation.
+          if ((options.method || input.method || 'GET').toUpperCase() === 'GET' &&
+              !options.signal?.aborted && typeof XMLHttpRequest === 'function') {
+            try {
+              return await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                const cleanup = () => options.signal?.removeEventListener('abort', abort);
+                const fail = () => { cleanup(); reject(error); };
+                const abort = () => { xhr.abort(); fail(); };
+                xhr.open('GET', input.url || input, true);
+                xhr.responseType = 'blob';
+                xhr.withCredentials = false;
+                xhr.timeout = 20000;
+                xhr.onload = () => {
+                  cleanup();
+                  if (!xhr.status) { reject(error); return; }
+                  resolve(new Response(xhr.response, { status: xhr.status }));
+                };
+                xhr.onerror = xhr.ontimeout = xhr.onabort = fail;
+                options.signal?.addEventListener('abort', abort, { once: true });
+                if (options.signal?.aborted) { abort(); return; }
+                xhr.send();
+              });
+            } catch {}
+          }
           // Classify without retaining preauthenticated download URLs or secrets.
           this.lastNetworkFailure={kind:"transfer"};
           interrupted();throw error;

@@ -63,6 +63,45 @@ test('opening a healthy connection only shows details and does not restart it',a
  const {c}=fixture();c.bound=true;c.fs={};c.start=async()=>{throw Error('Unexpected reconnect');};assert.equal(await c.show(),true);
 });
 
+function rememberedReconnect(){
+ const f=fixture(), savedRoot={id:'saved-root',name:'KeepIt'};
+ const binding={homeId:'owner',driveId:'saved-drive',rootId:savedRoot.id,path:'Documents / KeepIt'};
+ const errors=[];let pickerOpens=0;
+ f.env.S=()=>binding;f.c.prepareAuth=async()=>{};f.c.progress=event=>{if(event.error)errors.push(event.error);};
+ f.c.connectFiles=async()=>{f.c.fs={driveId:binding.driveId,item:async()=>savedRoot};};
+ f.c.browse=async()=>{pickerOpens++;};
+ return {...f,savedRoot,binding,errors,get pickerOpens(){return pickerOpens;}};
+}
+
+test('a missing catalog item keeps the saved library selected and retry reopens that library',async()=>{
+ const f=rememberedReconnect(), attempts=[];
+ f.c.selecting=true;
+ f.c.bindLibrary=async(root,path)=>{
+  attempts.push([root.id,path]);
+  if(attempts.length===1)throw Object.assign(Error('Catalog file missing'),{details:{status:404}});
+  return true;
+ };
+ assert.equal(await f.c.restore({interactive:true}),false);
+ assert.match(f.errors[0]??'',/Catalog file missing/);
+ assert.equal(f.pickerOpens,0);
+ assert.equal(f.c.selecting,false);
+ await f.get('onedrive-retry').onclick();
+ assert.deepEqual(attempts,[[f.savedRoot.id,f.binding.path],[f.savedRoot.id,f.binding.path]]);
+});
+
+test('a missing saved folder still opens the picker',async()=>{
+ const f=rememberedReconnect();
+ const connect=f.c.connectFiles;
+ f.c.connectFiles=async()=>{
+  await connect();f.c.fs.item=async()=>{throw Object.assign(Error('Folder missing'),{details:{status:404}});};
+ };
+ f.c.bindLibrary=async()=>assert.fail('A missing folder cannot be opened');
+ assert.equal(await f.c.restore({interactive:true}),false);
+ assert.equal(f.pickerOpens,1);
+ assert.equal(f.c.selecting,true);
+ assert.equal(f.c.phase,'choose-folder');
+});
+
 test('a stalled metadata body times out and releases the connection for a successful retry',async()=>{
  const f=fixture();await f.c.connectFiles();f.c.bound=true;
  f.env.re=async work=>{let timer;try{return await Promise.race([work(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('metadata body timed out')),15);})]);}finally{clearTimeout(timer);}};
@@ -109,6 +148,34 @@ test('download transport failures are classified without storing signed URLs or 
  await assert.rejects(()=>f.c.fs.fetcher(signedUrl),/Simulated browser transport failure/);
  assert.equal(f.c.lastNetworkFailure?.kind,'transfer');
  assert.doesNotMatch(JSON.stringify(f.c.lastNetworkFailure),/PRIVATE-SIGNATURE|files\\.1drv\\.com|Bearer/);
+});
+test('a rejected signed download can use credential-free XHR and preserve the bytes',async()=>{
+ const f=fixture();await f.c.connectFiles();let fetches=0,xhrs=0;
+ f.env.fetch=async()=>{fetches++;throw TypeError('Fetch download blocked');};
+ f.env.XMLHttpRequest=class{
+  open(method,url,async){assert.equal(method,'GET');assert.equal(url,'https://sample.files.1drv.com/signed');assert.equal(async,true);}
+  setRequestHeader(){assert.fail('Signed downloads must not add authentication or preflight headers');}
+  send(){xhrs++;assert.equal(this.withCredentials,false);assert.equal(this.responseType,'blob');assert.equal(this.timeout,20000);this.status=200;this.response=new Blob(['verified original bytes']);this.onload();}
+ };
+ const response=await f.c.fs.fetcher('https://sample.files.1drv.com/signed',{method:'GET',signal:new AbortController().signal});
+ assert.equal(await response.text(),'verified original bytes');assert.equal(fetches,1);assert.equal(xhrs,1);
+ assert.equal(f.c.lastNetworkFailure,undefined);
+});
+test('failed uploads and cancelled downloads never enter XHR recovery',async()=>{
+ for(const method of ['PUT','POST','PATCH','DELETE','GET']){
+  const f=fixture();await f.c.connectFiles();const controller=new AbortController();
+  if(method==='GET')controller.abort();
+  f.env.fetch=async()=>{throw TypeError('Interrupted request');};
+  f.env.XMLHttpRequest=class{constructor(){assert.fail('Request must not be replayed');}};
+  await assert.rejects(()=>f.c.fs.fetcher('https://sample.storage.live.com/signed',{method,signal:controller.signal}),/Interrupted request/);
+ }
+});
+test('XHR recovery failure retains the safe transfer diagnostic',async()=>{
+ const f=fixture();await f.c.connectFiles();
+ f.env.fetch=async()=>{throw TypeError('Rejected download');};
+ f.env.XMLHttpRequest=class{open(){}send(){this.onerror();}};
+ await assert.rejects(()=>f.c.fs.fetcher('https://sample.files.1drv.com/signed?secret=hidden'),/Rejected download/);
+ assert.deepEqual(JSON.parse(JSON.stringify(f.c.lastNetworkFailure)),{kind:'transfer'});
 });
 test('Graph transport failures are distinguished from signed-file download failures',async()=>{
  const f=fixture();await f.c.connectFiles();

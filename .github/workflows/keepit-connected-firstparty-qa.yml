@@ -25,6 +25,8 @@ jobs:
   verify:
     name: Verify native owner, save/reopen and connected app hosts
     runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
     timeout-minutes: 36
     steps:
       - uses: actions/checkout@v4
@@ -198,12 +200,12 @@ jobs:
         run: |
           printf '{"type":"module","private":true}\n' > package.json
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 esbuild@0.28.2
-          npx playwright install --with-deps chromium webkit
       - name: Verify classified OneDrive request failures without actual credentials
         run: node --test partners/connected/onedrive-recovery.test.mjs
       - name: Verify reproducible live save and connection modules
         run: |
           node ops/ui/build-live-stability.mjs
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git diff --exit-code -- assets partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json
       - name: Verify transfer host safety and content-addressed owner imports
         run: node ops/ui/transfer-host-policy.test.mjs
@@ -246,10 +248,10 @@ jobs:
         run: node partners/connected/liveit-calendar.unit.mjs
       - name: Verify app folders, immutable revisions and conflict readback
         run: node partners/connected/app-repository-store.test.mjs
-      - name: Verify event save and reload across independent devices
-        run: node partners/connected/liveit-calendar.browser.mjs
       - name: Verify Microsoft callback and nonblocking OneDrive reconnect
         run: node partners/connected/owner-connection.test.mjs
+      - name: Verify event save and reload across independent devices
+        run: node partners/connected/liveit-calendar.browser.mjs
       - name: Save interface previews
         if: ${{ !cancelled() && steps.browser_runtime.outcome == 'success' }}
         uses: actions/upload-artifact@v4
