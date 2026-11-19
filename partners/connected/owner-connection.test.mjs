@@ -124,7 +124,7 @@ try{
   const beforeDisconnect=fixture.driveRequests;await page.locator('#connected-cloud-status').click();await page.locator('#onedrive-dialog[open]').waitFor();await page.locator('#onedrive-disconnect').click();await page.locator('#connected-cloud-status[data-phase="signin"]').waitFor();assert.equal(fixture.driveRequests,beforeDisconnect);await page.locator('#onedrive-close').click();await workspace().waitFor({state:'visible'});
   console.log('OWNER_ACCOUNT_DETAILS_AND_DISCONNECT_WITHOUT_RECONNECT_'+engine.name().toUpperCase()+'_PASS');
   await context.close();
-  const picker=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:393,height:852},isMobile:true,hasTouch:true}),nested=connectionFixture(origin,{nested:true});
+  const picker=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',acceptDownloads:true,viewport:{width:393,height:852},isMobile:true,hasTouch:true}),nested=connectionFixture(origin,{nested:true,legacyRevisions:12,snapshotDelayMs:120});
   await picker.route('**/*',nested.route);const phone=await picker.newPage();currentPage=phone;
   await phone.goto(origin+'/partners/connected/?connected-app=liveit&connect-onedrive=1');await phone.locator('#onedrive-dialog[open]').waitFor();await phone.locator('#onedrive-signin').click();
   await phone.locator('#onedrive-folders button').filter({hasText:'Documents'}).waitFor();assert.equal(await phone.locator('#onedrive-use').isDisabled(),true);
@@ -136,12 +136,38 @@ try{
   await phone.locator('#onedrive-folders button').filter({hasText:'Travel Library'}).click();await phone.locator('#onedrive-path').filter({hasText:'Documents / Travel Library'}).waitFor();
   await phone.waitForFunction(()=>!document.getElementById('onedrive-use').disabled);await phone.locator('#onedrive-use').click();
   await phone.locator('#connected-cloud-status[data-phase=connected]').waitFor();
+  assert.equal(nested.legacyDownloads,12,'The very first library opening reads all original catalog revisions once');
+  assert.ok(nested.peakLegacy>=3&&nested.peakLegacy<=4,'Cold legacy verification overlaps at most four downloads');
+  await phone.locator('#connected-cloud-status').click();
+  await phone.locator('#onedrive-connection-details summary').click();
+  await phone.locator('#onedrive-connection-timing').filter({hasText:'Original catalog history:'}).waitFor();
+  const reportDownload=phone.waitForEvent('download');await phone.locator('#onedrive-connection-report').click();
+  const report=JSON.parse(readFileSync(await(await reportDownload).path(),'utf8'));
+  assert.equal(report.schema,'keepit.connection-timing.v1');assert.equal(report.outcome,'connected');
+  assert.ok(report.phases.some(p=>p.phase==='legacy-history'&&p.durationMs>0));
+  assert.ok(report.requests['file-read'].peak>=3&&report.requests['file-read'].peak<=4);
+  assert.doesNotMatch(JSON.stringify(report),/owner@example|fixture-user|fixture-access|fixture-drive|Travel Library|downloadUrl|https?:/);
+  await phone.locator('#onedrive-close').click();
+  console.log('OWNER_PHONE_FIRST_OPEN_LEGACY_HISTORY_AND_PRIVATE_REPORT_'+engine.name().toUpperCase()+'_PASS',JSON.stringify({legacyDownloads:nested.legacyDownloads,peakConcurrent:nested.peakLegacy,legacyMs:report.phases.find(p=>p.phase==='legacy-history').durationMs,totalMs:report.totalMs}));
   assert.equal(await phone.evaluate(()=>JSON.parse(localStorage.getItem('keepit-onedrive-owner-1')).path),'Documents / Travel Library');
   assert.ok(nested.requests.every(r=>r.method==='GET'),'Opening an existing nested library never changes cloud files');
   await phone.reload();await phone.locator('#connected-cloud-status[data-phase=connected]').waitFor();assert.equal(await phone.locator('#onedrive-dialog[open]').count(),0);
+  assert.equal(nested.legacyDownloads,12,'A verified checkpoint reopens without downloading old history again');
   await phone.locator('#connected-cloud-status').click();await phone.locator('#onedrive-change-folder').click();await phone.locator('#onedrive-folders button').filter({hasText:'Documents'}).waitFor();
   console.log('OWNER_MOBILE_NESTED_RENAMED_FOLDER_PICKER_SELECTION_REOPEN_'+engine.name().toUpperCase()+'_PASS');
-  await picker.close();await browser.close();browser=null;
+  await picker.close();
+  const damagedContext=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:393,height:852},isMobile:true,hasTouch:true});
+  const damaged=connectionFixture(origin,{legacyRevisions:6,corruptLegacy:true,snapshotDelayMs:60});
+  await damagedContext.route('**/*',damaged.route);const damagedPage=await damagedContext.newPage();currentPage=damagedPage;
+  await damagedPage.goto(origin+'/partners/connected/?connected-app=keepit&connect-onedrive=1');
+  await damagedPage.locator('#onedrive-dialog[open]').waitFor();await damagedPage.locator('#onedrive-signin').click();
+  await damagedPage.locator('#connected-cloud-status[data-phase=error]').waitFor();
+  await damagedPage.locator('#onedrive-message').filter({hasText:'checksum failed'}).waitFor({state:'attached'});
+  assert.ok(damaged.requests.every(r=>r.method==='GET'),'Failed parallel verification never writes or repairs cloud data');
+  assert.equal(await damagedPage.evaluate(()=>localStorage.getItem('keepit-onedrive-owner-1')),null,'Failed verification cannot establish a writable binding');
+  await damagedPage.waitForLoadState('networkidle');await damagedContext.close();
+  console.log('OWNER_COLD_PARALLEL_CHECKSUM_REJECTION_WITHOUT_WRITES_'+engine.name().toUpperCase()+'_PASS');
+  await browser.close();browser=null;
  }
 }catch(error){
  if(currentPage&&!currentPage.isClosed())console.error('OWNER_CONNECTION_DIAGNOSTIC',currentEngine,await currentPage.evaluate(()=>({path:location.pathname,state:window.keepItConnectionState,dialog:document.getElementById('onedrive-dialog')?.open,connectionMessage:document.getElementById('onedrive-message')?.textContent,appMessage:document.getElementById('message')?.textContent,library:document.getElementById('result-count')?.textContent})).catch(()=>({unavailable:true})));

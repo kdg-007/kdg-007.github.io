@@ -201,7 +201,7 @@ jobs:
           printf '{"type":"module","private":true}\n' > package.json
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 esbuild@0.28.2
       - name: Verify classified OneDrive request failures without actual credentials
-        run: node --test partners/connected/onedrive-recovery.test.mjs
+        run: node --test partners/connected/onedrive-recovery.test.mjs partners/connected/catalog-read.test.mjs
       - name: Verify reproducible live save and connection modules
         run: |
           node ops/ui/build-live-stability.mjs

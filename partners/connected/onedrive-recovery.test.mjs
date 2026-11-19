@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {test} from 'node:test';
 const source=readFileSync(new URL('../../ops/ui/live-modules/onedrive-connection.js',import.meta.url),'utf8');
 const classSource=source.slice(source.indexOf('var ve = class {')+9,source.indexOf('\nexport {',source.indexOf('var ve = class {'))).replace(/;\s*$/,'');
+const createConnectionTrace=vm.runInNewContext('('+source.slice(source.indexOf('function createConnectionTrace('),source.indexOf('function legacyCatalogSource('))+')',{Date});
 function fixture(){
  const nodes=new Map();
  const node=()=>({hidden:false,disabled:false,textContent:'',children:[],open:false,append(child){this.children.push(child);},replaceChildren(){this.children=[];},before(){},setAttribute(){},addEventListener(){},querySelectorAll(){return [...nodes.values()];},close(){this.open=false;},showModal(){this.open=true;}});
@@ -11,7 +12,7 @@ function fixture(){
  let requests=0,responses=[];
  class Auth{constructor(){this.reconnectRequired=false;this.invalidations=0;}account(){return {homeAccountId:'owner'};}invalidateToken(){this.invalidations++;}async token(){return 'renewed';}}
  class FS{constructor(auth,{fetcher}){this.fetcher=fetcher;this.homeId='owner';}async initialize(){return {id:'root',name:'OneDrive'};}}
- const env={x:class{},ae:Auth,ne:'id',q:false,O:class{},S:()=>({homeId:'owner',path:'KeepIt'}),H:error=>error.message,
+ const env={createConnectionTrace,x:class{},ae:Auth,ne:'id',q:false,O:class{},S:()=>({homeId:'owner',path:'KeepIt'}),H:error=>error.message,
  window:{addEventListener(){},dispatchEvent(){}},document:{getElementById:get,createElement:node,querySelector:()=>null},
  location:{href:'https://example.test/partners/connected/?connected-app=thinkit',origin:'https://example.test'},
  sessionStorage:{setItem(){}},URL,Headers,AbortController,Response,Date,setTimeout,clearTimeout,
