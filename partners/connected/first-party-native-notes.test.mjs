@@ -234,7 +234,7 @@ try{
     null,{timeout:30000});
    assert.ok(await target.locator('option').count()>0);
    await reopenNoteTools(page);await host.getByRole('button',{name:'Open native note'}).click();
-   const note=page.locator('dialog.note-dialog');
+   const note=page.locator('dialog.note-dialog[open]');
    await note.waitFor({state:'visible',timeout:45000});
    const editor=note.locator('.note-editor [contenteditable="true"]');
    await editor.waitFor({state:'visible',timeout:30000});
@@ -249,7 +249,7 @@ try{
    await note.locator('.note-actions').getByRole('button',{name:'Save',exact:true}).click();
    try {
     await page.waitForFunction(text=>{
-     const d=document.querySelector('dialog.note-dialog');
+     const d=document.querySelector('dialog.note-dialog[open]');
      // The current KeepIt native continuous-save editor correctly REMAINS
      // in edit mode. Its verified local-original status, not a preview
      // transition, is the durable-save acknowledgement.
@@ -259,7 +259,7 @@ try{
     },noteText,{timeout:18000});
    } catch(e) {
     const diagnostics=await page.evaluate(()=>{
-     const d=document.querySelector('dialog.note-dialog');
+     const d=document.querySelector('dialog.note-dialog[open]');
      return {mode:d?.dataset.mode,open:d?.open,status:d?.querySelector('.note-status')?.textContent,
       reader:d?.querySelector('.note-reader')?.textContent?.slice(0,250),
       editor:d?.querySelector('.note-editor')?.textContent?.slice(0,250),
@@ -282,7 +282,7 @@ try{
    await note.waitFor({state:'hidden',timeout:20000});
    await reopenNoteTools(page);await host.getByRole('button',{name:'Open native note'}).click();
    await note.waitFor({state:'visible',timeout:30000});
-   await page.waitForFunction(t=>document.querySelector('dialog.note-dialog')?.textContent?.includes(t),
+   await page.waitForFunction(t=>document.querySelector('dialog.note-dialog[open]')?.textContent?.includes(t),
     noteText,{timeout:30000});
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden',timeout:20000});
@@ -343,11 +343,11 @@ try{
    await travelEditor.click();
    await travelEditor.pressSequentially(travelNote,{delay:12});
    await page.waitForFunction(text=>
-     document.querySelector('dialog.note-dialog .note-editor [contenteditable="true"]')?.textContent?.includes(text),
+     document.querySelector('dialog.note-dialog[open] .note-editor [contenteditable="true"]')?.textContent?.includes(text),
      travelNote,{timeout:15000});
    await note.locator('.note-actions').getByRole('button',{name:'Save',exact:true}).click();
    await page.waitForFunction(text=>{
-    const d=document.querySelector('dialog.note-dialog');
+    const d=document.querySelector('dialog.note-dialog[open]');
     return d?.dataset.mode==='edit' &&
       d.querySelector('.note-editor')?.textContent?.includes(text) &&
       d.querySelector('.note-status')?.textContent?.includes('Verified in KeepIt');
@@ -367,7 +367,7 @@ try{
    await note.waitFor({state:'hidden'});
    await reopenNoteTools(page);await travelHost.getByRole('button',{name:'Open native note'}).click();
    await note.waitFor({state:'visible',timeout:35000});
-   await page.waitForFunction(text=>document.querySelector('dialog.note-dialog')?.textContent?.includes(text),
+   await page.waitForFunction(text=>document.querySelector('dialog.note-dialog[open]')?.textContent?.includes(text),
      travelNote,{timeout:25000});
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden'});
@@ -446,10 +446,12 @@ try{
    await topic.click();
    await thinkFrame.locator('#mindOpenKeepItNative').waitFor({state:'visible',timeout:15000});
    await thinkFrame.locator('#mindOpenKeepItNative').click();
-   await note.waitFor({state:'visible',timeout:30000}).catch(async()=>{
+   await page.locator('dialog.note-dialog[open]').waitFor({state:'visible',timeout:30000}).catch(async(error)=>{
      throw Error('ThinkIt native note editor failed to open: '+JSON.stringify({
-       body:(await page.locator('#thinkit-host-panel').innerText()).slice(0,600),errors
-     }));
+       body:(await page.locator('#thinkit-host-panel').innerText()).slice(0,600),
+       frameStatus:await thinkFrame.locator('.mind-notes-footer').textContent().catch(()=>null),
+       errors
+     }),{cause:error});
    });
    const thinkEditor=note.locator('.note-editor [contenteditable="true"]');
    await thinkEditor.waitFor({state:'visible',timeout:25000});
@@ -457,11 +459,11 @@ try{
    await thinkEditor.click();
    await thinkEditor.pressSequentially(thinkNote,{delay:10});
    await page.waitForFunction(text=>
-      document.querySelector('dialog.note-dialog .note-editor [contenteditable="true"]')?.textContent?.includes(text),
+      document.querySelector('dialog.note-dialog[open] .note-editor [contenteditable="true"]')?.textContent?.includes(text),
       thinkNote,{timeout:15000});
    await note.locator('.note-actions').getByRole('button',{name:'Save',exact:true}).click();
    await page.waitForFunction(text=>{
-     const d=document.querySelector('dialog.note-dialog');
+     const d=document.querySelector('dialog.note-dialog[open]');
      return d?.dataset.mode==='edit' &&
        d.querySelector('.note-editor')?.textContent?.includes(text) &&
        d.querySelector('.note-status')?.textContent?.includes('Verified in KeepIt');
@@ -480,7 +482,7 @@ try{
    await thinkFrame.locator('#btnMindNotes').click();
    await thinkFrame.locator('#mindOpenKeepItNative').click();
    await note.waitFor({state:'visible',timeout:30000});
-   await page.waitForFunction(text=>document.querySelector('dialog.note-dialog')?.textContent?.includes(text),
+   await page.waitForFunction(text=>document.querySelector('dialog.note-dialog[open]')?.textContent?.includes(text),
       thinkNote,{timeout:25000});
    await note.locator('button.note-exit').click();
    await note.waitFor({state:'hidden'});
