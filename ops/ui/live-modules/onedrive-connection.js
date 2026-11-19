@@ -361,6 +361,61 @@ async function me({ item: h, parent: e, name: t, bytes: i, expectedDigest: s, re
   }
   return l !== s && n("checksum differs"), h;
 }
+// An attempt-local report. Only fixed phase/kind names and numeric aggregates
+// enter it; URLs, names, account identifiers, tokens and errors never do.
+function createConnectionTrace(now = () => globalThis.performance?.now?.() ?? Date.now()) {
+  const phases = new Set(['auth','drive','folder-preflight','identity','legacy-history','cloud-history','workspace']);
+  const kinds = new Set(['graph','download','upload','file-read']);
+  let started = null, ended = null, outcome = 'idle', startedAt = null;
+  const steps = [], requests = {};
+  const elapsed = () => started === null ? 0 : Math.max(0, (ended ?? now()) - started);
+  return {
+    begin() { started = now(); startedAt = new Date().toISOString(); outcome = 'connecting'; },
+    phase(name) {
+      if (!phases.has(name) || started === null || ended !== null || steps.at(-1)?.phase === name) return;
+      if (steps.length < 32) steps.push({phase:name,startedMs:elapsed()});
+    },
+    async measure(kind, work) {
+      if (!kinds.has(kind) || started === null || ended !== null) return work();
+      const start = now(), metric = requests[kind] ??= {count:0,failed:0,active:0,peak:0,totalMs:0,bytes:0,statuses:{}};
+      metric.count++; metric.peak = Math.max(metric.peak, ++metric.active);
+      try {
+        const value = await work();
+        if (Number.isInteger(value?.status) && value.status >= 100 && value.status <= 599) {
+          metric.statuses[value.status] = (metric.statuses[value.status] || 0) + 1;
+          if (value.status >= 400) metric.failed++;
+        }
+        if (kind === 'file-read' && Number.isSafeInteger(value?.size) && value.size >= 0) metric.bytes += value.size;
+        return value;
+      } catch (error) { metric.failed++; throw error; }
+      finally { metric.active--; metric.totalMs += Math.max(0, now() - start); }
+    },
+    finish(status) {
+      if (ended !== null) return;
+      ended = now(); outcome = ['connected','error','signin','choose-folder'].includes(status) ? status : 'error';
+    },
+    snapshot() {
+      const totalMs = elapsed();
+      return {schema:'keepit.connection-timing.v1',startedAt,outcome,totalMs:Math.round(totalMs),
+        phases:steps.map((step,i)=>({phase:step.phase,startedMs:Math.round(step.startedMs),durationMs:Math.round(Math.max(0,(steps[i+1]?.startedMs ?? totalMs)-step.startedMs))})),
+        requests:JSON.parse(JSON.stringify(requests))};
+    }
+  };
+}
+function legacyCatalogSource(fs, items, identity, onProgress = () => {}) {
+  const sorted = [...items].sort((a,b)=>(Date.parse(b.lastModifiedDateTime)||0)-(Date.parse(a.lastModifiedDateTime)||0));
+  const load = catalogReadAhead(new Map(sorted.map(item=>[item.name.toLowerCase(),item])), async item => {
+    let file = await fs.read(item,{cache:true});
+    if (!(file instanceof Blob)) file = await fs.read(item,{cache:false});
+    d(file instanceof Blob,'OneDrive catalog history returned no file bytes (KI-OD-NULL-HISTORY). Original files were retained.');
+    return file;
+  });
+  let count = 0;
+  const entries = sorted.map(item=>[item.name,item.folder ? fs.directory(item) : {kind:'file',getFile:async()=>{
+    const file = await load(item); onProgress(++count); return file;
+  }}]);
+  return {identity,commits:{async *entries(){yield* entries;}}};
+}
 function catalogReadAhead(items, read) {
   // The catalog's parent pointers remain authoritative. Modification times
   // only predict which small snapshots are likely to be requested next.
@@ -657,7 +712,7 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     this.fs.guard();
     let e = this.root.item;
     d(e.parentReference?.id, "Choose your library folder rather than the OneDrive root."), this.fs.allow(e.id);
-    this.onConnectProgress?.(0);
+    this.onConnectProgress?.(0); this.onConnectPhase?.('identity');
     let [t, i] = await Promise.all([this.fs.child(e.id, "_Catalog"), this.fs.child(e.id, "Files")]), s = t && await this.fs.child(t.id, "library.json");
     if (s) this.catalog = this.fs.directory(t);
     else {
@@ -674,7 +729,11 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     this.cacheChoice = { homeId: this.fs.homeId, driveId: this.fs.driveId, rootId: e.id };
     let [a, n] = r ? await Promise.all([this.catalogCache.get(this.cacheChoice), this.fs.readJSON(r)]) : [null, null];
     a && (JSON.stringify(a.index) !== JSON.stringify(n) || JSON.stringify(a.identity) !== JSON.stringify(this.identity)) && (a = null), a && (this.verified = a.verified, this.historicalPaths = a.verified.historicalPaths, this.historicalOriginals = a.verified.historicalOriginals);
-    let o = { identity: this.identity, commits: this.legacyCommits }, l = a ? a.verified.legacyState : await A.prototype.readHead.call(o);
+    this.onConnectPhase?.('legacy-history');
+    // The initial cold open used the directory adapter's sequential getFile
+    // loop. Apply the same bounded read-ahead as later history verification.
+    const legacy = a ? null : legacyCatalogSource(this.fs,await this.fs.children(this.legacyCommits.item.id),this.identity,count=>this.onConnectProgress?.(count));
+    let l = a ? a.verified.legacyState : await A.prototype.readHead.call(legacy);
     if (!r) {
       l || d((await this.fs.children(this.files.item.id)).length === 0, "Originals remain but the catalog is missing. Restore the catalog before connecting.");
       let w = await this.catalog.getDirectoryHandle("keepit-cloud", { create: true }), v = await w.getDirectoryHandle("commits", { create: true }), g = l;
@@ -690,6 +749,7 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     }
     this.index = n ?? await this.fs.readJSON(r), d(this.index.format === "keepit-cloud-index-1" && this.index.libraryId === this.identity.libraryId && this.index.driveId === this.fs.driveId && this.index.rootId === e.id && this.index.filesId === this.files.item.id && this.index.legacyCommitId === (l?.commitId || null), "The library connection or local catalog has changed. No catalog was overwritten.");
     let [u, c] = await Promise.all([this.fs.item(this.index.cloudId), this.fs.item(this.index.commitsId)]), f = this.fs.validate(u, this.catalog.item.id), m = this.fs.validate(c, f.id);
+    this.onConnectPhase?.('cloud-history');
     return d(f.folder && f.name === "keepit-cloud" && m.folder && m.name === "commits", "The OneDrive catalog folders moved. Reconnect the library."), this.fs.allow(this.files.item.id), this.fs.allow(f.id), this.fs.allow(m.id), this.cloudCommits = this.fs.directory(m), this.closed = false, this.release = () => {
       this.closed = true;
     }, this.state = await this.readHead(), this.persistCheckpoint(), this;
@@ -853,6 +913,23 @@ function pt() {
 var ve = class {
   constructor({ ready: e, pause: t, canChange: i, progress: s, disconnected: r, preview: a, clearPreview: n, settled: o }) {
     Object.assign(this, { ready: e, pause: t, canChange: i, progress: s, disconnected: r, preview: a, clearPreview: n, settled: o }), this.catalogCache = new x(), this.$ = (c) => document.getElementById(c), this.auth = new ae({ clientId: ne, scope: "visible_root" }), this.stack = [], this.pending = false, this.authChecked = false;
+    this.connectionTrace = createConnectionTrace();
+    const details = document.createElement('details'), summary = document.createElement('summary');
+    details.id = 'onedrive-connection-details'; details.style?.setProperty('margin','10px 0');
+    summary.textContent = 'Connection details'; details.append(summary);
+    const timing = document.createElement('p'), report = document.createElement('button');
+    timing.id = 'onedrive-connection-timing'; timing.setAttribute('aria-live','polite');
+    timing.textContent = 'Timing is available after a connection attempt.';
+    report.id = 'onedrive-connection-report'; report.type = 'button'; report.className = 'secondary';
+    report.textContent = 'Download connection report'; report.disabled = true;
+    report.onclick = () => {
+      const blob = new Blob([JSON.stringify(this.connectionTrace.snapshot(),null,2)+'\n'],{type:'application/json'});
+      const url = URL.createObjectURL(blob), link = document.createElement('a');
+      link.href = url; link.download = 'KeepIt_Connection_Report.json'; link.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    };
+    details.append(timing,report); this.$('onedrive-browser').before(details);
+    this.traceSummary = summary; this.traceTiming = timing; this.traceReport = report;
     window.addEventListener('keepit-auth-state',event=>{
       if(event.detail?.homeId!==this.auth.account()?.homeAccountId)return;
       const phase=event.detail.phase;
@@ -903,6 +980,18 @@ var ve = class {
   note(e, t = false) {
     let i = this.$("onedrive-message");
     i.textContent = e, i.hidden = false, i.className = "message" + (t ? " error" : "");
+  }
+  renderConnectionTiming() {
+    const report = this.connectionTrace.snapshot();
+    const labels = {auth:'Microsoft sign-in',drive:'OneDrive discovery','folder-preflight':'Folder checks',identity:'Library identity','legacy-history':'Original catalog history','cloud-history':'Cloud catalog history',workspace:'Opening workspace'};
+    const seconds = ms => (ms/1000).toFixed(1)+'s';
+    this.traceSummary.textContent = 'Connection details · '+seconds(report.totalMs);
+    this.traceTiming.textContent = report.phases.map(step=>(labels[step.phase]||step.phase)+': '+seconds(step.durationMs)).join(' · ');
+    this.traceReport.disabled = !report.startedAt;
+  }
+  connectionStage(phase, message) {
+    this.connectionTrace.phase(phase); this.renderConnectionTiming();
+    if(message)this.progress({stage:message});
   }
   status() {
     let e = this.$, t = this.auth.account();
@@ -957,16 +1046,19 @@ var ve = class {
   }
   async bindLibrary(e, t) {
     this.connectPhase = "folder-preflight";
+    this.connectionStage('folder-preflight','Checking your existing OneDrive folder…');
     let i;
     try {
       i = await ee(this.fs, e, async (s) => {
       this.connectPhase = "catalog-readback";
       const lib = new L(this.fs, s);
+      lib.onConnectPhase = phase => this.connectionStage(phase,phase==='legacy-history'?'Verifying original catalog history…':phase==='cloud-history'?'Verifying cloud catalog history…':'Reading library identity…');
       lib.onConnectProgress = (count) => this.progress({ stage: count ? "Verifying OneDrive catalog · " + count + " revisions checked" : "Inspecting existing OneDrive catalog · original files protected" });
       try {
         return await lib.open();
       } finally {
         lib.onConnectProgress = null;
+        lib.onConnectPhase = null;
       }
       });
     } catch (error) {
@@ -980,17 +1072,27 @@ var ve = class {
       }
       throw error;
     } finally { this.connectPhase = null; }
-    return t = t || e.name, i.displayPath = t, localStorage.setItem(Q, JSON.stringify({ homeId: this.auth.account().homeAccountId, driveId: this.fs.driveId, rootId: e.id, path: t })), localStorage.setItem(M, "onedrive"), await this.ready(i), this.bound = true, this.selecting = false, this.status(), this.$("onedrive-message").hidden = true, this.publish("connected", "OneDrive / " + t + " connected"), this.$("onedrive-dialog").close(), true;
+    t = t || e.name; i.displayPath = t;
+    localStorage.setItem(Q, JSON.stringify({ homeId: this.auth.account().homeAccountId, driveId: this.fs.driveId, rootId: e.id, path: t }));
+    localStorage.setItem(M, "onedrive");
+    this.connectionStage('workspace','Opening your verified library…');
+    await this.ready(i);
+    this.bound = true; this.selecting = false; this.status(); this.$("onedrive-message").hidden = true;
+    this.publish("connected", "OneDrive / " + t + " connected"); this.$("onedrive-dialog").close(); return true;
   }
   async restore({ force: e = false, interactive: t = false, selected: i = null, priorBound: s = false } = {}) {
     // Never let a prior failure label a new attempt. No URLs or credentials are recorded.
     this.lastNetworkFailure = null;
     let savedRootLocated = false;
+    this.connectionTrace = createConnectionTrace(); this.connectionTrace.begin();
+    let failed = false;
+    const timer = typeof window.setInterval === 'function' ? window.setInterval(()=>this.renderConnectionTiming(),1000) : null;
     try {
       if (i) return await this.bindLibrary(i.root, i.path);
       if (!e && !t && !ye()) return false;
-      if (this.progress({ stage: "Checking Microsoft sign-in\u2026" }), await this.prepareAuth(), !this.auth.account()) return this.status(), t && this.present(), this.publish("signin", "Sign in to OneDrive"), false;
-      S()?.homeId && S().homeId !== this.auth.account().homeAccountId && await this.clearPreview?.(), this.progress({ stage: "Connecting to OneDrive\u2026" }), await this.connectFiles();
+      if (this.connectionStage('auth',"Checking Microsoft sign-in\u2026"), await this.prepareAuth(), !this.auth.account()) return this.status(), t && this.present(), this.publish("signin", "Sign in to OneDrive"), false;
+      S()?.homeId && S().homeId !== this.auth.account().homeAccountId && await this.clearPreview?.();
+      this.connectionStage('drive',"Connecting to OneDrive\u2026"); await this.connectFiles();
       let r = S();
       if (r && r.homeId === this.auth.account().homeAccountId && r.driveId === this.fs.driveId) {
         this.progress({ stage: "Opening your OneDrive library\u2026" });
@@ -1013,6 +1115,7 @@ var ve = class {
       }
       return this.selecting = true, this.present(), await this.browse(), this.note("Choose your library folder below. You can open subfolders."), this.publish("choose-folder", "Choose your OneDrive folder"), false;
     } catch (r) {
+      failed = true;
       this.bound = !!s && !!this.fs && this.auth.account()?.homeAccountId === S()?.homeId;
       let a = H(r);
       if (r?.code === "NETWORK_UNKNOWN" && this.lastNetworkFailure) {
@@ -1031,6 +1134,10 @@ var ve = class {
       }
       if(this.auth.reconnectRequired)this.publish('signin','Reconnect Microsoft · local edits retained');
       return false;
+    } finally {
+      if(timer !== null)window.clearInterval(timer);
+      this.connectionTrace.finish(failed?'error':this.bound?'connected':this.selecting?'choose-folder':'signin');
+      this.renderConnectionTiming();
     }
   }
   async connectFiles(){
@@ -1038,7 +1145,7 @@ var ve = class {
       if(this.auth.reconnectRequired)this.publish('signin','Reconnect Microsoft · local edits retained');
       else if(this.bound){this.transportWaiting=true;this.publish('waiting','Waiting for OneDrive · local edits retained');}
     };
-    const fetcher=async(input,options={})=>{
+    const requestFetcher=async(input,options={})=>{
       // Upload-session URLs are preauthenticated. Never add a bearer token or
       // replay a transfer whose outcome needs reconciliation by the provider.
       if(new URL(input.url||input,location.origin).hostname!=='graph.microsoft.com'){
@@ -1105,7 +1212,16 @@ var ve = class {
       }catch(error){this.lastNetworkFailure={kind:"graph"};controller.abort();interrupted();throw error;}
       finally{options.signal?.removeEventListener('abort',abort);}
     };
-    const fs=new _(this.auth,{onProgress:this.progress,fetcher}),root=await fs.initialize();
+    const fetcher=(input,options={})=>{
+      const graph = new URL(input.url||input,location.origin).hostname==='graph.microsoft.com';
+      const read = ['GET','HEAD'].includes((options.method||input.method||'GET').toUpperCase());
+      return this.connectionTrace.measure(graph?'graph':read?'download':'upload',()=>requestFetcher(input,options));
+    };
+    const fs=new _(this.auth,{onProgress:this.progress,fetcher});
+    if(typeof fs.read === 'function'){
+      const read=fs.read.bind(fs);fs.read=(...args)=>this.connectionTrace.measure('file-read',()=>read(...args));
+    }
+    const root=await fs.initialize();
     fs.qaDriveRootId=root.id;this.fs=fs;this.stack=[root];this.listedFolderId=null;this.status();
   }
   async waitForChange(){

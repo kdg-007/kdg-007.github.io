@@ -3,7 +3,7 @@
 // against a Microsoft-documented OneDrive consumer storage domain.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-export function connectionFixture(origin,{nested=false,writable=false,revisions=1,snapshotDelayMs=0}={}){
+export function connectionFixture(origin,{nested=false,writable=false,revisions=1,legacyRevisions=0,corruptLegacy=false,snapshotDelayMs=0}={}){
  const tenant='9188040d-6c67-4c5b-b112-36a304b66dad',authority='https://login.microsoftonline.com',base=authority+'/consumers/oauth2/v2.0';
  const libraryId='a1000000-0000-4000-8000-000000000001',commitId='a1000000-0000-4000-8000-000000000002';
  const items=new Map(),bytes=new Map();
@@ -14,11 +14,19 @@ export function connectionFixture(origin,{nested=false,writable=false,revisions=
  add('root',null,'root');if(nested){add('documents','root','Documents');add('other','root','Family photos');add('unrelated','other','family.jpg',{retained:'unrelated content'});add('empty','documents','New library');}add('library',nested?'documents':'root',nested?'Travel Library':'KeepIt');add('catalog','library','_Catalog');add('files','library','Files');add('legacy','catalog','commits');add('cloud','catalog','keepit-cloud');add('commits','cloud','commits');
  const identity={format:'mylibrary-folder-1',libraryId,createdAt:'2026-11-01T00:00:00.000Z'};
  add('identity','catalog','library.json',identity);
- add('index','catalog','keepit-cloud.json',{format:'keepit-cloud-index-1',libraryId,driveId:'fixture-drive',rootId:'library',filesId:'files',cloudId:'cloud',commitsId:'commits',headId:'head',legacyCommitId:null,createdAt:identity.createdAt});
  let parent=null;
- for(let revision=0;revision<revisions;revision++){
-  const revisionId=revision===0?commitId:`a2000000-0000-4000-8000-${String(revision).padStart(12,'0')}`;
-  const id=revision===0?'snapshot':'snapshot-'+revision;
+ for(let revision=0;revision<legacyRevisions;revision++){
+  const revisionId=`a3000000-0000-4000-8000-${String(revision).padStart(12,'0')}`;
+  const body={format:'mylibrary-folder-snapshot-2',libraryId,commitId:revisionId,revision,parent,info:{libraryId,createdAt:identity.createdAt,backupRevision:-1,revision},items:[],paths:{}};
+  const id='legacy-snapshot-'+revision;
+  add(id,'legacy',String(revision).padStart(10,'0')+'-'+revisionId+'.json',{...body,checksum:corruptLegacy&&revision===legacyRevisions-1?'0'.repeat(64):createHash('sha256').update(JSON.stringify(body)).digest('hex')});
+  items.get(id).lastModifiedDateTime=new Date(Date.parse(identity.createdAt)+1000*revision).toISOString();parent=revisionId;
+ }
+ add('index','catalog','keepit-cloud.json',{format:'keepit-cloud-index-1',libraryId,driveId:'fixture-drive',rootId:'library',filesId:'files',cloudId:'cloud',commitsId:'commits',headId:'head',legacyCommitId:parent,createdAt:identity.createdAt});
+ for(let offset=0;offset<revisions;offset++){
+  const revision=legacyRevisions+offset;
+  const revisionId=offset===0?commitId:`a2000000-0000-4000-8000-${String(revision).padStart(12,'0')}`;
+  const id=offset===0?'snapshot':'snapshot-'+revision;
   const body={format:'mylibrary-folder-snapshot-2',libraryId,commitId:revisionId,revision,parent,info:{libraryId,createdAt:identity.createdAt,backupRevision:-1,revision},items:[],paths:{}};
   add(id,'commits',revisionId+'.json',{...body,checksum:createHash('sha256').update(JSON.stringify(body)).digest('hex')});
   items.get(id).lastModifiedDateTime=new Date(Date.parse(identity.createdAt)+1000*revision).toISOString();
@@ -26,7 +34,7 @@ export function connectionFixture(origin,{nested=false,writable=false,revisions=
  }
  add('head','cloud','head-'+parent+'.json',{format:'keepit-cloud-anchor-1',libraryId});
  let serial=0;
- const fixture={requests:[],navigations:[],nonce:null,clientId:null,hold:null,driveRequests:0,signins:0,snapshotDownloads:0,activeSnapshots:0,peakSnapshots:0};
+ const fixture={requests:[],navigations:[],nonce:null,clientId:null,hold:null,driveRequests:0,signins:0,snapshotDownloads:0,activeSnapshots:0,peakSnapshots:0,legacyDownloads:0,activeLegacy:0,peakLegacy:0};
  const encode=value=>Buffer.isBuffer(value)?value:Buffer.from(JSON.stringify(value)).toString('base64url');
  fixture.acceptUpload=(id,name,data)=>{if([...items.values()].some(x=>x.parentReference.id===id&&x.name===name))return {status:409,value:{}};const saved='saved-'+(++serial);add(saved,id,name,data);return {status:201,value:items.get(saved)};};
  fixture.route=async route=>{
@@ -86,6 +94,10 @@ export function connectionFixture(origin,{nested=false,writable=false,revisions=
     fixture.peakSnapshots=Math.max(fixture.peakSnapshots,++fixture.activeSnapshots);
     try{await new Promise(resolve=>setTimeout(resolve,snapshotDelayMs));}
     finally{fixture.activeSnapshots--;}
+   }
+   if(id.startsWith('legacy-snapshot')&&snapshotDelayMs){
+    fixture.legacyDownloads++;fixture.peakLegacy=Math.max(fixture.peakLegacy,++fixture.activeLegacy);
+    try{await new Promise(resolve=>setTimeout(resolve,snapshotDelayMs));}finally{fixture.activeLegacy--;}
    }
    return route.fulfill({status:data?200:404,headers:cors,contentType:'application/json',body:data||''});
   }
