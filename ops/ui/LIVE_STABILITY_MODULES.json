@@ -6,10 +6,10 @@
     "auth": "assets/keepit-auth-live-5b14504bb2da.js",
     "transfer": "assets/keepit-transfer-hosts-6e9b7483e8b2.js",
     "provider": "assets/keepit-graph-provider-a6dfefa333bb.js",
-    "connection": "assets/keepit-onedrive-connect-01a62561bfb1.js",
+    "connection": "assets/keepit-onedrive-connect-62bc1e7d80ce.js",
     "ui": "assets/keepit-note-ui-af373b56f878.js",
     "link": "assets/keepit-note-link-ac26f5ef8295.js",
     "noteWorkspace": "assets/keepit-note-workspace-5ed1d98a3c40.js",
-    "entry": "assets/library-app-452ee8a4521f.js"
+    "entry": "assets/library-app-3d6312de5fbc.js"
   }
 }

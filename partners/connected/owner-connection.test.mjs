@@ -19,7 +19,7 @@ let browser,currentPage,currentEngine;
 try{
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));const origin='https://127.0.0.1:'+server.address().port;
  for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
-  browser=await engine.launch({headless:true});const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'}),fixture=connectionFixture(origin),errors=[];
+  browser=await engine.launch({headless:true});const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'}),fixture=connectionFixture(origin,{revisions:24,snapshotDelayMs:120}),errors=[];
   let recoverDownloads=true,failedFetchDownloads=0,xhrDownloads=0;
   await context.route('**/*',async route=>{
    const request=route.request(),url=new URL(request.url());
@@ -49,6 +49,9 @@ try{
   assert.equal(fixture.signins,1);assert.equal(fixture.driveRequests,1);
   assert.ok(failedFetchDownloads>0,'Fixture must reproduce rejected signed-file fetches');
   assert.equal(xhrDownloads,failedFetchDownloads,'Every rejected download must recover using credential-free XHR');
+  assert.equal(fixture.snapshotDownloads,24,'Cold connection must verify every revision exactly once');
+  assert.ok(fixture.peakSnapshots>=3&&fixture.peakSnapshots<=4,'Read ahead must overlap responses and stay within the four-download limit');
+  console.log('OWNER_BOUNDED_COLD_CATALOG_'+engine.name().toUpperCase()+'_PASS',JSON.stringify({snapshots:fixture.snapshotDownloads,peakConcurrent:fixture.peakSnapshots}));
   recoverDownloads=false;
   console.log('OWNER_SIGNED_DOWNLOAD_XHR_RECOVERY_'+engine.name().toUpperCase()+'_PASS');
   await page.locator('#connected-cloud-status').click();await page.locator('#onedrive-dialog[open]').waitFor();assert.equal(fixture.driveRequests,1,'Viewing the connected account must not reconnect');await page.locator('#onedrive-close').click();
