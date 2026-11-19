@@ -42,8 +42,16 @@ paths.connection=emit('keepit-onedrive-connect',connectionSource
  .replace('./chunk-7XPOT35Y.js','./'+paths.provider.split('/')[1]));
 paths.ui=emit('keepit-note-ui',source('note-ui'));
 paths.link=emit('keepit-note-link',readFileSync('assets/keepit-note-link-256bd3efc430.js','utf8').replace('./keepit-note-ui-db4948167388.js','./'+paths.ui.split('/')[1]));
-paths.entry=emit('library-app',source('library-app').replaceAll('./keepit-note-link-256bd3efc430.js','./'+paths.link.split('/')[1]).replaceAll('./keepit-onedrive-connect-7eae6a4687c3.js','./'+paths.connection.split('/')[1]));
-const superseded=[proof.entry.replace(/^\//,''),'assets/library-app-bd256253b2c7.js',...Object.keys(proof.files).filter(p=>/^assets\/(?:keepit-note-ui-|keepit-note-link-|keepit-auth-live-|keepit-onedrive-connect-|keepit-transfer-hosts-|keepit-graph-provider-)/.test(p))];
+// A pending note can contain an ArrayBuffer instead of a Blob, or retain
+// recovery metadata after its source bytes became unreadable.
+paths.noteWorkspace=emitPatchedChunk('keepit-note-workspace','assets/chunk-O6257ALA.js',
+ 'bytes:e.blob.size,createdAt:e.createdAt',
+ 'bytes:e.blob?.size??e.blobData?.byteLength??0,pendingSourceUnavailable:e.blob==null&&e.blobData==null,createdAt:e.createdAt');
+paths.entry=emit('library-app',source('library-app')
+ .replaceAll('./keepit-note-link-256bd3efc430.js','./'+paths.link.split('/')[1])
+ .replaceAll('./keepit-onedrive-connect-7eae6a4687c3.js','./'+paths.connection.split('/')[1])
+ .replace('./chunk-O6257ALA.js','./'+paths.noteWorkspace.split('/')[1]));
+const superseded=[proof.entry.replace(/^\//,''),'assets/library-app-bd256253b2c7.js',...Object.keys(proof.files).filter(p=>/^assets\/(?:keepit-note-ui-|keepit-note-link-|keepit-note-workspace-|keepit-auth-live-|keepit-onedrive-connect-|keepit-transfer-hosts-|keepit-graph-provider-)/.test(p))];
 for(const path of superseded)delete proof.files[path];
 let html=readFileSync('partners/connected/index.html','utf8');
 // Microsoft's consumer OneDrive signed-download endpoints can differ from the Graph

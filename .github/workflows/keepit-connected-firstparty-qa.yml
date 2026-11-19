@@ -25,8 +25,6 @@ jobs:
   verify:
     name: Verify native owner, save/reopen and connected app hosts
     runs-on: ubuntu-24.04
-    # Pinned image already includes matching Playwright browsers and OS
-    # dependencies. Avoid slow apt mirrors in --with-deps on hosted runners.
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
     timeout-minutes: 36
@@ -202,35 +200,15 @@ jobs:
         run: |
           printf '{"type":"module","private":true}\n' > package.json
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 esbuild@0.28.2
-          # Browsers and native dependencies come from the pinned container.
-          # Verify that both engines actually launch before running the suite.
-          node --input-type=module <<'JS'
-          import {chromium,webkit} from 'playwright';
-          for (const [name,engine] of [['Chromium',chromium],['WebKit',webkit]]){
-            const browser=await engine.launch({headless:true});
-            await browser.close();
-            console.log(name+' READY');
-          }
-          JS
       - name: Verify classified OneDrive request failures without actual credentials
         run: node --test partners/connected/onedrive-recovery.test.mjs
       - name: Verify reproducible live save and connection modules
-        shell: bash
         run: |
-          set -euo pipefail
-          find assets -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/keepit-before.sha256
-          sha256sum partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json >> /tmp/keepit-before.sha256
           node ops/ui/build-live-stability.mjs
-          find assets -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/keepit-after.sha256
-          sha256sum partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json >> /tmp/keepit-after.sha256
-          diff -u /tmp/keepit-before.sha256 /tmp/keepit-after.sha256
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git diff --exit-code -- assets partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json
       - name: Verify transfer host safety and content-addressed owner imports
         run: node ops/ui/transfer-host-policy.test.mjs
-      - name: Verify shared navigation across devices in Chromium and WebKit
-        if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
-        shell: bash
-        timeout-minutes: 6
-        run: node partners/design/app-ui-v1.test.mjs
       - name: Verify interrupted note saving, connection renewal and nonoverlapping headers
         run: node partners/connected/save-connection-layout.browser.mjs
       - name: Verify single-tab draft saves and copy recovery
@@ -241,6 +219,11 @@ jobs:
         env:
           CI: "true"
         run: node partners/connected/first-party-native-notes.test.mjs
+      - name: Verify shared navigation across devices in Chromium and WebKit
+        if: ${{ success() && steps.browser_runtime.outcome == 'success' }}
+        shell: bash
+        timeout-minutes: 6
+        run: node partners/design/app-ui-v1.test.mjs
       - name: Verify app-file trash, restore and automatic ThinkIt saving
         run: node partners/connected/app-file-lifecycle.browser.mjs
       - name: Verify calendar, contrast, measured rulers and TravelIt refinements
@@ -265,10 +248,10 @@ jobs:
         run: node partners/connected/liveit-calendar.unit.mjs
       - name: Verify app folders, immutable revisions and conflict readback
         run: node partners/connected/app-repository-store.test.mjs
-      - name: Verify event save and reload across independent devices
-        run: node partners/connected/liveit-calendar.browser.mjs
       - name: Verify Microsoft callback and nonblocking OneDrive reconnect
         run: node partners/connected/owner-connection.test.mjs
+      - name: Verify event save and reload across independent devices
+        run: node partners/connected/liveit-calendar.browser.mjs
       - name: Save interface previews
         if: ${{ !cancelled() && steps.browser_runtime.outcome == 'success' }}
         uses: actions/upload-artifact@v4

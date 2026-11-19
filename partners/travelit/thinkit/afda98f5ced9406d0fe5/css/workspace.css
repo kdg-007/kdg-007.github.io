@@ -253,114 +253,72 @@ html[data-suite-app="travelit"] .gantt-fit{
  border:1px solid var(--line);border-radius:11px;background:var(--card)
 }
 .gantt-fit-toolbar{
- display:flex;align-items:center;justify-content:space-between;gap:8px;
- flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line)
+ display:flex;align-items:center;justify-content:flex-end;padding:3px 6px;border-bottom:1px solid var(--line)
 }
-.gantt-fit-toolbar>strong{font-size:14px}
-.gantt-fit-toolbar small{font-weight:400;color:var(--muted)}
-.gantt-fit-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.gantt-fit-actions .button{min-height:34px;padding:5px 8px;font-size:12px}
-.gantt-fit-help{font-size:12px;color:var(--muted);margin:5px 10px}
-.gantt-fit-issues{margin:5px 10px;padding:8px;font-size:12px}
+.gantt-fit-actions{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.gantt-fit-actions .button{min-height:28px;padding:3px 7px;font-size:12px}
+.gantt-fit-issues{margin:3px 6px;padding:4px;font-size:12px}
 .gantt-fit-grid{width:100%;min-width:0;overflow-x:hidden}
 .gantt-fit-heading,.gantt-fit-row{
- display:grid;grid-template-columns:minmax(0,36%) minmax(0,64%);
+ display:grid;grid-template-columns:clamp(320px,29%,408px) minmax(0,1fr);
  box-sizing:border-box;width:100%;min-width:0
 }
-.gantt-fit-heading{min-height:36px;border-top:1px solid var(--line);background:var(--app-soft,var(--paper))}
-.gantt-fit-heading>span{padding:6px 8px;font-size:12px;font-weight:700;align-self:center}
-.gantt-fit-axis{position:relative;min-width:0;overflow:visible;margin:0 10px;height:36px}
-.gantt-fit-tick{
- position:absolute;top:6px;transform:translateX(-50%);font-size:10px;
- white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums
+.gantt-fit-with-deps :is(.gantt-fit-heading,.gantt-fit-row){
+ grid-template-columns:clamp(320px,29%,408px) clamp(125px,13%,178px) minmax(0,1fr)
 }
+.gantt-fit-heading{min-height:24px;background:var(--app-soft,var(--paper))}
+.gantt-fit-row{border-top:1px solid var(--line);min-height:29px;align-items:stretch}
+.gantt-fit-details{
+ display:grid;grid-template-columns:minmax(0,1fr) 20px 91px 68px 42px 43px;
+ align-items:center;gap:2px;min-width:0;padding:2px 3px
+}
+.gantt-fit-column-heads,.gantt-fit-dependency-head{font-size:11px;font-weight:700}
+.gantt-fit-dependency-head{padding:3px 4px;align-self:center}
+.gantt-fit-details label,.gantt-dependency-fields{min-width:0}
+.gantt-fit-details label>span{display:none}
+.gantt-fit-details :is(input,button,output),.gantt-fit .gantt-dependency-fields :is(input,select){
+ display:block;width:100%;min-width:0;height:23px;min-height:0;box-sizing:border-box;
+ border:1px solid var(--line);border-radius:3px;background:var(--card);color:var(--text);
+ padding:1px 3px;font:inherit;font-size:11px;line-height:1.2;font-variant-numeric:tabular-nums
+}
+.gantt-fit-details :is(.gantt-fit-name,.gantt-fit-more){border-color:transparent;background:transparent}
+.gantt-fit-details .gantt-fit-name{font-size:12px;font-weight:600;text-overflow:ellipsis}
+.gantt-fit-details .gantt-fit-more{padding:0;cursor:pointer;font-size:15px}
+.gantt-fit-details :is(input:focus,button:focus-visible),.gantt-dependency-fields :is(input,select):focus{outline:2px solid var(--app-accent,#70d1c5);outline-offset:-1px}
+.gantt-fit-details input[readonly]{background:var(--app-soft,var(--paper))}
+.gantt-fit-details output{padding-top:4px;text-align:center;white-space:nowrap;font-size:10px}
+.gantt-dependency-fields{display:grid;grid-template-columns:minmax(0,1fr) 36px 40px;align-items:center;gap:2px;padding:2px 3px}
+.gantt-dependency-fields select{overflow:hidden;text-overflow:ellipsis}
+.gantt-fit-axis,.gantt-fit-track{position:relative;min-width:0;margin-inline:6px}
+.gantt-fit-axis{height:24px;overflow:visible}
+.gantt-fit-tick{position:absolute;top:5px;transform:translateX(-50%);font-size:10px;white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}
 .gantt-fit-tick:first-child{transform:none}
 .gantt-fit-tick:last-child{transform:translateX(-100%)}
 .gantt-fit-short{display:none}
-.gantt-fit-row{
- border-top:1px solid var(--line);min-height:58px;
- align-items:stretch
-}
-.gantt-fit-details{min-width:0;padding:5px 7px}
-.gantt-fit-name{
- display:block;width:100%;min-height:20px;padding:0;margin:0 0 3px;
- color:var(--text);background:transparent;border:0;text-align:left;
- font-size:13px;line-height:1.2;font-weight:700;white-space:nowrap;
- overflow:hidden;text-overflow:ellipsis
-}
-.gantt-fit-fields{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr);gap:4px}
-.gantt-fit-fields label,.gantt-dependency-fields label{
- display:flex;flex-direction:column;gap:1px;min-width:0;
- font-size:10px;line-height:1.15;color:var(--muted)
-}
-.gantt-fit-fields :is(input,output),.gantt-dependency-fields :is(input,select){
- width:100%;min-width:0;min-height:28px;box-sizing:border-box;
- border:1px solid var(--line);border-radius:5px;background:var(--card);
- color:var(--text);padding:3px 5px;font:12px/1.2 inherit
-}
-.gantt-fit-fields input[readonly]{background:var(--app-soft,var(--paper))}
-.gantt-fit-fields output{
- display:block;padding:6px 3px;text-align:center;white-space:nowrap;
- font-variant-numeric:tabular-nums;font-size:11px
-}
-.gantt-dependency-fields{
- display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,.65fr) minmax(0,.75fr);
- gap:4px;margin-top:5px
-}
-.gantt-dependency-fields small{grid-column:1/-1;font-size:10px;color:var(--muted)}
-.gantt-fit-track{
- position:relative;min-width:0;height:auto;min-height:54px;
- margin:0 9px;background:transparent;
- border-left:1px solid var(--line);border-right:1px solid var(--line)
-}
-.gantt-fit-gridline{
- position:absolute;top:0;bottom:0;border-left:1px solid var(--line);
- width:0;pointer-events:none;z-index:0
-}
-.gantt-fit-bar{
- position:absolute;top:50%;transform:translateY(-50%);height:18px;
- z-index:1;
- min-width:2px;border-radius:5px;background:var(--teal);
- border:1px solid var(--text);box-sizing:border-box
-}
+.gantt-fit-track{min-height:24px;border-inline:1px solid var(--line)}
+.gantt-fit-gridline{position:absolute;inset-block:0;border-left:1px solid var(--line);width:0;pointer-events:none}
+.gantt-fit-bar{position:absolute;top:50%;transform:translateY(-50%);height:13px;z-index:1;min-width:2px;background:var(--app-accent,#70d1c5);border:1px solid var(--app-accent,#70d1c5);border-radius:3px}
 .gantt-flexible{position:absolute;top:50%;left:4px;transform:translateY(-50%);font-size:11px;color:var(--muted)}
-#gantt-save-status{padding:7px 10px;color:var(--muted);font-size:11px;line-height:1.4}
+#gantt-save-status{margin:0;padding:4px 6px;color:var(--muted);font-size:11px}
+#gantt-save-status:empty{display:none}
 html[data-suite-app="travelit"] .itinerary-table-card:has(.gantt-fit){margin-top:5px!important}
-@media(max-width:950px){
- .gantt-fit-heading,.gantt-fit-row{grid-template-columns:minmax(0,54%) minmax(0,46%)}
- .gantt-fit-fields{grid-template-columns:repeat(4,minmax(0,1fr))}
- .gantt-fit-fields :is(input,output){font-size:11px;padding:3px 2px}
+@media(max-width:1100px){
+ .gantt-fit-tick:nth-child(even):not(:last-child){display:none}
 }
 @media(max-width:720px){
- /* A phone needs its entire width for the clock. Put compact edit fields
-    above each activity bar instead of squashing the timescale to 46%. */
- .gantt-fit-heading,.gantt-fit-row{display:flex;flex-direction:column}
- .gantt-fit-heading>span{display:none}
- .gantt-fit-axis{flex:1;width:calc(100% - 12px);margin-inline:6px}
- .gantt-fit-row .gantt-fit-track{flex:0 0 27px;min-height:27px;height:27px}
- html[data-suite-app="travelit"] .gantt-fit{border-radius:8px}
- .gantt-fit-toolbar{padding:5px 6px;gap:5px}
- .gantt-fit-toolbar>strong{font-size:12px}
- .gantt-fit-toolbar small{display:none}
- .gantt-fit-actions{gap:4px}
- .gantt-fit-actions .button{min-height:32px;padding:3px 6px;font-size:11px}
- .gantt-fit-heading,.gantt-fit-row{grid-template-columns:minmax(0,54%) minmax(0,46%)}
- .gantt-fit-heading{min-height:30px}
- .gantt-fit-axis{height:30px;margin:0 5px}
- .gantt-fit-tick{top:6px;font-size:10px}
+ .gantt-fit-heading,.gantt-fit-row,.gantt-fit-with-deps :is(.gantt-fit-heading,.gantt-fit-row){display:flex;flex-direction:column}
+ .gantt-fit-heading .gantt-fit-column-heads,.gantt-fit-dependency-head{display:none}
+ .gantt-fit-details{grid-template-columns:minmax(0,1fr) 22px 78px 65px 34px 35px}
+ .gantt-fit-details :is(input,button,output),.gantt-fit .gantt-dependency-fields :is(input,select){height:26px;font-size:11px;padding-inline:1px}
+ .gantt-fit-details label:has(output){overflow:hidden}
+ .gantt-fit-details output{font-size:9px;padding-top:6px}
+ .gantt-fit-details .gantt-fit-name{font-size:12px}
+ .gantt-fit-row .gantt-fit-track{min-height:19px}
+ .gantt-fit-bar{height:11px}
  .gantt-fit-long{display:none}
  .gantt-fit-short{display:inline}
- .gantt-fit-heading>span{font-size:11px;padding:4px}
- .gantt-fit-details{padding:4px}
- .gantt-fit-name{font-size:12px;white-space:normal;max-height:2.5em}
- .gantt-fit-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}
- .gantt-fit-fields :is(input,output){min-height:26px;font-size:11px}
- .gantt-fit-track{margin:0 5px;min-height:80px}
- .gantt-fit-bar{height:15px}
- .gantt-dependency-fields{grid-template-columns:minmax(0,1fr) minmax(0,.6fr);gap:3px}
- .gantt-dependency-fields label:last-of-type{grid-column:1/-1}
- .gantt-fit-help{font-size:11px;margin:3px 6px}
- #gantt-save-status{padding:5px 7px}
+ .gantt-dependency-fields{grid-template-columns:minmax(0,1fr) 56px 65px}
+ .gantt-fit-actions .button{min-height:32px}
 }
 /* Fullscreen is CSS-first for iPhone Safari (arbitrary-element Fullscreen API
    is unavailable). The connected host's matching class hides its outer bar. */

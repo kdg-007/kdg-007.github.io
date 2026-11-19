@@ -361,6 +361,36 @@ async function me({ item: h, parent: e, name: t, bytes: i, expectedDigest: s, re
   }
   return l !== s && n("checksum differs"), h;
 }
+function catalogReadAhead(items, read) {
+  // The catalog's parent pointers remain authoritative. Modification times
+  // only predict which small snapshots are likely to be requested next.
+  const candidates = [...items.values()]
+    .filter(item => item.file && item.size > 0 && item.size <= 2 * 1024 ** 2 &&
+      Number.isFinite(Date.parse(item.lastModifiedDateTime)) &&
+      /^[a-f0-9-]{36}\.json$/i.test(item.name))
+    .sort((a, b) => Date.parse(b.lastModifiedDateTime) - Date.parse(a.lastModifiedDateTime));
+  const pending = new Map();
+  const requested = new Set();
+  let cursor = 0;
+  const start = item => read(item).then(value => ({ value }), error => ({ error }));
+  return async item => {
+    const key = item.name.toLowerCase();
+    requested.add(key);
+    const prefetched = pending.get(key);
+    const current = prefetched ?? start(item);
+    pending.delete(key);
+    while (pending.size < 3 && cursor < candidates.length) {
+      const candidate = candidates[cursor++];
+      const candidateKey = candidate.name.toLowerCase();
+      if (!requested.has(candidateKey)) pending.set(candidateKey, start(candidate));
+    }
+    const result = await current;
+    if ('value' in result) return result.value;
+    // A speculative request may fail before the normal traversal needs it.
+    if (prefetched) return read(item);
+    throw result.error;
+  };
+}
 var T = encodeURIComponent, B = () => new DOMException("File not found in OneDrive.", "NotFoundError"), _ = class {
   constructor(e, { fetcher: t = fetch, onProgress: i = () => {
   }, previewCacheBytes: s = 32 * 1024 ** 2, previewFileBytes: r = 8 * 1024 ** 2, previewCacheEntries: a = 128, sessionStore: n = new U() } = {}) {
@@ -753,13 +783,18 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     } } }, u = n ? a.legacyState : await A.prototype.readHead.call(l);
     d((u?.commitId || null) === this.index.legacyCommitId, "This library was changed through a local folder connection. Close local writers before using OneDrive. No cloud changes were overwritten.");
     let c = n ? null : new Map((await this.fs.children(this.index.commitsId)).map((p) => [p.name.toLowerCase(), p])), f = n ? a.state.commitId : this.index.legacyCommitId, m = n ? [] : [...o], w = /* @__PURE__ */ new Set(), v = /* @__PURE__ */ new Map(), g = s[1];
+    const readSnapshot = async item => {
+      const file = await this.fs.read(item, { cache: true, max: 256 * 1024 ** 2 });
+      return { snapshot: JSON.parse(await file.text()), file };
+    };
+    const readSnapshotWithAhead = c ? catalogReadAhead(c, readSnapshot) : readSnapshot;
     for (; g && g !== f; ) {
       d(G.test(g) && !w.has(g), "The cloud catalog contains an invalid history link."), w.add(g);
       let p = this.snapshots.get(g);
       if (!p) {
         let $ = c ? c.get(g + ".json") : await this.fs.child(this.index.commitsId, g + ".json");
-        d($?.file, "A cloud catalog snapshot is missing."), p = await this.fs.read($, { cache: true, max: 256 * 1024 ** 2 }).then(async (file) => ({ snapshot: JSON.parse(await file.text()), file })), v.set(g, p);
-        if (v.size % 8 === 0) this.onConnectProgress?.(v.size);
+        d($?.file, "A cloud catalog snapshot is missing."), p = await readSnapshotWithAhead($), v.set(g, p);
+        if (v.size === 1 || v.size % 4 === 0) this.onConnectProgress?.(v.size);
       }
       let { snapshot: I, file: be } = p;
       d(I.commitId === g, "A cloud catalog snapshot has the wrong identity."), m.push([`${String(I.revision).padStart(10, "0")}-${g}.json`, { kind: "file", getFile: async () => be }]), g = I.parent;
@@ -945,18 +980,27 @@ var ve = class {
   async restore({ force: e = false, interactive: t = false, selected: i = null, priorBound: s = false } = {}) {
     // Never let a prior failure label a new attempt. No URLs or credentials are recorded.
     this.lastNetworkFailure = null;
+    let savedRootLocated = false;
     try {
       if (i) return await this.bindLibrary(i.root, i.path);
       if (!e && !t && !ye()) return false;
       if (this.progress({ stage: "Checking Microsoft sign-in\u2026" }), await this.prepareAuth(), !this.auth.account()) return this.status(), t && this.present(), this.publish("signin", "Sign in to OneDrive"), false;
       S()?.homeId && S().homeId !== this.auth.account().homeAccountId && await this.clearPreview?.(), this.progress({ stage: "Connecting to OneDrive\u2026" }), await this.connectFiles();
       let r = S();
-      if (r && r.homeId === this.auth.account().homeAccountId && r.driveId === this.fs.driveId) try {
+      if (r && r.homeId === this.auth.account().homeAccountId && r.driveId === this.fs.driveId) {
         this.progress({ stage: "Opening your OneDrive library\u2026" });
-        let a = await this.fs.item(r.rootId);
-        return await this.bindLibrary(a, r.path);
-      } catch (a) {
-        if (a.details?.status !== 404) throw a;
+        let savedRoot;
+        try {
+          savedRoot = await this.fs.item(r.rootId);
+        } catch (error) {
+          if (error.details?.status !== 404) throw error;
+        }
+        // A missing catalog item inside an existing folder does not invalidate its binding.
+        if (savedRoot) {
+          savedRootLocated = true;
+          this.selecting = false;
+          return await this.bindLibrary(savedRoot, r.path);
+        }
       }
       if ((e || t) && !r) {
         let a = await this.fs.child(this.stack[0].id, "KeepIt");
@@ -973,7 +1017,7 @@ var ve = class {
           : "KeepIt could not finish a Microsoft Graph request (KI-OD-GRAPH). The selected library and pending edits were not changed.";
       }
       this.lastNetworkFailure = null;
-      if (this.note(a, true), this.progress({ error: "OneDrive could not connect. " + a + (this.auth.reconnectRequired ? " Reconnect Microsoft to continue." : " Select the OneDrive status to retry.") }), this.status(), this.fs && t) {
+      if (this.note(a, true), this.progress({ error: "OneDrive could not connect. " + a + (this.auth.reconnectRequired ? " Reconnect Microsoft to continue." : " Select the OneDrive status to retry.") }), this.status(), this.fs && t && !savedRootLocated) {
         this.selecting = true, this.present();
         try {
           await this.browse();
@@ -994,6 +1038,32 @@ var ve = class {
       // replay a transfer whose outcome needs reconciliation by the provider.
       if(new URL(input.url||input,location.origin).hostname!=='graph.microsoft.com'){
         try{return await fetch(input,options);}catch(error){
+          // Microsoft documents a credential-free XHR for signed downloads.
+          // Retry only a rejected GET. Uploads require outcome reconciliation.
+          if ((options.method || input.method || 'GET').toUpperCase() === 'GET' &&
+              !options.signal?.aborted && typeof XMLHttpRequest === 'function') {
+            try {
+              return await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                const cleanup = () => options.signal?.removeEventListener('abort', abort);
+                const fail = () => { cleanup(); reject(error); };
+                const abort = () => { xhr.abort(); fail(); };
+                xhr.open('GET', input.url || input, true);
+                xhr.responseType = 'blob';
+                xhr.withCredentials = false;
+                xhr.timeout = 20000;
+                xhr.onload = () => {
+                  cleanup();
+                  if (!xhr.status) { reject(error); return; }
+                  resolve(new Response(xhr.response, { status: xhr.status }));
+                };
+                xhr.onerror = xhr.ontimeout = xhr.onabort = fail;
+                options.signal?.addEventListener('abort', abort, { once: true });
+                if (options.signal?.aborted) { abort(); return; }
+                xhr.send();
+              });
+            } catch {}
+          }
           // Classify without retaining preauthenticated download URLs or secrets.
           this.lastNetworkFailure={kind:"transfer"};
           interrupted();throw error;

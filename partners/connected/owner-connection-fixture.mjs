@@ -3,7 +3,7 @@
 // against a Microsoft-documented OneDrive consumer storage domain.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-export function connectionFixture(origin,{nested=false,writable=false}={}){
+export function connectionFixture(origin,{nested=false,writable=false,revisions=1,snapshotDelayMs=0}={}){
  const tenant='9188040d-6c67-4c5b-b112-36a304b66dad',authority='https://login.microsoftonline.com',base=authority+'/consumers/oauth2/v2.0';
  const libraryId='a1000000-0000-4000-8000-000000000001',commitId='a1000000-0000-4000-8000-000000000002';
  const items=new Map(),bytes=new Map();
@@ -15,11 +15,18 @@ export function connectionFixture(origin,{nested=false,writable=false}={}){
  const identity={format:'mylibrary-folder-1',libraryId,createdAt:'2026-11-01T00:00:00.000Z'};
  add('identity','catalog','library.json',identity);
  add('index','catalog','keepit-cloud.json',{format:'keepit-cloud-index-1',libraryId,driveId:'fixture-drive',rootId:'library',filesId:'files',cloudId:'cloud',commitsId:'commits',headId:'head',legacyCommitId:null,createdAt:identity.createdAt});
- add('head','cloud','head-'+commitId+'.json',{format:'keepit-cloud-anchor-1',libraryId});
- const body={format:'mylibrary-folder-snapshot-2',libraryId,commitId,revision:0,parent:null,info:{libraryId,createdAt:identity.createdAt,backupRevision:-1,revision:0},items:[],paths:{}};
- add('snapshot','commits',commitId+'.json',{...body,checksum:createHash('sha256').update(JSON.stringify(body)).digest('hex')});
+ let parent=null;
+ for(let revision=0;revision<revisions;revision++){
+  const revisionId=revision===0?commitId:`a2000000-0000-4000-8000-${String(revision).padStart(12,'0')}`;
+  const id=revision===0?'snapshot':'snapshot-'+revision;
+  const body={format:'mylibrary-folder-snapshot-2',libraryId,commitId:revisionId,revision,parent,info:{libraryId,createdAt:identity.createdAt,backupRevision:-1,revision},items:[],paths:{}};
+  add(id,'commits',revisionId+'.json',{...body,checksum:createHash('sha256').update(JSON.stringify(body)).digest('hex')});
+  items.get(id).lastModifiedDateTime=new Date(Date.parse(identity.createdAt)+1000*revision).toISOString();
+  parent=revisionId;
+ }
+ add('head','cloud','head-'+parent+'.json',{format:'keepit-cloud-anchor-1',libraryId});
  let serial=0;
- const fixture={requests:[],navigations:[],nonce:null,clientId:null,hold:null,driveRequests:0,signins:0};
+ const fixture={requests:[],navigations:[],nonce:null,clientId:null,hold:null,driveRequests:0,signins:0,snapshotDownloads:0,activeSnapshots:0,peakSnapshots:0};
  const encode=value=>Buffer.isBuffer(value)?value:Buffer.from(JSON.stringify(value)).toString('base64url');
  fixture.acceptUpload=(id,name,data)=>{if([...items.values()].some(x=>x.parentReference.id===id&&x.name===name))return {status:409,value:{}};const saved='saved-'+(++serial);add(saved,id,name,data);return {status:201,value:items.get(saved)};};
  fixture.route=async route=>{
@@ -72,7 +79,15 @@ export function connectionFixture(origin,{nested=false,writable=false}={}){
    throw Error('Unmocked Graph GET '+url.pathname);
   }
   if(url.hostname==='fixture.livefilestore.com'){
-   assert.ok(!req.headers()['authorization'],'Signed downloads must not receive bearer tokens');const data=bytes.get(url.pathname.split('/').pop());return route.fulfill({status:data?200:404,headers:cors,contentType:'application/json',body:data||''});
+   assert.ok(!req.headers()['authorization'],'Signed downloads must not receive bearer tokens');
+   const id=url.pathname.split('/').pop(),data=bytes.get(id);
+   if(id.startsWith('snapshot')&&snapshotDelayMs){
+    fixture.snapshotDownloads++;
+    fixture.peakSnapshots=Math.max(fixture.peakSnapshots,++fixture.activeSnapshots);
+    try{await new Promise(resolve=>setTimeout(resolve,snapshotDelayMs));}
+    finally{fixture.activeSnapshots--;}
+   }
+   return route.fulfill({status:data?200:404,headers:cors,contentType:'application/json',body:data||''});
   }
   return route.abort();
  };

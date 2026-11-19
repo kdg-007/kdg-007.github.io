@@ -1,5 +1,5 @@
 import {itineraryGantt} from './itinerary-gantt.js';
-import {renderFitGantt,ganttEndLabel} from './gantt-editor.js';
+import {renderFitGantt,ganttEndLabel,ganttTicks,ganttGridLines} from './gantt-editor.js';
 import {createMapFullscreen} from './map-fullscreen.js';
 import {loadStreetMapRuntime} from './street-map-loader.js';
 import {downloadRoadRegion} from './road-region-download.js';
@@ -255,7 +255,7 @@ function renderActivitiesTable(entries){
 }
 function ganttDraft(trip){
  let draft=ganttDrafts.get(trip.id);
- if(!draft){
+ if(!draft||(!draft.dirty&&draft.revision!==state.workspaceRevision)){
   draft={rows:new Map(),dirty:false,epoch:state.workspaceEpoch,revision:state.workspaceRevision,
    revisions:{...state.recordRevisions},presence:{...state.recordPresence}};
   ganttDrafts.set(trip.id,draft);
@@ -265,16 +265,20 @@ function ganttDraft(trip){
 function ganttPreview(trip){
  const draft=ganttDraft(trip);
  const all=byTrip(state.stops).map(stop=>({...stop,...draft.rows.get(stop.id)}));
+ const issues=[];
+ if(all.some(stop=>!stop.title.trim()))issues.push('Enter a name for each activity.');
+ if(all.some(stop=>!stop.date||stop.date<trip.startDate||stop.date>trip.endDate))issues.push('Choose activity dates within the trip.');
+ if(all.some(stop=>!Number.isInteger(Number(stop.durationMinutes||0))||Number(stop.durationMinutes)<0||Number(stop.durationMinutes)>10080))issues.push('Enter durations from 0 to 10080 minutes.');
  try{
   const plan=planTripDependencies(all,trip,{deriveStarts:true});
   const updated=new Map(plan.updates.map(stop=>[stop.id,stop]));
-  return {rows:all.map(stop=>updated.get(stop.id)||stop),issues:plan.issues,plan};
- }catch(error){return {rows:all,issues:[error.message],plan:null};}
+  return {rows:all.map(stop=>updated.get(stop.id)||stop),issues:[...issues,...plan.issues],plan};
+ }catch(error){return {rows:all,issues:[...new Set([...issues,error.message])],plan:null};}
 }
-function renderGantt(entries){
+function renderGantt(){
  const trip=selected(),draft=ganttDraft(trip),preview=ganttPreview(trip);
- const byId=new Map(preview.rows.map(stop=>[stop.id,stop]));
- const visible=entries.map(stop=>byId.get(stop.id)||stop);
+ const visible=itineraryOrder(preview.rows.filter(stop=>stop.date>=trip.startDate&&stop.date<=trip.endDate&&
+  (ganttScope==='trip'||stop.date===state.chosenDay)));
  return renderFitGantt(visible,{trip,day:state.chosenDay,scope:ganttScope,allStops:preview.rows,
   showDependencies:ganttDependencies,fullscreen:ganttFullscreen,savePending:draft.dirty,issues:preview.issues});
 }
@@ -295,7 +299,10 @@ function updateGanttDraft(input){
  if(!stop)return;
  const draft=ganttDraft(trip),patch={...(draft.rows.get(stopId)||{})};
  const field=input.dataset.ganttField;
- if(['date','time','durationMinutes'].includes(field))patch[field]=input.value;
+ if(['title','date','time','durationMinutes'].includes(field)){
+  patch[field]=input.value;
+  if(field==='title')input.title=input.value;
+ }
  else if(['predecessor','dependencyType','lagMinutes'].includes(field)){
   const row=input.closest('[data-gantt-stop]');
   const original=(patch.dependencies||stop.dependencies||[]);
@@ -306,26 +313,39 @@ function updateGanttDraft(input){
   // when replacing the primary link, never silently leave a hidden successor constraint.
   patch.dependencies=predecessor?[{id:predecessor,type,lagMinutes},...original.slice(1).filter(d=>d.id!==predecessor)]:[];
   // For a new dependency the start will be computed from the predecessor.
-  if(predecessor)patch.time='';
+  if(predecessor&&!stop.fixed)patch.time='';
+  if(!predecessor)patch.time=row.querySelector('[data-gantt-field="time"]')?.value||'';
  }
  else return;
  draft.rows.set(stopId,patch);draft.dirty=true;
  const preview=ganttPreview(trip),byId=new Map(preview.rows.map(item=>[item.id,item]));
- const model=itineraryGantt([...document.querySelectorAll('[data-gantt-stop]')].map(row=>byId.get(row.dataset.ganttStop)).filter(Boolean),
+ const model=itineraryGantt([...document.querySelectorAll('[data-gantt-stop]')].map(row=>byId.get(row.dataset.ganttStop))
+  .filter(stop=>stop&&stop.date>=trip.startDate&&stop.date<=trip.endDate&&(ganttScope==='trip'||stop.date===state.chosenDay)),
   {scope:ganttScope,trip,day:state.chosenDay});
+ const axis=document.querySelector('.gantt-fit-axis');
+ const axisMarkup=ganttTicks(model,ganttScope);
+ if(axis&&axis.innerHTML!==axisMarkup)axis.innerHTML=axisMarkup;
+ const gridMarkup=ganttGridLines(model);
+ const visuals=new Map(model.rows.map(item=>[item.stop.id,item]));
  for(const row of document.querySelectorAll('[data-gantt-stop]')){
   const next=byId.get(row.dataset.ganttStop);
   if(!next)continue;
   const output=row.querySelector('[data-gantt-end]');
   if(output)output.textContent=ganttEndLabel(next);
   const start=row.querySelector('[data-gantt-field="time"]');
-  if(start&&next.dependencies?.length){start.value=next.time||'';start.readOnly=true;}
-  else if(start)start.readOnly=false;
-  const visual=model.rows.find(item=>item.stop.id===next.id),track=row.querySelector('.gantt-fit-track');
-  if(track&&visual){
+  if(start){
+   start.readOnly=Boolean(next.dependencies?.length&&!next.fixed);
+   if(start!==input)start.value=next.time||'';
+  }
+  const date=row.querySelector('[data-gantt-field="date"]');
+  if(date&&date!==input&&next.dependencies?.length)date.value=next.date;
+  const visual=visuals.get(next.id),track=row.querySelector('.gantt-fit-track');
+  if(track){
+   const lines=track.querySelector('.gantt-fit-lines');
+   if(lines&&lines.innerHTML!==gridMarkup)lines.innerHTML=gridMarkup;
    let bar=track.querySelector('.gantt-fit-bar');
    let flexible=track.querySelector('.gantt-flexible');
-   if(visual.left===null){
+   if(visual?.left==null){
     bar?.remove();
     if(!flexible){
      flexible=document.createElement('span');
@@ -345,9 +365,9 @@ function updateGanttDraft(input){
   }
  }
  const status=document.querySelector('#gantt-save-status');
- if(status)status.textContent=preview.issues.length?'Review: '+preview.issues.join(' · '):'Unsaved schedule edits · Save schedule to commit atomically.';
+  if(status)status.textContent=preview.issues.length?preview.issues.join(' · '):'Unsaved schedule edits';
  const save=document.querySelector('[data-action="gantt-save"]');
- if(save)save.disabled=false;
+ if(save)save.disabled=Boolean(preview.issues.length);
 }
 async function saveGanttSchedule(){
  const trip=selected(),draft=ganttDraft(trip);
@@ -359,7 +379,7 @@ async function saveGanttSchedule(){
  for(const candidate of preview.rows){
   const old=current.get(candidate.id);
   if(!old)continue;
-  const difference=['date','time','durationMinutes'].some(key=>String(old[key]??'')!==String(candidate[key]??''))||
+  const difference=['title','date','time','durationMinutes'].some(key=>String(old[key]??'')!==String(candidate[key]??''))||
    JSON.stringify(old.dependencies||[])!==JSON.stringify(candidate.dependencies||[]);
   if(difference)changed.push(normalizeStop({...old,...candidate},trip));
  }
@@ -614,7 +634,7 @@ function renderItinerary(t){
  <div class="row-between wrap"><span class="pill">${itineraryMode==='gantt'&&ganttScope==='trip'?byTrip(state.stops).length:entries.length} activities · ${itineraryMode==='gantt'&&ganttScope==='trip'?'Whole trip':state.chosenDay}</span><div class="row wrap"><label>View <select id="itinerary-mode" aria-label="Itinerary view"><option value="table" ${itineraryMode==='table'?'selected':''}>Table</option><option value="gantt" ${itineraryMode==='gantt'?'selected':''}>Gantt</option></select></label>${itineraryMode==='gantt'?`<select id="gantt-scope" aria-label="Gantt period"><option value="day" ${ganttScope==='day'?'selected':''}>Selected day</option><option value="trip" ${ganttScope==='trip'?'selected':''}>Whole trip</option></select>`:''}${menu('Day actions',`<div class="mobile-day-menu-actions">${action('Previous day','day-prev','button button-small',chosenIndex===0?'disabled':'')}${action('Next day','day-next','button button-small',chosenIndex===dayCount-1?'disabled':'')}${action('Review dependencies','review-trip-dependencies')}</div>`+action('Copy day plan','brief-copy-day')+action('Download day','brief-day')+action('Edit activities','add-stop'))}</div></div>
  ${issues.length?`<div class="alert red" role="alert" style="margin:12px 0">${issues.length} overlapping activity pair(s). Bookings are never moved automatically.</div>`:''}
  ${travelIssues.some(i=>i.kind==='insufficient-transfer-time')?`<p class="alert red">${travelIssues.filter(i=>i.kind==='insufficient-transfer-time').length} transfers need more time. Review activity details.</p>`:''}
- <div class="card itinerary-table-card" style="margin-top:15px">${itineraryMode==='gantt'?renderGantt(ganttScope==='trip'?itineraryOrder(byTrip(state.stops)):entries):renderActivitiesTable(entries)}</div>
+ <div class="card itinerary-table-card" style="margin-top:15px">${itineraryMode==='gantt'?renderGantt():renderActivitiesTable(entries)}</div>
  <p class="subtext" style="margin-top:12px">Times are local. Open Details for place links, notes, source codes and driving estimates.</p>`;
 }
 function renderTripCalendar(t){

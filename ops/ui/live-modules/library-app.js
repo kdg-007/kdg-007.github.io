@@ -1736,7 +1736,7 @@ async function L() {
     let c = U("article", void 0, "item-card"), w = U("button", void 0, "card-open"), v = U("div", void 0, "card-preview"), N = U("div", void 0, "card-body"), O = Re(l);
     c.classList.add(["image", "video"].includes(O) ? "card-media" : "card-document"), w.type = "button", w.title = l.title, w.setAttribute("aria-label", `Open ${l.title}`);
     let P = O === "note" ? "NOTE" : (l.originalName.split(".").pop() || "FILE").slice(0, 6).toUpperCase();
-    if (v.append(U("span", P, "file-glyph"), U("span", Ei[O], "kind-label")), N.append(U("h3", l.title), U("p", `${l.domain || "Unsorted"} \xB7 ${pe(l.bytes)}`, "card-meta")), l.pendingNote && N.append(U("p", l.pendingState === "saving" ? "Saving to library\u2026" : l.pendingState === "queued" ? "Saved on device \xB7 Pending sync" : l.pendingRetryAt ? "Saved on device \xB7 Waiting to retry" : "Save needs attention", "card-meta note-sync-status")), l.tags.length) {
+    if (v.append(U("span", P, "file-glyph"), U("span", Ei[O], "kind-label")), N.append(U("h3", l.title), U("p", `${l.domain || "Unsorted"} \xB7 ${pe(l.bytes)}`, "card-meta")), l.pendingNote && N.append(U("p", l.pendingSourceUnavailable ? "Pending note needs recovery" : l.pendingState === "saving" ? "Saving to library\u2026" : l.pendingState === "queued" ? "Saved on device \xB7 Pending sync" : l.pendingRetryAt ? "Saved on device \xB7 Waiting to retry" : "Save needs attention", "card-meta note-sync-status")), l.tags.length) {
       let R = U("div", void 0, "card-tags");
       l.tags.slice(0, 3).forEach((_) => R.append(U("span", _, "tag"))), l.tags.length > 3 && R.append(U("span", `+${l.tags.length - 3}`, "tag")), N.append(R);
     }

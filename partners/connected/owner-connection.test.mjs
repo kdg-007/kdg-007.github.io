@@ -19,8 +19,16 @@ let browser,currentPage,currentEngine;
 try{
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));const origin='https://127.0.0.1:'+server.address().port;
  for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
-  browser=await engine.launch({headless:true});const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'}),fixture=connectionFixture(origin),errors=[];
-  await context.route('**/*',fixture.route);const page=await context.newPage();currentPage=page;currentEngine=engine.name();page.on('pageerror',e=>errors.push(e.message));
+  browser=await engine.launch({headless:true});const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'}),fixture=connectionFixture(origin,{revisions:24,snapshotDelayMs:120}),errors=[];
+  let recoverDownloads=true,failedFetchDownloads=0,xhrDownloads=0;
+  await context.route('**/*',async route=>{
+   const request=route.request(),url=new URL(request.url());
+   if(url.hostname==='fixture.livefilestore.com'&&recoverDownloads){
+    if(request.resourceType()==='fetch'){failedFetchDownloads++;return route.abort('failed');}
+    if(request.resourceType()==='xhr')xhrDownloads++;
+   }
+   return fixture.route(route);
+  });const page=await context.newPage();currentPage=page;currentEngine=engine.name();page.on('pageerror',e=>errors.push(e.message));
   await page.goto(origin+'/partners/connected/?connected-app=keepit');
   await page.waitForFunction(()=>typeof document.getElementById('settings-onedrive').onclick==='function');
   await page.locator('#sidebar-settings').click();
@@ -39,10 +47,54 @@ try{
   await workspace().waitFor({state:'visible'});assert.equal(await page.locator('#onedrive-dialog[open]').count(),0);
   assert.match(await page.locator('#connected-cloud-status').getAttribute('aria-label'),/OneDrive \/ KeepIt connected/);
   assert.equal(fixture.signins,1);assert.equal(fixture.driveRequests,1);
+  assert.ok(failedFetchDownloads>0,'Fixture must reproduce rejected signed-file fetches');
+  assert.equal(xhrDownloads,failedFetchDownloads,'Every rejected download must recover using credential-free XHR');
+  assert.equal(fixture.snapshotDownloads,24,'Cold connection must verify every revision exactly once');
+  assert.ok(fixture.peakSnapshots>=3&&fixture.peakSnapshots<=4,'Read ahead must overlap responses and stay within the four-download limit');
+  console.log('OWNER_BOUNDED_COLD_CATALOG_'+engine.name().toUpperCase()+'_PASS',JSON.stringify({snapshots:fixture.snapshotDownloads,peakConcurrent:fixture.peakSnapshots}));
+  recoverDownloads=false;
+  console.log('OWNER_SIGNED_DOWNLOAD_XHR_RECOVERY_'+engine.name().toUpperCase()+'_PASS');
   await page.locator('#connected-cloud-status').click();await page.locator('#onedrive-dialog[open]').waitFor();assert.equal(fixture.driveRequests,1,'Viewing the connected account must not reconnect');await page.locator('#onedrive-close').click();
   assert.deepEqual(nav.filter(p=>!p.startsWith('/consumers/')),['/partners/connected/?connected-app=liveit','/auth/callback/','/partners/connected/?connected-app=liveit']);
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('keepit-onedrive-owner-1')).rootId),'library');
   console.log('OWNER_OAUTH_CALLBACK_DIRECT_RETURN_'+engine.name().toUpperCase()+'_PASS');
+  // An older interrupted save can have metadata but no readable Blob.
+  const pendingNotes=await page.evaluate(async()=>{
+   const {c:NoteWorkspace}=await import('/assets/chunk-O6257ALA.js');
+   const workspace=await new NoteWorkspace({name:'keepit-owner-note-workspace-v1'}).open();
+   const saved=JSON.parse(localStorage.getItem('keepit-onedrive-owner-1'));
+   const target=JSON.stringify(['cloud',saved.homeId,saved.driveId,saved.rootId,'a1000000-0000-4000-8000-000000000001']);
+   const operations=[];
+   for(const [title,blobData] of [['Interrupted note needing recovery',null],['Buffered pending note',new TextEncoder().encode('Retained pending bytes').buffer]]){
+    const id=crypto.randomUUID();
+    await workspace.db.operations.put({id,itemId:crypto.randomUUID(),target,state:'failed',retryAt:null,blob:null,blobData,createdAt:new Date().toISOString(),values:{title,domain:'Notes',tags:[],customFields:[]}});
+    operations.push(id);
+   }
+   workspace.db.close();
+   return operations;
+  });
+  const readOnlyRequests=fixture.requests.length;
+  await page.goto(origin+'/partners/connected/?connected-app=keepit');
+  await page.waitForFunction(()=>['connected','error'].includes(window.keepItConnectionState?.phase));
+  assert.equal(await page.evaluate(()=>window.keepItConnectionState.phase),'connected',await page.evaluate(()=>window.keepItConnectionState.message));
+  const interrupted=page.getByRole('button',{name:'Open Interrupted note needing recovery'});
+  await interrupted.getByText('Pending note needs recovery',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Open Buffered pending note'}).waitFor();
+  await interrupted.click();
+  const recoveryDialog=page.locator('dialog.note-dialog[open]');
+  await recoveryDialog.getByText(/missing its local source bytes/).waitFor();
+  await recoveryDialog.getByRole('button',{name:'Close',exact:true}).click();
+  assert.ok(fixture.requests.slice(readOnlyRequests).every(request=>request.method==='GET'));
+  await page.evaluate(async ids=>{
+   const {c:NoteWorkspace}=await import('/assets/chunk-O6257ALA.js');
+   const workspace=await new NoteWorkspace({name:'keepit-owner-note-workspace-v1'}).open();
+   for(const id of ids)if(!await workspace.db.operations.get(id))throw Error('Reconnecting removed a pending note');
+   await workspace.db.operations.bulkDelete(ids); // synthetic rows only
+   workspace.db.close();
+  },pendingNotes);
+  console.log('OWNER_REOPEN_WITH_INCOMPLETE_LOCAL_NOTE_'+engine.name().toUpperCase()+'_PASS');
+  await page.goto(origin+'/partners/connected/?connected-app=liveit');
+  await page.locator('#connected-cloud-status[data-phase=connected]').waitFor();
   // Hold the remembered-account Graph read. The app must be usable before it resolves.
   let release;fixture.hold=new Promise(ok=>{release=ok;});const before=fixture.driveRequests;
   await page.reload({waitUntil:'domcontentloaded'});await workspace().waitFor({state:'visible',timeout:10000});
