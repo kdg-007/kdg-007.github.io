@@ -441,6 +441,9 @@ try{
     throw Error('ThinkIt Mind Map notes control not visible after selecting page: '+JSON.stringify(state));
    });
    await thinkFrame.locator('#btnMindNotes').click();
+   const topic=thinkFrame.locator('#mindTopicList [data-mind-node]').first();
+   await topic.waitFor({state:'visible',timeout:15000});
+   await topic.click();
    await thinkFrame.locator('#mindOpenKeepItNative').waitFor({state:'visible',timeout:15000});
    await thinkFrame.locator('#mindOpenKeepItNative').click();
    await note.waitFor({state:'visible',timeout:30000}).catch(async()=>{
