@@ -203,3 +203,8 @@ html[data-connected-app="liveit"] .connected-shell-home{display:none}
  #connected-cloud-status{max-width:140px;font-size:12px}
  #connected-apps-list .app-appearance-button{width:100%;text-align:left;border:0;border-top:1px solid var(--app-line);border-radius:7px}
 }
+
+/* Keep compact ThinkIt controls below the shared app bar. */
+@media(max-width:1099px){
+ html[data-connected-app="thinkit"] #thinkit-host-panel iframe{margin-top:4px!important}
+}
