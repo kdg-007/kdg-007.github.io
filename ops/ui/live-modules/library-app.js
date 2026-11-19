@@ -427,7 +427,7 @@ function Ji({ getLibrary: e, getTarget: t, getNoteUI: i, hostWindow: o = window,
     }), f.append(k, x);
   }
   let l = d.createElement("iframe");
-  l.src = "/thinkit/40791585175d0e8d51c4/index.html?v=hierarchy-1", l.title = "ThinkIt diagramming and Mind Map workspace", l.referrerPolicy = "no-referrer", l.style.cssText = "border:0;flex:1;width:100%;min-height:0;", m.append(f, l), d.body.append(m);
+  l.src = "/thinkit/ae77075fb58b3483a94b/index.html?v=hierarchy-1", l.title = "ThinkIt diagramming and Mind Map workspace", l.referrerPolicy = "no-referrer", l.style.cssText = "border:0;flex:1;width:100%;min-height:0;", m.append(f, l), d.body.append(m);
   let c = false, w = /* @__PURE__ */ new Map(), v = /* @__PURE__ */ new Map(), N = (k) => {
     if (c || k.origin !== o.location.origin || k.source !== l.contentWindow || k.data?.channel !== Ve) return;
     let x = k.data;
