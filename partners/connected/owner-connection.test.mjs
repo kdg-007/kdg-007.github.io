@@ -55,6 +55,43 @@ try{
   assert.deepEqual(nav.filter(p=>!p.startsWith('/consumers/')),['/partners/connected/?connected-app=liveit','/auth/callback/','/partners/connected/?connected-app=liveit']);
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('keepit-onedrive-owner-1')).rootId),'library');
   console.log('OWNER_OAUTH_CALLBACK_DIRECT_RETURN_'+engine.name().toUpperCase()+'_PASS');
+  // An older interrupted save can have metadata but no readable Blob.
+  const pendingNotes=await page.evaluate(async()=>{
+   const {c:NoteWorkspace}=await import('/assets/chunk-O6257ALA.js');
+   const workspace=await new NoteWorkspace({name:'keepit-owner-note-workspace-v1'}).open();
+   const saved=JSON.parse(localStorage.getItem('keepit-onedrive-owner-1'));
+   const target=JSON.stringify(['cloud',saved.homeId,saved.driveId,saved.rootId,'a1000000-0000-4000-8000-000000000001']);
+   const operations=[];
+   for(const [title,blobData] of [['Interrupted note needing recovery',null],['Buffered pending note',new TextEncoder().encode('Retained pending bytes').buffer]]){
+    const id=crypto.randomUUID();
+    await workspace.db.operations.put({id,itemId:crypto.randomUUID(),target,state:'failed',retryAt:null,blob:null,blobData,createdAt:new Date().toISOString(),values:{title,domain:'Notes',tags:[],customFields:[]}});
+    operations.push(id);
+   }
+   workspace.db.close();
+   return operations;
+  });
+  const readOnlyRequests=fixture.requests.length;
+  await page.goto(origin+'/partners/connected/?connected-app=keepit');
+  await page.waitForFunction(()=>['connected','error'].includes(window.keepItConnectionState?.phase));
+  assert.equal(await page.evaluate(()=>window.keepItConnectionState.phase),'connected',await page.evaluate(()=>window.keepItConnectionState.message));
+  const interrupted=page.getByRole('button',{name:'Open Interrupted note needing recovery'});
+  await interrupted.getByText('Pending note needs recovery',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Open Buffered pending note'}).waitFor();
+  await interrupted.click();
+  const recoveryDialog=page.locator('dialog.note-dialog[open]');
+  await recoveryDialog.getByText(/missing its local source bytes/).waitFor();
+  await recoveryDialog.getByRole('button',{name:'Close',exact:true}).click();
+  assert.ok(fixture.requests.slice(readOnlyRequests).every(request=>request.method==='GET'));
+  await page.evaluate(async ids=>{
+   const {c:NoteWorkspace}=await import('/assets/chunk-O6257ALA.js');
+   const workspace=await new NoteWorkspace({name:'keepit-owner-note-workspace-v1'}).open();
+   for(const id of ids)if(!await workspace.db.operations.get(id))throw Error('Reconnecting removed a pending note');
+   await workspace.db.operations.bulkDelete(ids); // synthetic rows only
+   workspace.db.close();
+  },pendingNotes);
+  console.log('OWNER_REOPEN_WITH_INCOMPLETE_LOCAL_NOTE_'+engine.name().toUpperCase()+'_PASS');
+  await page.goto(origin+'/partners/connected/?connected-app=liveit');
+  await page.locator('#connected-cloud-status[data-phase=connected]').waitFor();
   // Hold the remembered-account Graph read. The app must be usable before it resolves.
   let release;fixture.hold=new Promise(ok=>{release=ok;});const before=fixture.driveRequests;
   await page.reload({waitUntil:'domcontentloaded'});await workspace().waitFor({state:'visible',timeout:10000});
