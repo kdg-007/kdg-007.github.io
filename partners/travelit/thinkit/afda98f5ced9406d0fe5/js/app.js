@@ -1,4 +1,4 @@
-import {itineraryGantt} from './itinerary-gantt.js';
+import {isGanttStart,itineraryGantt} from './itinerary-gantt.js';
 import {renderFitGantt,ganttEndLabel,ganttTicks,ganttGridLines} from './gantt-editor.js';
 import {createMapFullscreen} from './map-fullscreen.js';
 import {loadStreetMapRuntime} from './street-map-loader.js';
@@ -269,6 +269,8 @@ function ganttPreview(trip){
  if(all.some(stop=>!stop.title.trim()))issues.push('Enter a name for each activity.');
  if(all.some(stop=>!stop.date||stop.date<trip.startDate||stop.date>trip.endDate))issues.push('Choose activity dates within the trip.');
  if(all.some(stop=>!Number.isInteger(Number(stop.durationMinutes||0))||Number(stop.durationMinutes)<0||Number(stop.durationMinutes)>10080))issues.push('Enter durations from 0 to 10080 minutes.');
+ if(all.some(stop=>stop.time&&!isGanttStart(stop.time)))issues.push('Enter start times in 24-hour format, such as 13:00.');
+ if(issues.length)return {rows:all,issues,plan:null};
  try{
   const plan=planTripDependencies(all,trip,{deriveStarts:true});
   const updated=new Map(plan.updates.map(stop=>[stop.id,stop]));
@@ -292,7 +294,7 @@ function toggleGanttFullscreen(){
    ?.classList.toggle('gantt-shell-fullscreen',ganttFullscreen);}catch{}
  render();
 }
-function updateGanttDraft(input){
+function updateGanttDraft(input,commitField){
  const trip=selected(),stopId=input.closest('[data-gantt-stop]')?.dataset.ganttStop;
  if(!trip||!stopId)return;
  const stop=state.stops.find(item=>item.id===stopId&&item.tripId===trip.id);
@@ -301,7 +303,11 @@ function updateGanttDraft(input){
  const field=input.dataset.ganttField;
  if(['title','date','time','durationMinutes'].includes(field)){
   patch[field]=input.value;
-  if(field==='title')input.title=input.value;
+  if(field==='title')input.nextElementSibling.textContent=input.value;
+  if(field==='time'&&/^\d{4}$/.test(input.value)){
+   patch.time=input.value.slice(0,2)+':'+input.value.slice(2);
+   if(commitField)input.value=patch.time;
+  }
  }
  else if(['predecessor','dependencyType','lagMinutes'].includes(field)){
   const row=input.closest('[data-gantt-stop]');
@@ -399,7 +405,7 @@ function budgetDraft(trip){
 }
 function handleWorkspaceInput(event){
  const el=event.target;
- if(el.dataset.ganttField){updateGanttDraft(el);return true;}if(el.dataset.budgetField){const draft=budgetDrafts.get(selected()?.id),row=draft?.rows.find(r=>r.id===el.dataset.budgetId);if(row){row[el.dataset.budgetField]=el.value;draft.dirty=true;}return true;}
+ if(el.dataset.ganttField){updateGanttDraft(el,event.type==='change');return true;}if(el.dataset.budgetField){const draft=budgetDrafts.get(selected()?.id),row=draft?.rows.find(r=>r.id===el.dataset.budgetId);if(row){row[el.dataset.budgetField]=el.value;draft.dirty=true;}return true;}
  if(event.type!=='change')return false;
  if(el.id==='trip-select'){state.selectedTrip=el.value;state.chosenDay='';state.calendarMonth='';render();return true;}
  if(el.id==='itinerary-mode'){
