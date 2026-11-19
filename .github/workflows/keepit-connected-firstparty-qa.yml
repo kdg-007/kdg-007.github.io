@@ -205,6 +205,7 @@ jobs:
       - name: Verify reproducible live save and connection modules
         run: |
           node ops/ui/build-live-stability.mjs
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git diff --exit-code -- assets partners/connected/index.html partners/connected/owner-release.json ops/ui/LIVE_STABILITY_MODULES.json
       - name: Verify transfer host safety and content-addressed owner imports
         run: node ops/ui/transfer-host-policy.test.mjs
