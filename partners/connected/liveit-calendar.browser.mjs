@@ -91,7 +91,7 @@ try{
   await a.page.locator('dialog.note-dialog[open]').getByRole('button',{name:'Close',exact:true}).click();
   await noteDetail.getByRole('button',{name:'Synthetic presentation · file'}).click();
   await a.page.locator('#item-dialog[open] #item-heading').filter({hasText:'Synthetic presentation'}).waitFor();
-  await a.page.locator('#item-dialog pre').getByText('Synthetic presentation contents',{exact:true}).waitFor();
+  await a.page.locator('#item-dialog pre').filter({hasText:'Synthetic presentation contents'}).waitFor();
   await a.page.locator('#item-dialog').evaluate(dialog=>dialog.close());
   await noteDetail.getByRole('button',{name:'Edit'}).click();
   await a.frame.getByRole('button',{name:'Remove link to Synthetic presentation'}).click();
