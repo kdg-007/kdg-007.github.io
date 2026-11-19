@@ -74,6 +74,7 @@ try{
    return operations;
   });
   const readOnlyRequests=fixture.requests.length;
+  await page.waitForLoadState('networkidle');
   await page.goto(origin+'/partners/connected/?connected-app=keepit');
   await page.waitForFunction(()=>['connected','error'].includes(window.keepItConnectionState?.phase));
   assert.equal(await page.evaluate(()=>window.keepItConnectionState.phase),'connected',await page.evaluate(()=>window.keepItConnectionState.message));
@@ -93,8 +94,12 @@ try{
    workspace.db.close();
   },pendingNotes);
   console.log('OWNER_REOPEN_WITH_INCOMPLETE_LOCAL_NOTE_'+engine.name().toUpperCase()+'_PASS');
+  await page.waitForLoadState('networkidle');
   await page.goto(origin+'/partners/connected/?connected-app=liveit');
   await page.locator('#connected-cloud-status[data-phase=connected]').waitFor();
+  // Let the previous page finish its catalog reads before simulating the
+  // next reconnect. WebKit can report navigation cancellations as CORS errors.
+  await page.waitForLoadState('networkidle');
   // Hold the remembered-account Graph read. The app must be usable before it resolves.
   let release;fixture.hold=new Promise(ok=>{release=ok;});const before=fixture.driveRequests;
   await page.reload({waitUntil:'domcontentloaded'});await workspace().waitFor({state:'visible',timeout:10000});
