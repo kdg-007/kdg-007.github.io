@@ -54,3 +54,18 @@ export function prepareTemplateSet(names,trip,current,now,idFactory){
  if(!Array.isArray(names)||!names.length)throw Error('Choose at least one packing template.');
  const items=[];let skipped=0;for(const name of [...new Set(names)]){const next=prepareTemplateImport(name,trip,[...current,...items],now,idFactory);items.push(...next.items);skipped+=next.skipped;}return {items,skipped};
 }
+
+export function preparePackingItems(input,trip,current=[],now=new Date().toISOString(),idFactory=()=>crypto.randomUUID()){
+ const labels=String(input.items||'').split(/\r?\n/).map(label=>label.trim()).filter(Boolean);
+ if(!labels.length||labels.length>100)throw Error('Enter between 1 and 100 packing items, one per line.');
+ const seen=new Set(current.filter(item=>item.tripId===trip.id).map(item=>labelKey(item.label)));
+ const items=[];
+ for(const label of labels){
+  if(label.length>150)throw Error('Each packing item must be at most 150 characters.');
+  const key=labelKey(label);
+  if(seen.has(key))continue;
+  seen.add(key);
+  items.push(normalizePacking({id:idFactory(),label,category:input.category,quantity:input.quantity,owner:input.owner,packed:false},trip,now));
+ }
+ return {items,skipped:labels.length-items.length};
+}

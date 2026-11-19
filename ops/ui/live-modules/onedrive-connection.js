@@ -367,7 +367,7 @@ function catalogReadAhead(items, read) {
   const candidates = [...items.values()]
     .filter(item => item.file && item.size > 0 && item.size <= 2 * 1024 ** 2 &&
       Number.isFinite(Date.parse(item.lastModifiedDateTime)) &&
-      /^[a-f0-9-]{36}\.json$/i.test(item.name))
+      /^(?:[0-9]+-)?[a-f0-9-]{36}\.json$/i.test(item.name))
     .sort((a, b) => Date.parse(b.lastModifiedDateTime) - Date.parse(a.lastModifiedDateTime));
   const pending = new Map();
   const requested = new Set();
@@ -773,12 +773,17 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     d(i.file && s && G.test(s[1]) && i.eTag, "The OneDrive catalog pointer is invalid.");
     let r = JSON.stringify(t.map((p) => [p.id, p.name, p.eTag, p.size, !!p.folder]).sort((p, I) => p[0] < I[0] ? -1 : p[0] > I[0] ? 1 : 0)), a = this.verified, n = a && a.legacySignature === r;
     if (n && a.headId === i.id && a.headName === i.name && a.headETag === i.eTag) return this.head = i, structuredClone(a.state);
-    let o = t.map((p) => [p.name, p.folder ? this.fs.directory(p) : { kind: "file", getFile: async () => {
-      let file = await this.fs.read(p, { cache: true });
-      if (!(file instanceof Blob)) file = await this.fs.read(p, { cache: false });
+    const readLegacyFile = async item => {
+      let file = await this.fs.read(item, { cache: true });
+      if (!(file instanceof Blob)) file = await this.fs.read(item, { cache: false });
       d(file instanceof Blob, "OneDrive catalog history returned no file bytes (KI-OD-NULL-HISTORY). Original files were retained.");
       return file;
-    } }]), l = { identity: this.identity, commits: { async *entries() {
+    };
+    // The legacy verifier sorts revisions after checking every snapshot. Read
+    // newest first so its sequential traversal consumes the speculative queue.
+    const legacyItems = [...t].sort((a, b) => (Date.parse(b.lastModifiedDateTime) || 0) - (Date.parse(a.lastModifiedDateTime) || 0));
+    const legacyReadAhead = catalogReadAhead(new Map(legacyItems.map(item => [item.name.toLowerCase(), item])), readLegacyFile);
+    let o = legacyItems.map((p) => [p.name, p.folder ? this.fs.directory(p) : { kind: "file", getFile: () => legacyReadAhead(p) }]), l = { identity: this.identity, commits: { async *entries() {
       yield* o;
     } } }, u = n ? a.legacyState : await A.prototype.readHead.call(l);
     d((u?.commitId || null) === this.index.legacyCommitId, "This library was changed through a local folder connection. Close local writers before using OneDrive. No cloud changes were overwritten.");

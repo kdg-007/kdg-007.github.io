@@ -21,3 +21,12 @@ assert.throws(()=>validateBackup(data({...linked,keepItDocuments:[{...file,conte
 const {backup}=await verifyBackup(await createBackup(data(linked)));
 assert.deepEqual(backup.records[0].data.keepItDocuments,[file,note]);
 console.log('TRAVELIT_KEEPIT_TRIP_REFERENCES_BACKUP_AND_VALIDATION_PASS');
+
+const {readFileSync}=await import('node:fs');
+const {CONNECTED_SHELL_ASSETS}=await import('../js/offline-shell.js');
+const entry=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+for(const asset of ['js/app-fast.js','css/workspace.css']){
+ const url=entry.match(new RegExp('(?:src|href)="('+asset.replaceAll('.','\\.')+'[^"]*)"'))[1];
+ assert.ok(CONNECTED_SHELL_ASSETS.includes('./'+url),'Offline preparation must include the published URL '+url);
+}
+console.log('TRAVELIT_OFFLINE_PREPARATION_MATCHES_RELEASE_ENTRIES_PASS');

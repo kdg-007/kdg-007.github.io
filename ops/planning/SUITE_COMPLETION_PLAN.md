@@ -130,3 +130,20 @@ Review appearance/language, discoverability, sidebars, touch targets, dropdowns,
 ## Immediate next implementation pass
 
 Start with B1's per-app object/original-file trace and actual repository coverage. Record only concrete gaps. Keep the owner-account Mac/iPhone gate open while unavailable. The first independently identified B2 coding gap is dependency-derived timing without a manually entered dependent start time; follow with complete Excel content preservation and requested ordering. Projects/Operations is a verification/refinement task because its implementation already exists.
+
+
+## Delivery update — 19 November 2026
+
+Published baseline before this batch is `cee630ec` with readable wrapped Gantt activity names, compact editable fields, a dependency visibility toggle, 24-hour starts, fullscreen and atomic schedule saving.
+
+This batch extends automatic dependency calculation to Activity Details and the activities table. A timing edit saves the edited activity and affected successors in one guarded transaction. Metadata-only edits preserve their timing. The separate dependency review now derives unscheduled successor starts too. Cycles, fixed-booking conflicts and out-of-trip moves retain their existing validation.
+
+Custom packing entry now accepts up to 100 lines with a shared category, quantity and owner. It validates the complete batch before writing, skips duplicate names and retains existing packed status.
+
+Older OneDrive folder-catalog snapshots now use bounded read-ahead, matching the cloud history path. Metadata enumeration is ordered to consume the speculative queue. Full checksum and parent-chain verification still runs. Tests cover four concurrent transfers and retry after a failed speculative download. Actual account connection duration on iPhone remains unverified.
+
+Offline preparation now caches the script and workspace stylesheet URLs from the published HTML. The runtime builder synchronizes these URLs before bundling, and a regression check compares the offline manifest against the HTML.
+
+Local browser verification exercised the compiled runtime through its normal UI. A predecessor duration edit in Details moved its successor from 09:00 to 10:00. A subsequent activities-table duration edit moved it to 09:30 and updated the Gantt. Four packing lines produced three distinct items with quantity two, and all survived reload.
+
+The larger backlog remains open, including actual Mac/iPhone cloud roundtrips, full original-file/offline document acceptance, Excel content reconciliation, broader authoring and layout acceptance, and Swimlane integration. This batch does not close those requirements.
