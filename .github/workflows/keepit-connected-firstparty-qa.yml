@@ -248,10 +248,10 @@ jobs:
         run: node partners/connected/liveit-calendar.unit.mjs
       - name: Verify app folders, immutable revisions and conflict readback
         run: node partners/connected/app-repository-store.test.mjs
-      - name: Verify event save and reload across independent devices
-        run: node partners/connected/liveit-calendar.browser.mjs
       - name: Verify Microsoft callback and nonblocking OneDrive reconnect
         run: node partners/connected/owner-connection.test.mjs
+      - name: Verify event save and reload across independent devices
+        run: node partners/connected/liveit-calendar.browser.mjs
       - name: Save interface previews
         if: ${{ !cancelled() && steps.browser_runtime.outcome == 'success' }}
         uses: actions/upload-artifact@v4
