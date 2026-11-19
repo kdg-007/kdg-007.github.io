@@ -369,11 +369,24 @@ var r = (u, t, i) => {
     if (this.library = this.getLibrary(), this.target = await this.getTarget(), this.library !== this.getLibrary() || i && this.library !== i || e !== void 0 && this.target !== e) throw new Error("The selected library changed before opening the note.");
     let s = (await this.workspace.jobs(this.target)).find((a) => a.itemId === t && a.state !== "saved");
     if (s) {
+      if (!(s.blob instanceof Blob) && !(s.blobData instanceof ArrayBuffer)) {
+        const saved = await this.library.getItem?.(t);
+        if (saved && !saved.trashedAt && Z(saved)) {
+          await this.openSaved(t, { expectedLibrary: this.library, expectedTarget: this.target });
+          if (this.mode === "preview") this.status.textContent = "Last saved version · Pending edit needs recovery on this device.";
+        } else {
+          this.shell(s.values.title);
+          this.error(new Error("This pending note is missing its local source bytes. Its recovery record is still on this device."));
+          this.body.append(m("Pending saves", () => this.menu()));
+        }
+        return;
+      }
+      const source = s.blob instanceof Blob ? s.blob : new Blob([s.blobData], { type: s.mime });
       try {
-        let a = await O(s.blob);
-        this.showPreview(a, { ...s.values, id: t, version: s.expectedVersion, trashedAt: null }, s.blob, s);
+        let a = await O(source);
+        this.showPreview(a, { ...s.values, id: t, version: s.expectedVersion, trashedAt: null }, source, { ...s, blob: source });
       } catch (a) {
-        this.shell(s.values.title), this.error(a), this.body.append(m("Download pending source for recovery", () => U(s.blob, "Pending-note.keepitnote")), m("Pending saves", () => this.menu()));
+        this.shell(s.values.title), this.error(a), this.body.append(m("Download pending source for recovery", () => U(source, "Pending-note.keepitnote")), m("Pending saves", () => this.menu()));
       }
       return;
     }
