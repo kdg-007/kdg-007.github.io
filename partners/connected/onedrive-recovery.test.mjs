@@ -63,6 +63,45 @@ test('opening a healthy connection only shows details and does not restart it',a
  const {c}=fixture();c.bound=true;c.fs={};c.start=async()=>{throw Error('Unexpected reconnect');};assert.equal(await c.show(),true);
 });
 
+function rememberedReconnect(){
+ const f=fixture(), savedRoot={id:'saved-root',name:'KeepIt'};
+ const binding={homeId:'owner',driveId:'saved-drive',rootId:savedRoot.id,path:'Documents / KeepIt'};
+ const errors=[];let pickerOpens=0;
+ f.env.S=()=>binding;f.c.prepareAuth=async()=>{};f.c.progress=event=>{if(event.error)errors.push(event.error);};
+ f.c.connectFiles=async()=>{f.c.fs={driveId:binding.driveId,item:async()=>savedRoot};};
+ f.c.browse=async()=>{pickerOpens++;};
+ return {...f,savedRoot,binding,errors,get pickerOpens(){return pickerOpens;}};
+}
+
+test('a missing catalog item keeps the saved library selected and retry reopens that library',async()=>{
+ const f=rememberedReconnect(), attempts=[];
+ f.c.selecting=true;
+ f.c.bindLibrary=async(root,path)=>{
+  attempts.push([root.id,path]);
+  if(attempts.length===1)throw Object.assign(Error('Catalog file missing'),{details:{status:404}});
+  return true;
+ };
+ assert.equal(await f.c.restore({interactive:true}),false);
+ assert.match(f.errors[0]??'',/Catalog file missing/);
+ assert.equal(f.pickerOpens,0);
+ assert.equal(f.c.selecting,false);
+ await f.get('onedrive-retry').onclick();
+ assert.deepEqual(attempts,[[f.savedRoot.id,f.binding.path],[f.savedRoot.id,f.binding.path]]);
+});
+
+test('a missing saved folder still opens the picker',async()=>{
+ const f=rememberedReconnect();
+ const connect=f.c.connectFiles;
+ f.c.connectFiles=async()=>{
+  await connect();f.c.fs.item=async()=>{throw Object.assign(Error('Folder missing'),{details:{status:404}});};
+ };
+ f.c.bindLibrary=async()=>assert.fail('A missing folder cannot be opened');
+ assert.equal(await f.c.restore({interactive:true}),false);
+ assert.equal(f.pickerOpens,1);
+ assert.equal(f.c.selecting,true);
+ assert.equal(f.c.phase,'choose-folder');
+});
+
 test('a stalled metadata body times out and releases the connection for a successful retry',async()=>{
  const f=fixture();await f.c.connectFiles();f.c.bound=true;
  f.env.re=async work=>{let timer;try{return await Promise.race([work(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('metadata body timed out')),15);})]);}finally{clearTimeout(timer);}};
