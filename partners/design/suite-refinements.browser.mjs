@@ -100,7 +100,9 @@ async function travel(browser,origin){
   await page.reload();await page.locator('[data-action="edit-stop:lunch"]').click();
   await page.locator('[data-predecessor]').selectOption('museum');await page.locator('[data-lag]').fill('15');
   await page.locator('#modal-form button[type=submit]').click();
-  await page.getByRole('button',{name:'Review dependencies',exact:true}).click();await page.getByText(/2026-12-01 10:00 → 2026-12-01 11:15/).waitFor();
+  await page.locator('.action-menu > summary').filter({hasText:/^Day actions$/}).click();
+  await page.getByRole('button',{name:'Review dependencies',exact:true}).click();
+  await page.getByText(/2026-12-01 10:00 → 2026-12-01 11:15/).waitFor();
   await page.getByRole('button',{name:'Apply schedule changes',exact:true}).click();
   await page.locator('[data-action="edit-stop:lunch"]').click();assert.equal(await page.locator('#f-time').inputValue(),'11:15');
   await page.locator('#modal-close').click();await page.locator('#view-select').selectOption('map');
