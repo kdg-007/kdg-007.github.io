@@ -21,3 +21,20 @@ assert.throws(()=>validateBackup(data({...linked,keepItDocuments:[{...file,conte
 const {backup}=await verifyBackup(await createBackup(data(linked)));
 assert.deepEqual(backup.records[0].data.keepItDocuments,[file,note]);
 console.log('TRAVELIT_KEEPIT_TRIP_REFERENCES_BACKUP_AND_VALIDATION_PASS');
+
+const {readFileSync}=await import('node:fs');
+const {CONNECTED_SHELL_ASSETS}=await import('../js/offline-shell.js');
+const entry=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+for(const asset of ['js/app-fast.js','css/workspace.css']){
+ const url=entry.match(new RegExp('(?:src|href)="('+asset.replaceAll('.','\\.')+'[^"]*)"'))[1];
+ assert.ok(CONNECTED_SHELL_ASSETS.includes('./'+url),'Offline preparation must include the published URL '+url);
+}
+console.log('TRAVELIT_OFFLINE_PREPARATION_MATCHES_RELEASE_ENTRIES_PASS');
+
+const {runInNewContext}=await import('node:vm');
+const appSource=readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
+const timingChanged=runInNewContext('('+appSource.slice(appSource.indexOf('function stopTimingChanged('),appSource.indexOf('function stopEditor('))+')');
+const older={date:'2026-12-05',time:'08:00'};
+assert.equal(timingChanged(older,{...older,title:'New name',fixed:false,durationMinutes:0,dependencies:[]}),false);
+assert.equal(timingChanged(older,{...older,durationMinutes:60}),true);
+console.log('TRAVELIT_METADATA_EDITS_PRESERVE_LEGACY_SCHEDULES_PASS');

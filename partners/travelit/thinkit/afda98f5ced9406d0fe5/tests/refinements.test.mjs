@@ -42,3 +42,14 @@ assert.throws(()=>roadRegionBounds(14,121,10),/radius/);
 await assert.rejects(()=>downloadRoadRegion({latitude:14.6,longitude:120.98,radiusKm:1,name:'Bad',fetcher:async()=>new Response(JSON.stringify({...response,remark:'timeout'}))}),/incomplete/);
 await assert.rejects(()=>downloadRoadRegion({latitude:14.6,longitude:120.98,radiusKm:1,name:'Busy',fetcher:async()=>new Response('',{status:429})}),/busy/);
 console.log('TRAVELIT_BOUNDED_ROAD_DOWNLOAD_VALIDATION_AND_ATTRIBUTION_PASS');
+
+const {preparePackingItems}=await import('../js/packing-templates.js');
+let packingId=0;
+const packed=[{id:'packed',tripId:trip.id,label:'Phone charger',quantity:2,packed:true}];
+const batch=preparePackingItems({items:' Phone charger \nDry bag\nDRY BAG\nWater bottle',quantity:2,category:'Essentials',owner:'Krym'},trip,packed,undefined,()=>String(++packingId));
+assert.deepEqual(batch.items.map(item=>item.label),['Dry bag','Water bottle']);
+assert.equal(batch.skipped,2);assert.equal(batch.items[0].quantity,2);assert.equal(packed[0].packed,true);
+assert.throws(()=>preparePackingItems({items:'Valid\n'+ 'x'.repeat(151),quantity:1},trip),/150/);
+assert.throws(()=>preparePackingItems({items:'Dry bag',quantity:0},trip),/Quantity/);
+assert.throws(()=>preparePackingItems({items:Array(101).fill('Item').join('\n')},trip),/100/);
+console.log('TRAVELIT_BULK_PACKING_VALIDATION_AND_DUPLICATE_PROTECTION_PASS');
