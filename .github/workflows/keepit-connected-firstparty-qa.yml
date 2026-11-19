@@ -25,6 +25,8 @@ jobs:
   verify:
     name: Verify native owner, save/reopen and connected app hosts
     runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
     timeout-minutes: 36
     steps:
       - uses: actions/checkout@v4
@@ -198,7 +200,6 @@ jobs:
         run: |
           printf '{"type":"module","private":true}\n' > package.json
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 esbuild@0.28.2
-          npx playwright install --with-deps chromium webkit
       - name: Verify classified OneDrive request failures without actual credentials
         run: node --test partners/connected/onedrive-recovery.test.mjs
       - name: Verify reproducible live save and connection modules
