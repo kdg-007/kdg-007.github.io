@@ -1,8 +1,8 @@
-import {itineraryGantt} from './itinerary-gantt.js';
+import {isGanttStart,itineraryGantt} from './itinerary-gantt.js';
 
 const h=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const localEnd=(stop)=>{
- if(!stop.time)return '—';
+ if(!isGanttStart(stop.time))return '—';
  const start=Date.parse(stop.date+'T00:00:00Z')/60000+Number(stop.time.slice(0,2))*60+Number(stop.time.slice(3));
  const duration=Number(stop.durationMinutes||0);
  if(!Number.isFinite(start)||!Number.isFinite(duration)||duration<0||duration>10080)return '—';
@@ -31,10 +31,13 @@ export function renderFitGantt(entries,{trip,day,scope='day',allStops=entries,
    `<span class="gantt-fit-bar" role="img" aria-label="${h(stop.title)}: ${h(row.startLabel)}–${h(row.endLabel)}" style="left:${row.left}%;width:${row.width}%"></span>`;
   return `<div class="gantt-fit-row" data-gantt-stop="${h(stop.id)}">
    <div class="gantt-fit-details">
-    <input class="gantt-fit-name" type="text" maxlength="150" aria-label="Activity name for ${h(stop.title)}" title="${h(stop.title)}" data-gantt-field="title" value="${h(stop.title)}">
+    <div class="gantt-fit-title-cell">
+     <textarea class="gantt-fit-name" rows="1" maxlength="150" aria-label="Activity name for ${h(stop.title)}" data-gantt-field="title">${h(stop.title)}</textarea>
+     <span class="gantt-fit-title-text" aria-hidden="true">${h(stop.title)}</span>
+    </div>
     <button class="gantt-fit-more" type="button" data-action="edit-stop:${h(stop.id)}" aria-label="Details for ${h(stop.title)}" title="Open activity details">⋯</button>
     <label><span>Date</span><input aria-label="Date for ${h(stop.title)}" type="date" min="${h(trip.startDate)}" max="${h(trip.endDate)}" data-gantt-field="date" value="${h(stop.date)}"></label>
-    <label><span>Start</span><input aria-label="Start for ${h(stop.title)}" type="time" data-gantt-field="time" value="${h(stop.time)}" ${dependency&&!stop.fixed?'readonly title="Start is calculated from predecessors"':''}></label>
+    <label><span>Start</span><input aria-label="Start for ${h(stop.title)}, 24-hour time" type="text" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="HH:MM" data-gantt-field="time" value="${h(stop.time)}" ${dependency&&!stop.fixed?'readonly title="Start is calculated from predecessors"':'title="24-hour time (HH:MM or HHMM)"'}></label>
     <label><span>Min</span><input aria-label="Duration for ${h(stop.title)}" title="Duration in minutes" type="number" min="0" max="10080" step="1" inputmode="numeric" data-gantt-field="durationMinutes" value="${h(stop.durationMinutes||0)}"></label>
     <label><span>End</span><output data-gantt-end>${h(localEnd(stop))}</output></label>
    </div>

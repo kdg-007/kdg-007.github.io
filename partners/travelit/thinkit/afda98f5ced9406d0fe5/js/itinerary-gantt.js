@@ -1,12 +1,15 @@
 // Dates are local itinerary wall-clock labels, not UTC instants for routing.
 const dayMinute=date=>Date.parse(date+'T00:00:00Z')/60000;
 const iso=minute=>new Date(minute*60000).toISOString();
+export const isGanttStart=time=>/^([01]\d|2[0-3]):[0-5]\d$/.test(time);
 export function itineraryGantt(entries,{scope='day',trip,day=trip.startDate}={}){
  const first=dayMinute(scope==='trip'?trip.startDate:day);
  let last=dayMinute(scope==='trip'?trip.endDate:day)+1440;
  const rows=entries.map(stop=>{
-  const start=stop.time?dayMinute(stop.date)+Number(stop.time.slice(0,2))*60+Number(stop.time.slice(3)):null;
-  const duration=Number(stop.durationMinutes)||0,end=start===null?null:start+duration;
+  const day=dayMinute(stop.date);
+  const start=isGanttStart(stop.time)&&Number.isFinite(day)?day+Number(stop.time.slice(0,2))*60+Number(stop.time.slice(3)):null;
+  const minutes=Number(stop.durationMinutes||0);
+  const duration=Number.isInteger(minutes)&&minutes>=0&&minutes<=10080?minutes:0,end=start===null?null:start+duration;
   if(end!==null)last=Math.max(last,end);
   return {stop,start,end,duration};
  });
