@@ -30,3 +30,11 @@ for(const asset of ['js/app-fast.js','css/workspace.css']){
  assert.ok(CONNECTED_SHELL_ASSETS.includes('./'+url),'Offline preparation must include the published URL '+url);
 }
 console.log('TRAVELIT_OFFLINE_PREPARATION_MATCHES_RELEASE_ENTRIES_PASS');
+
+const {runInNewContext}=await import('node:vm');
+const appSource=readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
+const timingChanged=runInNewContext('('+appSource.slice(appSource.indexOf('function stopTimingChanged('),appSource.indexOf('function stopEditor('))+')');
+const older={date:'2026-12-05',time:'08:00'};
+assert.equal(timingChanged(older,{...older,title:'New name',fixed:false,durationMinutes:0,dependencies:[]}),false);
+assert.equal(timingChanged(older,{...older,durationMinutes:60}),true);
+console.log('TRAVELIT_METADATA_EDITS_PRESERVE_LEGACY_SCHEDULES_PASS');

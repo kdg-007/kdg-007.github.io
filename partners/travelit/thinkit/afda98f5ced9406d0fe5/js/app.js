@@ -158,10 +158,15 @@ function reviewDependencies(){
  const save=$('#modal-form button[type=submit]');if(save)save.textContent='Apply schedule changes';
 }
 
+function stopTimingChanged(before,after){
+ return !before||before.date!==after.date||(before.time||'')!==(after.time||'')||
+  (before.durationMinutes??0)!==(after.durationMinutes??0)||Boolean(before.fixed)!==Boolean(after.fixed)||
+  JSON.stringify(before.dependencies||[])!==JSON.stringify(after.dependencies||[]);
+}
 function stopEditor(s=null){const trip=selected();if(!trip){toast('Create a trip first.',true);return;}const v=s||{},date=v.date||state.chosenDay||trip.startDate;const options=state.places.map(p=>`<option value="${esc(p.id)}" ${p.id===v.placeId?'selected':''}>${esc(p.name)}</option>`).join('');openModal(s?'Edit activity':'Add itinerary activity',`${excelSourceDetails(v)}<div class="form-grid">${field('title','Activity or stop',v.title||'','text','required')}${selectField('kind','Type',STOP_KINDS,v.kind||'Activity')}${field('date','Date',date,'date',`min="${trip.startDate}" max="${trip.endDate}" required`)}${field('time','Local start time (optional)',v.time||'','time')}${field('durationMinutes','Duration (minutes)',v.durationMinutes||0,'number','min="0" max="10080" step="1"')}<div class="field"><label for="f-placeId">Associated saved place</label><select name="placeId" id="f-placeId"><option value="">No pin selected</option>${options}</select></div><div class="field full"><label><input type="checkbox" name="fixed" value="yes" ${v.fixed?'checked':''}> Fixed booking or commitment (do not auto-shift)</label></div><div class="field full"><strong>Travel leg arriving at this activity</strong><p class="field-help">All values are your own estimates, never computed routes. Leave blank if unknown. The first stop may be from home or another origin.</p></div>${field('legOrigin','Coming from (optional)',v.legOrigin||'')}${field('legDistanceKm','Driving distance to this stop (km)',v.legDistanceKm??'','number','min="0" max="100000" step="0.1"')}${field('legTravelMinutes','Driving time to this stop (minutes)',v.legTravelMinutes??'','number','min="0" max="100800" step="1"')}${field('legTollPhp','Tolls on this leg (₱)',v.legTollPhp??'','number','min="0" max="1000000" step="0.01"')}${textArea('notes','Activity notes',v.notes||'')}${dependencyFields(v,trip)}</div>`,async (f,form)=>{const dependencies=readDependencyFields(form);
  const stop=normalizeStop({...v,...f,dependencies,id:v.id,createdAt:v.createdAt,fixed:f.fixed==='yes'},trip);
  const stops=[...byTrip(state.stops).filter(item=>item.id!==stop.id),stop];
- const timingChanged=!s||['date','time','durationMinutes','fixed'].some(key=>s[key]!==stop[key])||JSON.stringify(s.dependencies||[])!==JSON.stringify(stop.dependencies||[]);
+ const timingChanged=stopTimingChanged(s,stop);
  const plan=planTripDependencies(stops,trip,{deriveStarts:timingChanged});
  if(timingChanged&&plan.issues.length)throw Error(plan.issues.join(' '));
  const changed=new Map([[stop.id,stop]]);
@@ -224,10 +229,7 @@ function activityTableEditor(){
     }
    }
    if(!changed.length)return;
-   const timingChanged=changed.some(stop=>{
-    const old=originals.get(stop.id);
-    return !old||['date','time','durationMinutes','fixed'].some(key=>old[key]!==stop[key]);
-   });
+   const timingChanged=changed.some(stop=>stopTimingChanged(originals.get(stop.id),stop));
    if(timingChanged){
     const pending=new Map(changed.map(stop=>[stop.id,stop]));
     const stops=byTrip(state.stops).map(stop=>pending.get(stop.id)||stop);
