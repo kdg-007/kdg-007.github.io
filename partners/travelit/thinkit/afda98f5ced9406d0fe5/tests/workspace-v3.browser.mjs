@@ -12,7 +12,44 @@ export async function checkWorkspaceV3(browser,origin){
   for(const [i,title,time,duration,date] of [[0,'Morning walk','08:00','60','2026-12-05'],[1,'Lunch','12:00','45','2026-12-05'],[2,'Next day swim','09:00','90','2026-12-06']]){const row=rows.nth(i);await row.locator('[data-field=title]').fill(title);await row.locator('[data-field=time]').fill(time);await row.locator('[data-field=durationMinutes]').fill(duration);await row.locator('[data-field=date]').fill(date);}
   await page.getByRole('button',{name:'Save activities',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});
   assert.equal(await page.locator('.activity-summary-table td small').count(),0);assert.ok(await page.locator('.activity-summary-table').evaluate(el=>parseFloat(getComputedStyle(el).fontSize))>=15);
-  await page.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');assert.equal(await page.locator('.gantt-bar').count(),2);await page.getByLabel('Gantt period',{exact:true}).selectOption('trip');assert.equal(await page.locator('.gantt-bar').count(),3);assert.match(await page.locator('.gantt-axis').innerText(),/12-05/);assert.match(await page.locator('.gantt-table tbody tr').first().locator('td').nth(1).innerText(),/12-05 08:00/);await page.screenshot({path:'appearance-qa/travelit-gantt-'+browser.browserType().name()+'.png'});
+  await page.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');assert.equal(await page.locator('.gantt-fit-bar').count(),2);await page.getByLabel('Gantt period',{exact:true}).selectOption('trip');assert.equal(await page.locator('.gantt-fit-bar').count(),3);assert.match(await page.locator('.gantt-fit-axis').innerText(),/12-05/);assert.equal(await page.locator('.gantt-fit-row').first().locator('[data-gantt-field=time]').inputValue(),'08:00');
+  const fullFit=await page.locator('.gantt-fit').evaluate(el=>({width:el.getBoundingClientRect().width,scrollWidth:el.scrollWidth,top:el.getBoundingClientRect().top}));
+  assert.ok(fullFit.scrollWidth<=fullFit.width+2,'Whole Gantt timescale must fit available desktop width');
+  assert.ok(fullFit.top<400,'Desktop Gantt must appear within first 400 CSS px, not after redundant chrome: '+JSON.stringify(fullFit));
+  const layout=()=>page.locator('.gantt-fit-row').first().evaluate(row=>({height:row.offsetHeight,timeline:row.querySelector('.gantt-fit-track').offsetWidth/row.offsetWidth}));
+  const compact=await layout();
+  assert.ok(compact.height<=34&&compact.timeline>=.69,'Desktop rows must be compact and reserve at least 69% for the timeline: '+JSON.stringify(compact));
+  const morning=page.locator('.gantt-fit-row').first(),lunch=page.locator('.gantt-fit-row').nth(1);
+  const morningId=await morning.getAttribute('data-gantt-stop');
+  assert.equal(await page.locator('.gantt-fit-dependency-head').count(),0);
+  await page.getByRole('button',{name:'Show dependencies',exact:true}).click();
+  assert.equal(await page.locator('.gantt-fit-dependency-head').isVisible(),true);
+  const linked=await layout();
+  assert.ok(linked.height<=34&&linked.timeline>=.55,'Showing dependencies must retain most of the desktop timeline: '+JSON.stringify(linked));
+  await lunch.locator('[data-gantt-field=predecessor]').selectOption(morningId);
+  await lunch.locator('[data-gantt-field=lagMinutes]').fill('15');
+  await morning.locator('[data-gantt-field=title]').fill('Morning walk revised');
+  await morning.locator('[data-gantt-field=durationMinutes]').fill('90');
+  assert.equal(await lunch.locator('[data-gantt-field=time]').inputValue(),'09:45');
+  await lunch.locator('.gantt-fit-bar[aria-label*="09:45"]').waitFor();
+  await page.getByRole('button',{name:'Hide dependencies',exact:true}).click();
+  assert.equal(await page.locator('.gantt-fit-dependency-head').count(),0);
+  await page.getByRole('button',{name:'Save schedule',exact:true}).click();
+  await page.getByRole('button',{name:'Save schedule',exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('[data-action="gantt-save"]')?.disabled);
+  await page.reload();
+  await page.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');
+  assert.equal(await morning.locator('[data-gantt-field=title]').inputValue(),'Morning walk revised');
+  assert.equal(await lunch.locator('[data-gantt-field=time]').inputValue(),'09:45');
+  await page.getByRole('button',{name:'Show dependencies',exact:true}).click();
+  assert.equal(await lunch.locator('[data-gantt-field=predecessor]').inputValue(),morningId);
+  assert.equal(await lunch.locator('[data-gantt-field=lagMinutes]').inputValue(),'15');
+  await page.getByRole('button',{name:'Hide dependencies',exact:true}).click();
+  console.log('TRAVELIT_COMPACT_GANTT_INLINE_DEPENDENCY_REOPEN_'+browser.browserType().name().toUpperCase()+'_PASS',JSON.stringify({compact,linked}));
+  assert.equal(await page.locator('#quick-save').isVisible(),false,'Save place must not occupy a Trip workspace toolbar');
+  await page.locator('.day-strip+.row-between .action-menu>summary').click();
+  assert.equal(await page.locator('.mobile-day-menu-actions [data-action=review-trip-dependencies]').isVisible(),true,'Dependency review stays accessible from compact Day actions');
+  await page.locator('.day-strip+.row-between .action-menu>summary').click();await page.screenshot({path:'appearance-qa/travelit-gantt-'+browser.browserType().name()+'.png'});
   await page.getByRole('button',{name:'Calendar',exact:true}).click();assert.equal(await page.locator('.calendar-day.has-schedule').count(),2);assert.ok(await page.locator('.calendar-day.has-schedule').first().isVisible());
   await page.getByRole('button',{name:'Packing',exact:true}).click();await page.getByRole('button',{name:'Use a template',exact:true}).click();await page.getByLabel('Swimming',{exact:true}).check();await page.getByLabel('Beach',{exact:true}).check();await page.getByLabel('Mountain',{exact:true}).check();await page.getByRole('button',{name:'Add missing items',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});const checks=page.locator('[data-pack-id]'),count=await checks.count();assert.ok(count>=15);await checks.first().check();await page.getByRole('button',{name:'Use a template',exact:true}).click();await page.getByLabel('Swimming',{exact:true}).check();await page.getByLabel('Beach',{exact:true}).check();await page.getByLabel('Mountain',{exact:true}).check();await page.getByRole('button',{name:'Add missing items',exact:true}).click();await page.locator('#modal-backdrop').waitFor({state:'hidden'});assert.equal(await checks.count(),count);assert.equal(await checks.first().isChecked(),true);
   await page.getByRole('button',{name:'Budget',exact:true}).click();const field=(index,key)=>page.locator('.budget-input-table tbody tr').nth(index).locator('[data-budget-field="'+key+'"]');
@@ -72,7 +109,7 @@ export async function checkMobileTripDensity(browser,origin){
   await frame.locator('#modal-backdrop').waitFor({state:'hidden'});
   await frame.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');
   const layout=await frame.locator('html').evaluate(root=>{
-    const chart=document.querySelector('.gantt-wrap'),tabs=document.querySelector('.view-tabs');
+    const chart=document.querySelector('.gantt-fit'),tabs=document.querySelector('.view-tabs');
     const dates=document.querySelector('.day-strip');
     return {chartTop:chart?.getBoundingClientRect().top??Infinity,
       docOverflow:root.scrollWidth-root.clientWidth,
@@ -88,6 +125,24 @@ export async function checkMobileTripDensity(browser,origin){
   assert.ok(layout.tabsScrollable&&layout.datesVisible,'Trip tabs scroll while the day strip remains visible');
   assert.equal(layout.dayToolsVisible,false);
   assert.equal(layout.quickSaveVisible,false);
+  // Edit within the Gantt itself: End derives from saved Start + Duration.
+  await frame.locator('.gantt-fit-row [data-gantt-field=durationMinutes]').fill('90');
+  await frame.locator('.gantt-fit-row [data-gantt-end]').filter({hasText:'08:30'}).waitFor();
+  await frame.getByRole('button',{name:'Save schedule',exact:true}).click();
+  assert.equal(await frame.locator('.gantt-fit-row [data-gantt-field=durationMinutes]').inputValue(),'90');
+  if(browser.browserType().name()==='chromium')
+    await page.screenshot({path:'appearance-qa/travelit-gantt-iphone-normal.png'});
+  await frame.getByRole('button',{name:'Full screen',exact:true}).click();
+  await frame.locator('html[data-gantt-fullscreen=true]').waitFor();
+  await page.locator('section.gantt-shell-fullscreen').waitFor();
+  const full=await frame.locator('.gantt-fit').evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,
+   viewport:document.documentElement.clientWidth,scrollWidth:el.scrollWidth,width:el.clientWidth}));
+  assert.ok(full.left>=0&&full.right<=full.viewport+1&&full.scrollWidth<=full.width+3,
+   'Fullscreen must show the entire Gantt timescale: '+JSON.stringify(full));
+  if(browser.browserType().name()==='chromium')
+    await page.screenshot({path:'appearance-qa/travelit-gantt-iphone-fullscreen.png'});
+  await frame.getByRole('button',{name:'Exit full screen',exact:true}).click();
+  await page.locator('section.gantt-shell-fullscreen').waitFor({state:'detached'});
   await frame.locator('.trip-command-bar>.action-menu>summary').click();
   assert.equal(await frame.locator('.mobile-trip-menu-actions [data-action=preview-excel]').isVisible(),true);
   assert.equal(await frame.locator('.mobile-trip-menu-actions [data-action=new-trip]').isVisible(),true);
@@ -99,6 +154,7 @@ export async function checkMobileTripDensity(browser,origin){
   await frame.getByRole('button',{name:'Packing',exact:true}).click();
   await frame.getByRole('button',{name:'Itinerary',exact:true}).click();
   await frame.getByLabel('Itinerary view',{exact:true}).selectOption('gantt');
+  await frame.locator('[data-action="select-day:2026-12-05"]').click();
   if(browser.browserType().name()==='chromium')
     await page.screenshot({path:'appearance-qa/travelit-compact-connected-iphone.png'});
   console.log('TRAVELIT_COMPACT_CONNECTED_IPHONE_'+browser.browserType().name().toUpperCase()+'_PASS',JSON.stringify(layout));

@@ -299,7 +299,8 @@ async function checkTravelActivities(browser,origin){
   const reopened=await context.newPage();
   await reopened.goto(origin+path+'?view=trips',{waitUntil:'domcontentloaded'});
   await reopened.locator('.activity-summary-table tbody tr').filter({hasText:'Drive north revised'}).waitFor({state:'visible'});
-  await reopened.locator('.day-tools [data-action="day-next"]').click();
+  await reopened.locator('.action-menu > summary').filter({hasText:/^Day actions$/}).click();
+  await reopened.getByRole('button',{name:'Next day',exact:true}).click();
   await reopened.locator('.activity-summary-table tbody tr').filter({hasText:'Beach visit'}).waitFor({state:'visible'});
   assert.equal((await stops(reopened)).length,3,'Reopening must retain all three activities without duplication');
   console.log('TRAVELIT_MAP_AND_ATOMIC_ACTIVITY_TABLE_'+browser.browserType().name().toUpperCase()+'_PASS');

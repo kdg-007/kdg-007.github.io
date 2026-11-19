@@ -204,6 +204,22 @@ html[data-connected-app="liveit"] .connected-shell-home{display:none}
  #connected-apps-list .app-appearance-button{width:100%;text-align:left;border:0;border-top:1px solid var(--app-line);border-radius:7px}
 }
 
+/* Connected TravelIt Gantt fullscreen: inner iframe opts in explicitly.
+   Scoped to the named TravelIt workspace only, not KeepIt or sister apps. */
+section[aria-label="TravelIt connected workspace"].gantt-shell-fullscreen{
+ position:fixed!important;inset:0!important;z-index:2100!important;
+ width:100vw!important;height:100dvh!important;min-height:0!important;
+ max-width:none!important;margin:0!important;padding:0!important;
+ box-sizing:border-box!important;background:var(--app-ground,#f4f7f8)!important;
+ overflow:hidden!important
+}
+section.gantt-shell-fullscreen > .connected-shell-bar,
+section.gantt-shell-fullscreen > .connected-note-tools{display:none!important}
+section.gantt-shell-fullscreen iframe[title="TravelIt trip planning workspace"]{
+ display:block!important;width:100%!important;height:100dvh!important;
+ min-height:100dvh!important;max-height:100dvh!important;border:0!important
+}
+
 /* Keep compact ThinkIt controls below the shared app bar. */
 @media(max-width:1099px){
  html[data-connected-app="thinkit"] #thinkit-host-panel iframe{margin-top:4px!important}

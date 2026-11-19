@@ -18,6 +18,20 @@ assert.ok(planTripDependencies([{...chain,dependencies:[{id:'missing'}]}],trip).
 assert.throws(()=>normalizeStopDependencies([{id:'a'},{id:'a'}]),/distinct/);
 const crossing=planTripDependencies([{...predecessor,time:'23:50',durationMinutes:30},chain],trip);
 assert.equal(crossing.updates[0].date,'2026-12-02');assert.equal(crossing.updates[0].time,'00:20');
+for(const [type,expected] of [['FS','11:15'],['SS','10:15'],['FF','10:45'],['SF','09:45']]){
+ const successor={...predecessor,id:'b',title:'Derived start',time:'',durationMinutes:30,dependencies:[{id:'a',type,lagMinutes:15}]};
+ const planned=planTripDependencies([predecessor,successor],trip,{deriveStarts:true});
+ assert.equal(planned.issues.length,0);
+ assert.equal(planned.updates.length,1);
+ assert.equal(planned.updates[0].time,expected);
+ const earlier={...successor,time:'16:00'};
+ assert.equal(planTripDependencies([predecessor,earlier],trip,{deriveStarts:true}).updates[0].time,expected);
+}
+const autoChain=[predecessor,{...predecessor,id:'b',title:'B',time:'',dependencies:[{id:'a',type:'FS',lagMinutes:0}]},{...predecessor,id:'c',title:'C',time:'',dependencies:[{id:'b',type:'FS',lagMinutes:0}]}];
+const derived=planTripDependencies(autoChain,trip,{deriveStarts:true});
+assert.deepEqual(derived.updates.map(x=>x.time),['11:00','12:00']);
+const blocked=planTripDependencies([predecessor,{...autoChain[1],fixed:true}],trip,{deriveStarts:true});
+assert.equal(blocked.updates.length,0);assert.match(blocked.issues.join(' '),/fixed booking/);
 console.log('TRAVELIT_TYPED_DEPENDENCIES_FIXED_BOOKINGS_CYCLES_AND_MIDNIGHT_PASS');
 const response={elements:[{type:'way',tags:{highway:'residential',name:'Sample road'},geometry:[{lat:14.6,lon:120.98},{lat:14.601,lon:120.981}]}]};
 const atlas=await downloadRoadRegion({latitude:14.6,longitude:120.98,radiusKm:1,name:'Sample region',fetcher:async(url,options)=>{
