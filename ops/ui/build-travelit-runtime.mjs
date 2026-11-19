@@ -17,6 +17,6 @@ for(const asset of ['js/app-fast.js','css/workspace.css']){
 }
 writeFileSync(shellPath,shell);
 const result=esbuild.buildSync({entryPoints:[root+'app.js'],bundle:true,minify:true,
- format:'esm',target:'es2022',write:false,legalComments:'none',external:['./excel-preview.js*']});
+ format:'esm',platform:'browser',target:'es2020',write:false,external:['./excel-preview.js*']});
 writeFileSync(root+'app-fast.js',result.outputFiles[0].contents);
 console.log('TravelIt runtime rebuilt with on-demand Excel preview.');
