@@ -103,7 +103,7 @@ function flowSetFocus(id){
   selected=new Set([id]);edgeSelected=null;selectedAnnotation=null;
  }else{render();}
  render(); // Update Outline and inspector after selection/focus settle.
- if(!t22IsOutline()){fitView();focusCanvas();}
+ if(!t22IsOutline()&&!t22IsSwimlane()){fitView();focusCanvas();}
 }
 function flowSetLevel(level){
  if(page.mode!=='flow')return;
@@ -147,7 +147,7 @@ function flowWrapSelected(){
 }
 function flowRenderFocusBar(){
  const bar=$('flowFocusBar');if(!bar)return;
- bar.hidden=page.mode!=='flow';if(bar.hidden)return;
+ bar.hidden=page.mode!=='flow'||t22IsSwimlane();if(bar.hidden)return;
  const crumbs=$('flowFocusCrumbs');crumbs.replaceChildren();
  const make=(id,label,last=false)=>{
   const b=dom('button','',label,crumbs);b.type='button';
@@ -502,6 +502,8 @@ function renderUI(){if(!page)return;updateMindOrderControls();flowRenderFocusBar
 // outline-wbs.js. Only the existing ThinkIt document is mutated via transact().
 // KeepIt editor, notes, accounts, outbox and cloud modules are out of scope.
 const t22PageView=new Map(),t22Collapsed=new Map(),t22PageSearch=new Map();
+const sw1DepthByPage=new Map(),sw1FocusByPage=new Map();
+const sw3GroupByPage=new Map(),sw3ReviewByPage=new Map(),sw3SearchByPage=new Map(),sw3LimitByPage=new Map(),sw3SelectedRolesByPage=new Map();
 // Flowchart Outline and canvas share the stored node.collapsed state; other
 // modes keep their existing per-view Outline collapse preferences.
 function t22CollapsedForPage(){return page?.mode==='flow'?flowCollapsedIds():new Set(t22Collapsed.get(page.id)||[]);}
@@ -509,16 +511,24 @@ let t22Filter='',t22CurrentRows=[],t22Revealing=null,t22LastIssue='';
 let t22ActivePageId=null,t22VisibleCache=null;
 const T22_ROW_HEIGHT=44;
 function t22IsOutline(){return !!page&&!['bubble','bmc'].includes(page.mode)&&!diNoTabs()&&t22PageView.get(page.id)==='outline';}
+function t22IsSwimlane(){return !!page&&page.mode==='flow'&&!diNoTabs()&&t22PageView.get(page.id)==='swimlanes';}
 function t22SyncWorkspace(){
- const available=!!page&&!['bubble','bmc'].includes(page.mode)&&!diNoTabs(),isOutline=available&&t22IsOutline();
+ const available=!!page&&!['bubble','bmc'].includes(page.mode)&&!diNoTabs(),isOutline=available&&t22IsOutline(),isSwim=available&&t22IsSwimlane();
  $('t22ViewBar').hidden=!available;$('t22OutlinePanel').hidden=!isOutline;
- $('canvasWrap').hidden=isOutline;
- $('t22DiagramBtn').setAttribute('aria-pressed',String(!isOutline));
+ $('t22SwimlaneBtn').hidden=!available||page.mode!=='flow';
+ $('sw1Panel').hidden=!isSwim;
+ $('canvasWrap').hidden=isOutline||isSwim;
+ $('t22DiagramBtn').setAttribute('aria-pressed',String(!isOutline&&!isSwim));
  $('t22OutlineBtn').setAttribute('aria-pressed',String(isOutline));
+ $('t22SwimlaneBtn').setAttribute('aria-pressed',String(isSwim));
+ document.body.classList.toggle('sw1-active',isSwim);
 }
 function t22SwitchView(which){
  if(!page||['bubble','bmc'].includes(page.mode))return;
  if(which==='outline'&&!window.ThinkItOutline){toast('Outline model unavailable; diagram preserved.');return;}
+ if(which==='swimlanes'&&(page.mode!=='flow'||!window.ThinkItSwimlanes?.project)){
+  toast('Responsibility view is unavailable; the Flowchart is preserved.');return;
+ }
  t22PageView.set(page.id,which);
  if(which==='outline'){
   t22Revealing=[...selected][0]||null;
@@ -526,6 +536,85 @@ function t22SwitchView(which){
  }
  render();
  if(which==='diagram')focusCanvas();
+}
+function sw1RenderWorkspace(){
+ if(!t22IsSwimlane())return;
+ const panel=$('sw1Panel');
+ try{
+  const depthMode=sw1DepthByPage.get(page.id)||'next';
+  const roleAPI=window.ThinkItResponsibilityCatalog,reviewUI=window.ThinkItRoleReview;
+  if(!roleAPI||!reviewUI)throw Error('Reviewed responsibility modules unavailable');
+  const transientReview=reviewUI.captureState?.(panel);
+  // Undo, Redo, deletion and imported documents may invalidate the focused
+  // subprocess. Recover the overview without altering any source WBS field.
+  const requestedFocus=sw1FocusByPage.get(page.id)||null;
+  const liveFocus=requestedFocus&&byId(requestedFocus)?requestedFocus:null;
+  if(requestedFocus&&!liveFocus)sw1FocusByPage.delete(page.id);
+  const catalog=roleAPI.validate(page.responsibilityCatalog,page);
+  const details=n=>window.ThinkItFlowFocus.activityDetails(n);
+  const resolver=roleAPI.createResolver(catalog,details);
+  const groupMode=sw3GroupByPage.get(page.id)||'literal';
+  const roleSelectionKey=String(doc?.id||'')+'|'+page.id;
+  const selectedRoleLabels=sw3SelectedRolesByPage.get(roleSelectionKey)||new Set();
+  const projection=window.ThinkItSwimlanes.scopedProjection(
+    page,window.ThinkItFlowHierarchy,window.ThinkItFlowFocus,liveFocus,depthMode);
+  const model=window.ThinkItSwimlanes.project(page,projection,details,
+    {groupMode,resolveCategory:resolver.resolve});
+  const applyCatalog=next=>transact(()=>{page.responsibilityCatalog=roleAPI.validate(next,page);});
+  window.ThinkItSwimlanes.render(panel,model,{selectedIds:selected,
+    groupMode,reviewOpen:sw3ReviewByPage.get(page.id)===true,
+    canUndo:history.undo.length>0,canRedo:history.redo.length>0,onUndo:()=>undo(),onRedo:()=>redo(),
+    onGroupMode:mode=>{if(!['literal','categories'].includes(mode))return;sw3GroupByPage.set(page.id,mode);render();},
+    onReview:open=>{sw3ReviewByPage.set(page.id,!!open);render();},
+    renderReview:host=>reviewUI.render(host,roleAPI.audit(page,details,catalog),catalog,{
+      selectedNode:selected.size===1?byId([...selected][0]):null,
+      assignable:roleAPI.assignable,originalRole:resolver.responsible,resolver,
+      selectedRoles:selectedRoleLabels,
+      onSelectionChange:(role,isSelected)=>{
+        if(isSelected)selectedRoleLabels.add(role);else selectedRoleLabels.delete(role);
+        sw3SelectedRolesByPage.set(roleSelectionKey,selectedRoleLabels);
+      },
+      onAssignRoles:(roles,id)=>{
+        const allowed=new Set(roleAPI.audit(page,details,catalog).roles.filter(r=>r.role).map(r=>r.role));
+        if(!Array.isArray(roles)||!roles.length||roles.some(role=>!allowed.has(role))){
+          toast('Role selection changed. Recheck the selected responsibility labels.');return;
+        }
+        const next=roleAPI.assignRoles(catalog,roles,id);
+        sw3SelectedRolesByPage.delete(roleSelectionKey);
+        applyCatalog(next); // one undo transaction for the entire reviewed batch
+      },
+      initialSearch:sw3SearchByPage.get(page.id)||'',
+      initialLimit:sw3LimitByPage.get(page.id)||50,
+      onVisibleLimit:n=>sw3LimitByPage.set(page.id,n),
+      onSearch:value=>sw3SearchByPage.set(page.id,value),
+      onCreateCategory:name=>applyCatalog(roleAPI.withCategory(catalog,'cat_'+uid(),name)),
+      onRenameCategory:(id,name)=>applyCatalog(roleAPI.renameCategory(catalog,id,name)),
+      onRemoveCategory:id=>{if(window.confirm('Delete unused responsibility category?'))applyCatalog(roleAPI.removeCategory(catalog,id));},
+      onAssignRole:(role,id)=>applyCatalog(id?roleAPI.assignRole(catalog,role,id):roleAPI.unassignRole(catalog,role)),
+      onAssignNode:(id,categoryId)=>{
+        const node=byId(id);
+        if(!node||!roleAPI.assignable(node))return;
+        if(categoryId&&!resolver.responsible(node)){
+          toast('Set a responsible stakeholder in Properties before categorizing this activity.');return;
+        }
+        applyCatalog(categoryId?roleAPI.assignNode(catalog,id,categoryId):roleAPI.unassignNode(catalog,id));
+      }
+    }),
+    onFocus:id=>{if(id!==null&&!byId(id))return;sw1FocusByPage.set(page.id,id);render();},
+    onDepth:mode=>{sw1DepthByPage.set(page.id,mode);render();},onSelect:id=>{
+   if(!byId(id))return;
+   // Bypass H5 revealAncestors() and its persisted collapse transaction.
+   selected=new Set([id]);edgeSelected=null;selectedAnnotation=null;render();
+   const item=[...panel.querySelectorAll('[data-sw1-id]')].find(el=>el.getAttribute('data-sw1-id')===id);
+   item?.focus({preventScroll:true});
+  }});
+  reviewUI.restoreState?.(panel,transientReview);
+ }catch(err){
+  console.error('Responsibility view failed without modifying project data',err);
+  panel.replaceChildren();
+  const warning=document.createElement('p');warning.className='sw1-warning';
+  warning.textContent='Responsibility view unavailable: '+String(err.message||err);panel.appendChild(warning);
+ }
 }
 function t22UiIssue(msg){t22LastIssue=msg;const el=$('t22OutlineStatus');el.textContent=msg;el.dataset.severity='warning';toast(msg);}
 function t22ClearIssue(){t22LastIssue='';const el=$('t22OutlineStatus');el.dataset.severity='';}
@@ -869,6 +958,7 @@ function t22PrintWholeOutline(){
 }
 function t22BindWorkspace(){
  $('t22DiagramBtn').onclick=()=>t22SwitchView('diagram');$('t22OutlineBtn').onclick=()=>t22SwitchView('outline');
+ $('t22SwimlaneBtn').onclick=()=>t22SwitchView('swimlanes');
  $('flowFocusLevel').onchange=e=>{if(e.target.value){const val=e.target.value==='all'?'all':Number(e.target.value);flowSetLevel(val);e.target.value='';}};
  $('flowWrapSelection').onclick=flowWrapSelected;
  $('t22OutlineScroll').addEventListener('scroll',()=>{if(t22IsOutline())t22RenderWorkspace(true);},{passive:true});
@@ -939,7 +1029,7 @@ function t22BindWorkspace(){
  };
 }
 const businessModel=mountThinkItBusinessModel({getDocument:()=>doc,getPage:()=>page,makeSession:uid,markDirty});
-function render(){if(!projectIsReady)return;flowRenderPlan=null;document.body.classList.toggle('bubble-active',page.mode==='bubble'&&!diNoTabs());document.body.classList.toggle('bmc-active',page.mode==='bmc'&&!diNoTabs());t22SyncWorkspace();if(!t22IsOutline())renderCanvas();renderUI();if(t22IsOutline())t22RenderWorkspace();if(page.mode==='bubble')activateBubblePage();businessModel.activate();}
+function render(){if(!projectIsReady)return;flowRenderPlan=null;document.body.classList.toggle('bubble-active',page.mode==='bubble'&&!diNoTabs());document.body.classList.toggle('bmc-active',page.mode==='bmc'&&!diNoTabs());t22SyncWorkspace();if(!t22IsOutline()&&!t22IsSwimlane())renderCanvas();renderUI();if(t22IsOutline())t22RenderWorkspace();if(t22IsSwimlane())sw1RenderWorkspace();if(page.mode==='bubble')activateBubblePage();businessModel.activate();}
 const BUBBLE_HTML=null;
 let bubbleReady=false,bubbleActivePageId=null;
 function bubbleFrame(){return $('bubbleFrame');}
@@ -947,7 +1037,7 @@ function activateBubblePage(){if(!bubbleFrame().getAttribute('src')){bubbleFrame
 function bubbleExport(kind){if(bubbleReady&&page.mode==='bubble')bubbleFrame().contentWindow.postMessage({channel:'diagramit-bubble-v06',type:'export',kind},location.origin);}
 window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==bubbleFrame()?.contentWindow||event.data?.channel!=='diagramit-bubble-v06')return;const msg=event.data;if(msg.type==='save'){persist();return;}if(msg.type==='ready'){bubbleReady=true;bubbleActivePageId=null;if(page?.mode==='bubble')activateBubblePage();}else if(msg.type==='changed'){const p=doc?.pages.find(x=>x.id===msg.pageId&&x.mode==='bubble');if(!p||!msg.model||!Array.isArray(msg.model.spaces)||typeof msg.model.relations!=='object')return;p.bubbleData=msg.model;markDirty();}},false);
 
-function renderFast(){if(framePending)return;framePending=true;requestAnimationFrame(()=>{framePending=false;if(projectIsReady&&!t22IsOutline())renderCanvas();});}
+function renderFast(){if(framePending)return;framePending=true;requestAnimationFrame(()=>{framePending=false;if(projectIsReady&&!t22IsOutline()&&!t22IsSwimlane())renderCanvas();});}
 let diClosedTabs=new Set(),diTabProjectId='',diHasSavedProject=false;
 function diTabKey(){return 'ThinkIt_v094_tabs_'+(doc?.id||'none');}
 function diLoadTabState(){if(!doc||diTabProjectId===doc.id)return;diTabProjectId=doc.id;diClosedTabs=new Set();try{const raw=JSON.parse(localStorage.getItem(diTabKey())||'[]');if(Array.isArray(raw))diClosedTabs=new Set(raw.filter(id=>doc.pages.some(p=>p.id===id)));}catch{}}
@@ -1929,7 +2019,7 @@ function validateDocument(d){if(!d||!((d.format==='DIAGRAMIT'&&(d.version===2||d
  // Invalid outline metadata must not partially rewrite imported rich content.
  if(window.ThinkItOutline){for(const p of d.pages){if(p&&['mind','flow','org'].includes(p.mode))window.ThinkItOutline.auditPage(p);}}
  else if(d.pages.some(p=>p?.outlineSettings!==undefined||p?.nodes?.some(n=>n.dependencies!==undefined||n.outlineParentId!==undefined)))throw Error('Outline/WBS module unavailable: cannot safely open this project.');
- const pageIds=new Set();let count=0;for(const p of d.pages){if(!p?.id||!MODES[p.mode]||!Array.isArray(p.nodes)||!Array.isArray(p.edges))throw Error('Invalid page structure.');if(pageIds.has(p.id))throw Error('Duplicate page ID.');pageIds.add(p.id);if(p.mode==='bmc'&&(typeof p.id!=='string'||p.id.length>256||(p.bmcData!==undefined&&!businessModel.validModel(p.bmcData))))throw Error('Invalid Business Model Canvas page.');if(p.mode==='bubble'&&p.bubbleData){const b=p.bubbleData;if(!Array.isArray(b.spaces)||b.spaces.length>750||!b.relations||typeof b.relations!=='object'||!Array.isArray(b.flows)||b.flows.length>5000)throw Error('Invalid Bubble Diagram page.');}const ids=new Set();for(const n of p.nodes){if(!n.id||ids.has(n.id)||!Number.isFinite(n.x)||!Number.isFinite(n.y)||!(n.w>5&&n.w<20000)||!(n.h>5&&n.h<20000)||typeof n.label!=='string')throw Error('Invalid or duplicate node in '+p.name+'.');if(p.mode==='flow'&&n.flowActivity!==undefined){
+ const pageIds=new Set();let count=0;for(const p of d.pages){if(!p?.id||!MODES[p.mode]||!Array.isArray(p.nodes)||!Array.isArray(p.edges))throw Error('Invalid page structure.');if(pageIds.has(p.id))throw Error('Duplicate page ID.');pageIds.add(p.id);if(p.mode==='bmc'&&(typeof p.id!=='string'||p.id.length>256||(p.bmcData!==undefined&&!businessModel.validModel(p.bmcData))))throw Error('Invalid Business Model Canvas page.');if(p.responsibilityCatalog!==undefined){if(p.mode!=='flow'||!window.ThinkItResponsibilityCatalog)throw Error('Responsibility catalog can only be opened on a Flowchart with its validator available.');window.ThinkItResponsibilityCatalog.validate(p.responsibilityCatalog,p);}if(p.mode==='bubble'&&p.bubbleData){const b=p.bubbleData;if(!Array.isArray(b.spaces)||b.spaces.length>750||!b.relations||typeof b.relations!=='object'||!Array.isArray(b.flows)||b.flows.length>5000)throw Error('Invalid Bubble Diagram page.');}const ids=new Set();for(const n of p.nodes){if(!n.id||ids.has(n.id)||!Number.isFinite(n.x)||!Number.isFinite(n.y)||!(n.w>5&&n.w<20000)||!(n.h>5&&n.h<20000)||typeof n.label!=='string')throw Error('Invalid or duplicate node in '+p.name+'.');if(p.mode==='flow'&&n.flowActivity!==undefined){
  const v=n.flowActivity,fields=['responsible','participants','inputs','outputs','approvals','remarks'];
  if(!v||typeof v!=='object'||Array.isArray(v)||
     Object.keys(v).some(k=>!fields.includes(k)||typeof v[k]!=='string'||v[k].length>6000))
@@ -2886,13 +2976,21 @@ window.addEventListener('resize',()=>{diSyncMobilePanels();renderCanvas();});new
 function onKeyDown(e){
 if(!$('diStartScreen').hidden){if(e.key==='Escape')e.preventDefault();return;}
 const cmd=e.metaKey||e.ctrlKey, key=String(e.key),lo=key.toLowerCase(),isField=!!e.target.closest('input,textarea,select,[contenteditable="true"]');if(key==='Escape'&&!activeModal&&diCloseMobilePanels()){e.preventDefault();return;}if(page?.mode==='bubble'&&!cmd)return;
-if(key==='Escape'){if(paintActive){paintActive=false;paintRepeat=false;renderUI();toast('Format painter cancelled.');e.preventDefault();return;}if(activeModal){activeModal.close();e.preventDefault();return;}if(editing){finishEdit(false);e.preventDefault();return;}if(gesture){gesture=null;renderCanvas();e.preventDefault();return;}if(connectSource){connectSource=null;setTool('select');focusCanvas();e.preventDefault();return;}if(preview){cancelPreview();e.preventDefault();return;}if(tool!=='select'){selectCanvasTool('select');e.preventDefault();return;}if(selected.size||edgeSelected||selectedAnnotation){clearSelection();focusCanvas();e.preventDefault();return;}return;}
+if(key==='Escape'){if(paintActive){paintActive=false;paintRepeat=false;renderUI();toast('Format painter cancelled.');e.preventDefault();return;}if(activeModal){activeModal.close();e.preventDefault();return;}if(editing){finishEdit(false);e.preventDefault();return;}if(gesture){gesture=null;renderCanvas();e.preventDefault();return;}if(connectSource){connectSource=null;setTool('select');focusCanvas();e.preventDefault();return;}if(preview){cancelPreview();e.preventDefault();return;}if(tool!=='select'){selectCanvasTool('select');e.preventDefault();return;}if(selected.size||edgeSelected||selectedAnnotation){clearSelection();if(!t22IsSwimlane())focusCanvas();e.preventDefault();return;}return;}
 if(activeModal||editing)return;
 if(page.mode==='bmc'&&!(cmd&&(lo==='s'||lo==='o')))return;
 if(cmd&&(lo==='k'||lo==='f')){e.preventDefault();openPalette();return;}
 if(cmd&&lo==='s'){e.preventDefault();persist({manual:true});toast('Saving locally…');return;}
 if(cmd&&lo==='o'){e.preventDefault();$('fileInput').click();return;}
 if(isField)return;
+// The SW3 review is an authorized transactional editor. Permit only history
+// shortcuts here, not diagram creation, deletion, nudging or clipboard writes.
+if(t22IsSwimlane()&&sw3ReviewByPage.get(page.id)===true&&cmd&&(lo==='z'||lo==='y')){
+ e.preventDefault();if(lo==='y'||e.shiftKey)redo();else undo();return;
+}
+// SW1 is a non-editing perspective: protect the canonical graph from keyboard
+// creation, nudging, deleting, grouping and clipboard gestures while it is open.
+if(t22IsSwimlane())return;
 if(page.mode==='mind'&&cmd&&e.shiftKey&&!e.altKey&&['ArrowUp','ArrowDown'].includes(key)&&selected.size===1){e.preventDefault();if(!e.repeat)moveMindTopic([...selected][0],key==='ArrowUp'?-1:1);return;}
 if(cmd&&e.altKey&&lo==='c'){e.preventDefault();if(selected.size===1){paintStyle=visualStyle(byId([...selected][0]));toast('Style copied. Select destination and press ⌘⌥V, or activate Format Painter.');}return;}
 if(cmd&&e.altKey&&lo==='v'){e.preventDefault();if(paintStyle&&selected.size)transact(()=>{for(const id of selected)applyVisualStyle(byId(id),paintStyle);});else toast('Copy a shape style first with ⌘⌥C.');return;}
@@ -3054,7 +3152,7 @@ function diPrint(){
  bubbleFrame().contentWindow.postMessage({channel:'diagramit-bubble-v06',type:'export',kind:'print-svg',requestId},location.origin);
  setTimeout(()=>{const job=diPrintPending.get(requestId);if(job){diPrintPending.delete(requestId);if(!job.popup.closed)job.popup.document.body.textContent='Print sheet could not be prepared. Close this tab and try again.';}},15000);
 }
-const PRINT_LAYOUT_HTML="<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><title>__TITLE__ | ThinkIt \u00b7 Print Layout</title>\n<style>\n:root{--navy:#0d2f4f;--teal:#0d7475;--line:#cddbdd;--paper:#fff;--bg:#e8eded;--gray:#516b76}\n*{box-sizing:border-box}\nbody{margin:0;color:var(--navy);background:var(--bg);font:13px/1.4 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Arial,sans-serif;display:grid;grid-template-columns:288px minmax(0,1fr);height:100vh;overflow:hidden}\n#controls{height:100vh;overflow:auto;background:#f7f7f3;border-right:1px solid #b8cacc;padding:18px;box-shadow:3px 0 14px #112f4b10;z-index:2}\nh1{font-size:19px;margin:0 0 4px}h2{font-size:13px;margin:18px 0 8px}.muted{color:var(--gray);font-size:12px}\nlabel{display:block;margin:11px 0 4px;font-size:12px;font-weight:650}select,input[type=number],input[type=range]{width:100%;accent-color:var(--teal)}select,input[type=number]{border:1px solid #b6c8ca;border-radius:6px;background:white;color:#12394e;padding:8px;font:inherit}input[type=range]{height:20px}\n.twocol{display:grid;grid-template-columns:1fr 1fr;gap:10px}.threecol{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.row{display:flex;gap:8px;align-items:center}.smallbtn{background:white;border:1px solid #a5babb;color:var(--navy);padding:8px;border-radius:6px;cursor:pointer;font-weight:600}.smallbtn:hover{border-color:var(--teal)}button.primary{color:white;background:var(--teal);border:0;border-radius:7px;padding:11px 13px;cursor:pointer;font-size:13px;font-weight:700}.primary:hover{background:#096064}.buttons{display:grid;gap:8px;margin-top:17px}\n#stage{overflow:auto;display:flex;flex-direction:column;align-items:center;min-width:0}#stageHead{width:100%;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;background:#f2f6f5;border-bottom:1px solid #c5d4d5}#stageArea{flex:1;min-height:0;min-width:0;width:100%;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px}#sheetHost{flex:none}#sheet{background:white;box-shadow:0 7px 25px #172b3b38;transform-origin:top left;display:flex;flex-direction:column;gap:0;overflow:hidden;position:relative;color:var(--navy)}\n#sheetHeader{display:flex;align-items:center;flex:none;min-height:10mm;padding-bottom:2mm}#sheetHeader h3{font-size:16pt;line-height:1.12;margin:0;font-weight:700}\n#diagramSlot{min-height:0;flex:1;position:relative;overflow:hidden;background:#fbfaf5;margin-top:1.5mm;margin-bottom:0}\n#diagramSlot svg{position:absolute;display:block;max-width:none;max-height:none;overflow:visible}\n\n#warning{margin:13px 0 0;padding:8px 10px;background:#ffeedb;color:#804d16;border-radius:6px;font-size:11px}#warning[hidden]{display:none}\n.tip{background:#edf3f1;border-radius:6px;padding:9px;font-size:11px;color:#4b656d;margin-top:16px}.check{display:flex;gap:8px;align-items:center;margin-top:9px;font-size:12px}.check input{accent-color:var(--teal)}\n@media(max-width:790px){body{grid-template-columns:220px 1fr}#controls{padding:12px}#sheetHeader h3{font-size:13pt}}\n@page{size:297mm 210mm;margin:0}\n@media print{html,body{width:auto!important;height:auto!important;overflow:visible!important;display:block!important;background:white!important;margin:0!important;padding:0!important}#controls,#stageHead{display:none!important}#stage,#stageArea,#sheetHost{display:block!important;overflow:visible!important;width:auto!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important}#sheet{transform:none!important;box-shadow:none!important;margin:0!important;page-break-inside:avoid;break-inside:avoid}#diagramSlot{background:#fbfaf5}body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}\n</style><style id=\"pageRules\"></style></head>\n<body>\n<aside id=\"controls\"><h1>Print Layout</h1><div class=\"muted\">Arrange the diagram on the page before printing or saving as PDF.</div>\n<h2>Page setup</h2><div class=\"twocol\"><div><label for=\"paper\">Paper size</label><select id=\"paper\"><option>A4</option><option>A3</option><option>A2</option><option>Letter</option><option>Legal</option></select></div><div><label for=\"orientation\">Orientation</label><select id=\"orientation\"><option value=\"landscape\">Landscape</option><option value=\"portrait\">Portrait</option></select></div></div>\n<label for=\"margins\">Internal margins</label><select id=\"margins\"><option value=\"5\">Narrow \u00b7 5 mm</option><option value=\"10\" selected>Standard \u00b7 10 mm</option><option value=\"15\">Comfortable \u00b7 15 mm</option><option value=\"20\">Wide \u00b7 20 mm</option></select>\n<h2>Diagram position</h2><label for=\"framing\">Content framing</label><select id=\"framing\"><option value=\"content\">Fit all diagram content</option><option value=\"canvas\">Show full drawing canvas</option></select>\n<div class=\"row\" style=\"justify-content:space-between;margin-top:12px\"><label for=\"scale\" style=\"margin:0\">Artwork size (relative to fit)</label><strong id=\"scaleValue\">100%</strong></div><input id=\"scale\" type=\"range\" min=\"40\" max=\"140\" step=\"5\" value=\"100\"/>\n<div class=\"twocol\"><div><label for=\"halign\">Horizontal</label><select id=\"halign\"><option value=\"left\">Left</option><option value=\"center\" selected>Center</option><option value=\"right\">Right</option></select></div><div><label for=\"valign\">Vertical</label><select id=\"valign\"><option value=\"top\">Top</option><option value=\"center\" selected>Center</option><option value=\"bottom\">Bottom</option></select></div></div>\n<div class=\"twocol\"><div><label for=\"offsetX\">Shift X (mm)</label><input id=\"offsetX\" type=\"number\" min=\"-100\" max=\"100\" step=\"1\" value=\"0\"/></div><div><label for=\"offsetY\">Shift Y (mm)</label><input id=\"offsetY\" type=\"number\" min=\"-100\" max=\"100\" step=\"1\" value=\"0\"/></div></div>\n\n<div class=\"buttons\"><button id=\"fit\" class=\"smallbtn\" type=\"button\">Fit and center diagram</button><button id=\"print\" class=\"primary\" type=\"button\">Print / Save as PDF</button></div>\n<div id=\"warning\" hidden role=\"status\"></div>\n<div class=\"tip\">Chrome print settings: choose <strong>Save as PDF</strong>, keep <strong>Scale 100%</strong> and enable <strong>Background graphics</strong>. The page size and orientation are set here. In Chrome, disable <strong>Headers and footers</strong>. If Chrome overrides the page size or orientation, match the values shown here.</div>\n</aside>\n<section id=\"stage\"><div id=\"stageHead\"><strong>Print preview \u2014 __TITLE__</strong><span class=\"muted\" id=\"pageInfo\">A4 landscape \u00b7 1 page</span></div><div id=\"stageArea\"><div id=\"sheetHost\"><main id=\"sheet\"><header id=\"sheetHeader\"><h3>__TITLE__</h3></header><div id=\"diagramSlot\" data-content-view-box=\"__CONTENT_VIEWBOX__\">__SVG__</div></main></div></div></section>\n<script src=\"/thinkit/assets/print-layout.js?v=measured-1\"></script></body></html>";
+const PRINT_LAYOUT_HTML="<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><title>__TITLE__ | ThinkIt \u00b7 Print Layout</title>\n<style>\n:root{--navy:#0d2f4f;--teal:#0d7475;--line:#cddbdd;--paper:#fff;--bg:#e8eded;--gray:#516b76}\n*{box-sizing:border-box}\nbody{margin:0;color:var(--navy);background:var(--bg);font:13px/1.4 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Arial,sans-serif;display:grid;grid-template-columns:288px minmax(0,1fr);height:100vh;overflow:hidden}\n#controls{height:100vh;overflow:auto;background:#f7f7f3;border-right:1px solid #b8cacc;padding:18px;box-shadow:3px 0 14px #112f4b10;z-index:2}\nh1{font-size:19px;margin:0 0 4px}h2{font-size:13px;margin:18px 0 8px}.muted{color:var(--gray);font-size:12px}\nlabel{display:block;margin:11px 0 4px;font-size:12px;font-weight:650}select,input[type=number],input[type=range]{width:100%;accent-color:var(--teal)}select,input[type=number]{border:1px solid #b6c8ca;border-radius:6px;background:white;color:#12394e;padding:8px;font:inherit}input[type=range]{height:20px}\n.twocol{display:grid;grid-template-columns:1fr 1fr;gap:10px}.threecol{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.row{display:flex;gap:8px;align-items:center}.smallbtn{background:white;border:1px solid #a5babb;color:var(--navy);padding:8px;border-radius:6px;cursor:pointer;font-weight:600}.smallbtn:hover{border-color:var(--teal)}button.primary{color:white;background:var(--teal);border:0;border-radius:7px;padding:11px 13px;cursor:pointer;font-size:13px;font-weight:700}.primary:hover{background:#096064}.buttons{display:grid;gap:8px;margin-top:17px}\n#stage{overflow:auto;display:flex;flex-direction:column;align-items:center;min-width:0}#stageHead{width:100%;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;background:#f2f6f5;border-bottom:1px solid #c5d4d5}#stageArea{flex:1;min-height:0;min-width:0;width:100%;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px}#sheetHost{flex:none}#sheet{background:white;box-shadow:0 7px 25px #172b3b38;transform-origin:top left;display:flex;flex-direction:column;gap:0;overflow:hidden;position:relative;color:var(--navy)}\n#sheetHeader{display:flex;align-items:center;flex:none;min-height:10mm;padding-bottom:2mm}#sheetHeader h3{font-size:16pt;line-height:1.12;margin:0;font-weight:700}\n#diagramSlot{min-height:0;flex:1;position:relative;overflow:hidden;background:#fbfaf5;margin-top:1.5mm;margin-bottom:0}\n#diagramSlot svg{position:absolute;display:block;max-width:none;max-height:none;overflow:visible}\n\n#warning{margin:13px 0 0;padding:8px 10px;background:#ffeedb;color:#804d16;border-radius:6px;font-size:11px}#warning[hidden]{display:none}\n.tip{background:#edf3f1;border-radius:6px;padding:9px;font-size:11px;color:#4b656d;margin-top:16px}.check{display:flex;gap:8px;align-items:center;margin-top:9px;font-size:12px}.check input{accent-color:var(--teal)}\n@media(max-width:790px){body{grid-template-columns:220px 1fr}#controls{padding:12px}}\n@page{size:297mm 210mm;margin:0}\n@media print{html,body{width:auto!important;height:auto!important;overflow:visible!important;display:block!important;background:white!important;margin:0!important;padding:0!important}#controls,#stageHead{display:none!important}#stage,#stageArea,#sheetHost{display:block!important;overflow:visible!important;width:auto!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important}#sheet{transform:none!important;box-shadow:none!important;margin:0!important;page-break-inside:avoid;break-inside:avoid}#diagramSlot{background:#fbfaf5}body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}\n</style><style id=\"pageRules\"></style></head>\n<body>\n<aside id=\"controls\"><h1>Print Layout</h1><div class=\"muted\">Arrange the diagram on the page before printing or saving as PDF.</div>\n<h2>Page setup</h2><div class=\"twocol\"><div><label for=\"paper\">Paper size</label><select id=\"paper\"><option>A4</option><option>A3</option><option>A2</option><option>Letter</option><option>Legal</option></select></div><div><label for=\"orientation\">Orientation</label><select id=\"orientation\"><option value=\"landscape\">Landscape</option><option value=\"portrait\">Portrait</option></select></div></div>\n<label for=\"margins\">Internal margins</label><select id=\"margins\"><option value=\"5\">Narrow \u00b7 5 mm</option><option value=\"10\" selected>Standard \u00b7 10 mm</option><option value=\"15\">Comfortable \u00b7 15 mm</option><option value=\"20\">Wide \u00b7 20 mm</option></select>\n<h2>Diagram position</h2><label for=\"framing\">Content framing</label><select id=\"framing\"><option value=\"content\">Fit all diagram content</option><option value=\"canvas\">Show full drawing canvas</option></select>\n<div class=\"row\" style=\"justify-content:space-between;margin-top:12px\"><label for=\"scale\" style=\"margin:0\">Artwork size (relative to fit)</label><strong id=\"scaleValue\">100%</strong></div><input id=\"scale\" type=\"range\" min=\"40\" max=\"140\" step=\"5\" value=\"100\"/>\n<div class=\"twocol\"><div><label for=\"halign\">Horizontal</label><select id=\"halign\"><option value=\"left\">Left</option><option value=\"center\" selected>Center</option><option value=\"right\">Right</option></select></div><div><label for=\"valign\">Vertical</label><select id=\"valign\"><option value=\"top\">Top</option><option value=\"center\" selected>Center</option><option value=\"bottom\">Bottom</option></select></div></div>\n<div class=\"twocol\"><div><label for=\"offsetX\">Shift X (mm)</label><input id=\"offsetX\" type=\"number\" min=\"-100\" max=\"100\" step=\"1\" value=\"0\"/></div><div><label for=\"offsetY\">Shift Y (mm)</label><input id=\"offsetY\" type=\"number\" min=\"-100\" max=\"100\" step=\"1\" value=\"0\"/></div></div>\n\n<div class=\"buttons\"><button id=\"fit\" class=\"smallbtn\" type=\"button\">Fit and center diagram</button><button id=\"print\" class=\"primary\" type=\"button\">Print / Save as PDF</button></div>\n<div id=\"warning\" hidden role=\"status\"></div>\n<div class=\"tip\">Chrome print settings: choose <strong>Save as PDF</strong>, keep <strong>Scale 100%</strong> and enable <strong>Background graphics</strong>. The page size and orientation are set here. In Chrome, disable <strong>Headers and footers</strong>. If Chrome overrides the page size or orientation, match the values shown here.</div>\n</aside>\n<section id=\"stage\"><div id=\"stageHead\"><strong>Print preview \u2014 __TITLE__</strong><span class=\"muted\" id=\"pageInfo\">A4 landscape \u00b7 1 page</span></div><div id=\"stageArea\"><div id=\"sheetHost\"><main id=\"sheet\"><header id=\"sheetHeader\"><h3>__TITLE__</h3></header><div id=\"diagramSlot\" data-content-view-box=\"__CONTENT_VIEWBOX__\">__SVG__</div></main></div></div></section>\n<script src=\"/thinkit/assets/print-layout.js?v=measured-2\"></script></body></html>";
 function diPrintBubbleSheet(msg){
  const job=diPrintPending.get(msg.requestId);if(!job)return;
  diPrintPending.delete(msg.requestId);
@@ -3164,7 +3262,7 @@ function diCloseMenu(restoreFocus=false){const previous=diMenuOpen;diMenuOpen=''
 function diFocusMenuItem(toEnd=false){const items=[...$('diMenuPopup').querySelectorAll('button.di-menu-item:not([disabled])')];(toEnd?items.at(-1):items[0])?.focus();}
 function diStepMenuItem(direction){const items=[...$('diMenuPopup').querySelectorAll('button.di-menu-item:not([disabled])')];if(!items.length)return;const i=items.indexOf(document.activeElement);items[(i+direction+items.length)%items.length]?.focus();}
 
-function diRibbonButton(id){const c=diCommands[id];if(!c||!diEnabled(c))return null;const b=document.createElement('button');b.type='button';b.className='di-ribbon-btn';b.dataset.dcmd=id;b.title=c.label+(c.shortcut?' · '+c.shortcut:'');b.innerHTML=`<span class="di-ribbon-icon"></span><span></span>`;b.children[0].textContent=c.icon;b.children[1].textContent=c.label.replace(/…/g,'').replace(/\s*\/.*$/,'').replace(/ Diagram$/,'');return b}
+function diRibbonButton(id){const c=diCommands[id];if(!c||!diEnabled(c))return null;const b=document.createElement('button');b.type='button';b.className='di-ribbon-btn';b.dataset.dcmd=id;b.title=c.label+(c.shortcut?' · '+c.shortcut:'');b.setAttribute('aria-label',c.label);b.innerHTML=`<span class="di-ribbon-icon"></span><span></span>`;b.children[0].textContent=c.icon;const shortLabels={'file.save':'Save locally','file.saveAs':'Save as new','file.recovery':'Restore version'};b.children[1].textContent=shortLabels[id]||c.label.replace(/…/g,'').replace(/\s*\/.*$/,'').replace(/ Diagram$/,'');return b}
 function diRibbonSelect(options,value,change,shortLabel){const row=document.createElement('label');row.className='di-inline-check';row.textContent=shortLabel+' ';const el=document.createElement('select');el.className='di-ribbon-select';for(const [v,label] of options){const o=document.createElement('option');o.value=v;o.textContent=label;el.append(o)}el.value=value;el.onchange=e=>change(e.target.value);row.append(el);return row}
 function diRibbonCheck(label,checked,change){const l=document.createElement('label');l.className='di-inline-check';const c=document.createElement('input');c.type='checkbox';c.checked=checked;c.onchange=e=>change(e.target.checked);l.append(c,document.createTextNode(label));return l}
 function diRenderRibbon(){
@@ -3293,6 +3391,9 @@ function diInitShell(){
  $('diRibbonToggle').onclick=diToggleRibbon;$('diFocusToggle').onclick=diToggleFocus;$('diFocusExit').onclick=diExitCanvasMode;
  $('diInspectorToggle').onclick=()=>diPanel('inspector');$('diActiveMode').onclick=diMode;
  document.addEventListener('pointerdown',e=>{if(diMenuOpen&&!e.target.closest('#diMenuBar'))diCloseMenu()},true);
+ // Pointer events do not cross iframe boundaries. Dismiss menus when focus
+ // moves to the suite header or an embedded editor such as the BMC canvas.
+ window.addEventListener('blur',()=>{if(diMenuOpen)diCloseMenu()});
  document.addEventListener('keydown',e=>{
    if(!$('diStartScreen').hidden)return;
    if(activeModal)return;

@@ -3,7 +3,7 @@ import {mountTravelCalendar} from './travel-calendar.mjs?v=1';
 import {createSyncBindings} from './app-sync-bindings.mjs?v=1';
 
 const FRAMES={
- thinkit:'/thinkit/40791585175d0e8d51c4/index.html',
+ thinkit:'/thinkit/ae77075fb58b3483a94b/index.html',
  liveit:'/partners/liveit/thinkit/connected-w18e-c15396/index.html',
  travelit:'/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html'
 };

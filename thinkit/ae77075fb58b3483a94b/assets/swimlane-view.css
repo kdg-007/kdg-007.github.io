@@ -1,0 +1,40 @@
+/* ThinkIt SW1: optional read-only cross-functional Responsibility View. */
+body.sw1-active .editor-toolbar,body.sw1-active #selectionToolbar{display:none!important}
+#t22SwimlaneBtn[hidden], #sw1Panel[hidden]{display:none!important}
+.sw1-panel{display:flex;flex:1;min-height:0;min-width:0;flex-direction:column;background:var(--surface)}
+.sw1-info{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px 6px;border-bottom:1px solid var(--border)}
+.sw1-info strong{font-size:14px;color:var(--navy)}
+.sw1-stats{font-size:14px;color:var(--muted)}
+.sw1-hint{margin:0;padding:7px 14px;color:var(--muted);background:var(--surface2);font-size:14px;line-height:1.45}
+.sw1-warning{margin:0;background:var(--surface2);padding:7px 14px;border-bottom:1px solid var(--border);color:var(--red);font-size:14px}
+.sw1-scope-bar{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--surface)}
+.sw1-scope-bar label{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:650;color:var(--navy)}
+.sw1-depth-select,.sw1-focus-select{min-width:180px;max-width:min(65vw,430px);padding:7px;border:1px solid var(--border);border-radius:6px;color:var(--ink);background:var(--surface)}
+.sw1-focus-all{border:1px solid var(--border);border-radius:6px;background:var(--surface2);padding:7px 10px;font-size:14px;font-weight:650;color:var(--teal)}
+.sw1-depth-select:focus-visible,.sw1-focus-select:focus-visible,.sw1-focus-all:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.sw1-empty{padding:24px 14px;color:var(--muted)}
+.sw1-scroll{flex:1;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;background:var(--paper);touch-action:pan-x pan-y}
+.sw1-scroll svg{display:block;max-width:none}
+.sw1-lane{fill:var(--surface);stroke:var(--border);stroke-width:1}
+.sw1-lane.sw1-unassigned{stroke:var(--amber);stroke-dasharray:5 4}
+.sw1-lane-label{fill:var(--surface2);stroke:var(--border)}
+.sw1-lane-text{fill:var(--navy);font-size:14px;font-weight:700}
+.sw1-lane-count{fill:var(--muted);font-size:14px}
+.sw1-link{stroke:var(--line-strong);stroke-linecap:round;stroke-linejoin:round;opacity:.62}
+.sw1-link.cross-lane{stroke:var(--teal);opacity:.8}
+.sw1-link-text{font-size:14px;fill:var(--navy);stroke:var(--surface);stroke-width:3;paint-order:stroke}
+.sw1-activity{cursor:pointer;outline:none}
+.sw1-activity-box{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.6}
+.sw1-activity:hover .sw1-activity-box,.sw1-activity:focus-visible .sw1-activity-box{stroke:var(--teal);stroke-width:2.5}
+.sw1-activity.is-selected .sw1-activity-box{stroke:var(--teal);stroke-width:3;fill:var(--teal-light)}
+.sw1-activity-text{fill:var(--ink);font-size:14px;font-weight:600;pointer-events:none}
+.sw1-collapse-badge{fill:var(--teal);font-size:14px;font-weight:800;pointer-events:none}
+@media (max-width:800px){
+ .sw1-info{padding:9px 12px 6px;gap:4px}
+ .sw1-info strong,.sw1-stats{font-size:14px}
+ .sw1-hint{font-size:14px}
+ #t22SwimlaneBtn{padding:6px 9px}
+}
+@media print{.sw1-scroll{overflow:visible}.sw1-panel{height:auto}}
+
+.sw1-subprocess-bars{fill:none;stroke:var(--line-strong);stroke-width:1.2;pointer-events:none}

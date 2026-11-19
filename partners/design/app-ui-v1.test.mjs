@@ -1,3 +1,4 @@
+import {checkThinkitSwimlanes} from './thinkit-swimlanes.browser.mjs';
 import {checkWorkspaceV3,checkStartupBundle,checkMobileTripDensity} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/workspace-v3.browser.mjs';
 import {checkExcelImport} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-import.browser.mjs';
 import {checkExcelPreview} from '../travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-preview.browser.mjs';
@@ -502,7 +503,7 @@ try {
   await checkTravelActivities(browser,origin);
   await checkExcelPreview(browser,origin);
   await checkExcelImport(browser,origin);
-  for(const [label,check] of [['workspace',checkWorkspaceV3],['mobile trip',checkMobileTripDensity],['startup',checkStartupBundle],['map',checkStreetMap],['ThinkIt order',checkThinkitTopicOrder]]){
+  for(const [label,check] of [['workspace',checkWorkspaceV3],['mobile trip',checkMobileTripDensity],['startup',checkStartupBundle],['map',checkStreetMap],['ThinkIt order',checkThinkitTopicOrder],['ThinkIt swimlanes',checkThinkitSwimlanes]]){
    try{await check(browser,origin);}catch(error){featureFailures.push(engine.name()+' '+label+': '+error.message);console.error('FEATURE_FAILURE',engine.name(),label,error?.stack||String(error));}
   }
   await browser.close();browser=null;

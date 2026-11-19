@@ -1,0 +1,14 @@
+
+.review-preview{border:1px solid #a7d0c9;background:#eff8f5;border-radius:9px;padding:11px 12px;margin:10px 0 5px;font-size:12px}
+.review-preview strong{color:#0d2f4f}.review-preview p{font-size:11px;line-height:1.45;color:#42616e;margin:5px 0 9px}
+.review-preview .row{gap:6px}.review-preview button{font-size:11px;padding:6px 9px}
+.review-issue .review-actions{flex-wrap:wrap}.review-issue .review-actions button.review-preview-btn{border-color:#8abbaf;color:#086a65;background:#f4fcf9}
+.review-hint{font-size:11px;color:#466c70;padding:7px 9px;background:#eef5f4;border-radius:7px;margin-top:8px}
+
+/* T43 readability: apply the same accessible secondary text and border language
+   inside the independent Bubble iframe, not only its ThinkIt parent. */
+:root{--muted:#445e6d;--line:#a4b9c1;--warn:#974538}
+.small,.sheet-header p,.legend,.sheet-footer,.empty p{color:var(--muted)}
+.sheet th{color:#244b5d}
+.rate-U,.rate-na{color:#445e6d!important}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #0b6566;outline-offset:2px}

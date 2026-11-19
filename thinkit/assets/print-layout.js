@@ -3,6 +3,18 @@
 (()=>{'use strict';
 const $=id=>document.getElementById(id),MM_TO_PX=96/25.4,SVG_NS='http://www.w3.org/2000/svg';
 const RULER_INSET_MM=5,RULER_BAND_MM=6;
+const SETTINGS_KEY='thinkit-print-page-settings-v1';
+const choices={paper:['A4','A3','A2','Letter','Legal'],orientation:['landscape','portrait'],margins:['5','10','15','20']};
+const rulerChoices=['rulerH','rulerV','rulerPrint'];
+function restoreSettings(){
+ try{const saved=JSON.parse(localStorage.getItem(SETTINGS_KEY));if(saved?.version!==1)return;
+  for(const [id,allowed] of Object.entries(choices))if(allowed.includes(saved[id]))$(id).value=saved[id];
+  for(const id of rulerChoices)if(typeof saved[id]==='boolean')$(id).checked=saved[id];
+ }catch{}
+}
+function rememberSettings(){
+ try{localStorage.setItem(SETTINGS_KEY,JSON.stringify({version:1,...Object.fromEntries(Object.keys(choices).map(id=>[id,$(id).value])),...Object.fromEntries(rulerChoices.map(id=>[id,$(id).checked]))}));}catch{}
+}
 const paper={A4:[210,297],A3:[297,420],A2:[420,594],Letter:[215.9,279.4],Legal:[215.9,355.6]};
 const contentViewBox=document.getElementById('diagramSlot').dataset.contentViewBox,canvasViewBox='0 0 1100 790';
 const diagram=$('diagramSlot').querySelector('svg');
@@ -18,6 +30,7 @@ function addControls(){
   '<input id="unitMillimeters" type="number" min="0.001" max="100" step="any" value="0.2" disabled>'+
   '<p class="muted">Physical mode retains the selected scale even if the artwork clips. '+
   'Use Fit when diagram coordinates are schematic rather than dimensional.</p>'+
+  '<p id="artworkSize" class="muted" role="status"></p>'+
   '<h2>Paper rulers</h2><label class="check"><input id="rulerH" type="checkbox" checked> Horizontal (mm)</label>'+
   '<label class="check"><input id="rulerV" type="checkbox" checked> Vertical (mm)</label>'+
   '<label class="check"><input id="rulerPrint" type="checkbox"> Include rulers on printed sheet</label>'+
@@ -30,6 +43,7 @@ function addControls(){
   '#paperRulers .ruler-band{fill:#ebf4f6;fill-opacity:.91}'+
   '#paperRulers .ruler-tick{stroke:#244353;stroke-width:.18}'+
   '#paperRulers .ruler-major{stroke-width:.32}'+
+  '@media screen and (max-width:600px){body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,45dvh) minmax(0,1fr);height:100dvh}#controls{height:auto;max-height:45dvh;border-right:0;border-bottom:1px solid #b8cacc}#stage{min-height:0}#stageHead{padding:8px;gap:8px;flex-wrap:wrap}#stageArea{padding:12px}}'+
   '@media print{#paperRulers:not(.print-rulers){display:none!important}#paperRulers.print-rulers{display:block!important}}';
  document.head.append(css);
  const ruler=document.createElementNS(SVG_NS,'svg');ruler.id='paperRulers';ruler.setAttribute('aria-hidden','true');$('sheet').append(ruler);
@@ -93,10 +107,11 @@ function calculate(){
  let factor;
  if(physical){
   const mm=Number(value('unitMillimeters'));
-  if(!Number.isFinite(mm)||mm<0.001||mm>100){$('print').disabled=true;$('warning').hidden=false;$('warning').textContent='Enter a physical size from 0.001 to 100 mm per drawing unit.';return false;}
+  if(!Number.isFinite(mm)||mm<0.001||mm>100){$('artworkSize').textContent='Enter a valid physical size to preview the artwork.';$('print').disabled=true;$('warning').hidden=false;$('warning').textContent='Enter a physical size from 0.001 to 100 mm per drawing unit.';return false;}
   factor=mm*MM_TO_PX;
  }else factor=Math.min(cw/bw,ch/bh)*(Number(value('scale'))||100)/100;
  const aw=bw*factor,ah=bh*factor;
+ $('artworkSize').textContent='Artwork '+(aw/MM_TO_PX).toFixed(1)+' × '+(ah/MM_TO_PX).toFixed(1)+' mm · 1 drawing unit = '+(factor/MM_TO_PX).toFixed(3)+' mm on paper.';
  const dx=(Number(value('offsetX'))||0)*MM_TO_PX,dy=(Number(value('offsetY'))||0)*MM_TO_PX;
  const ha=value('halign'),va=value('valign');
  const left=(ha==='left'?0:ha==='right'?cw-aw:(cw-aw)/2)+dx;
@@ -115,9 +130,14 @@ function calculate(){
 }
 function fit(){$('framing').value='content';$('dimensionMode').value='fit';$('unitMillimeters').disabled=true;$('scale').value='100';$('offsetX').value='0';$('offsetY').value='0';$('halign').value='center';$('valign').value='center';calculate();}
 addControls();
+restoreSettings();
+[...Object.keys(choices),...rulerChoices].forEach(id=>$(id).addEventListener('change',rememberSettings));
 fields.forEach(id=>$(id).addEventListener(['scale','unitMillimeters'].includes(id)?'input':'change',calculate));
 $('fit').addEventListener('click',fit);
 $('print').addEventListener('click',()=>{if(calculate()){window.focus();window.print();}});
 window.addEventListener('resize',calculate);
+window.addEventListener('beforeprint',calculate);
+window.addEventListener('afterprint',calculate);
+document.fonts?.ready.then(calculate);
 requestAnimationFrame(()=>requestAnimationFrame(calculate));
 })();
