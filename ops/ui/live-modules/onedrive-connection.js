@@ -12,6 +12,30 @@ import "./chunk-ZJV7P25W.js";
 import { l as X } from "./chunk-G42SHEZJ.js";
 import { b as y } from "./chunk-ZKN76T53.js";
 import "./chunk-OOJM4CTU.js";
+function originalCacheItem(key, scope, itemId) {
+  try {
+    const parts = JSON.parse(key);
+    return parts[0] === 'original-v1' && Array.isArray(parts[1]) &&
+      scope.every((value,index)=>parts[1][index]===value) && parts[2]===itemId;
+  } catch { return false; }
+}
+function planOriginalCachePut(rows, {key,bytes,pinned,maxBytes,maxEntries,itemVersion=0}) {
+  const identity = JSON.parse(key), scope = identity[1].slice(0,4), itemId = identity[2];
+  const superseded = pinned ? rows.filter(row=>row.key!==key && row.pinned===true && (row.itemVersion||0)<=itemVersion && originalCacheItem(row.key,scope,itemId)) : [];
+  const removed = new Set(superseded.map(row=>row.key));
+  const existing = rows.find(row=>row.key===key);
+  const keepPinned = pinned || existing?.pinned===true;
+  const retained = rows.filter(row=>row.key!==key && !removed.has(row.key));
+  if (retained.some(row=>!Number.isSafeInteger(row.bytes)||row.bytes<0)) throw Error('Offline storage accounting needs review. Existing copies were retained.');
+  let total = bytes + retained.reduce((sum,row)=>sum+row.bytes,0), count = retained.length + 1;
+  for (const row of [...retained].sort((a,b)=>a.used-b.used)) {
+    if (total<=maxBytes && count<=maxEntries) break;
+    if (row.pinned===true) continue;
+    removed.add(row.key);total-=row.bytes;count--;
+  }
+  if (total>maxBytes || count>maxEntries) throw Error('Offline storage is full of kept copies. Remove a device copy before saving another.');
+  return {remove:[...removed],pinned:keepPinned};
+}
 var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O = class {
   constructor({ name: e = "keepit-originals-cache-v1", maxBytes: t = 256 * 1024 ** 2, maxFileBytes: i = 64 * 1024 ** 2, maxEntries: s = 512 } = {}) {
     this.db = new E(e), this.db.version(1).stores({ files: "&key", sizes: "&key,used" }), Object.assign(this, { maxBytes: t, maxFileBytes: i, maxEntries: s });
@@ -22,24 +46,30 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
       return i ? !(i.blob instanceof Blob) || i.blob.size !== t.bytes || await y(i.blob) !== t.digest ? (await this.remove(e), null) : (await this.db.transaction("rw", this.db.sizes, async () => {
         let s = await this.db.sizes.orderBy("used").last();
         await this.db.sizes.update(e, { used: Math.max(Date.now(), (s?.used || 0) + 1) });
-      }), i) : null;
+      }).catch(()=>{}), i) : null;
     } catch {
       return null;
     }
   }
-  async put(e, t, i, s, { isCurrent: r = () => true } = {}) {
+  async put(e, t, i, s, { isCurrent: r = () => true, pin = false } = {}) {
     try {
-      return !r() || i.size > this.maxFileBytes || i.size > this.maxBytes || i.size !== t.bytes || await y(i) !== t.digest ? false : (await this.db.transaction("rw", this.db.files, this.db.sizes, async () => {
-        if (!r()) return;
+      if(!r())throw Error('The selected library changed. The device copy was not saved.');
+      if(i.size>this.maxFileBytes || i.size>this.maxBytes)throw Error('This file exceeds the offline-copy budget. Download the original for an independent device copy.');
+      if(i.size!==t.bytes || await y(i)!==t.digest)throw Error('The original failed verification. No offline copy was saved.');
+      return await this.db.transaction("rw", this.db.files, this.db.sizes, async () => {
+        if (!r()) throw Error('The selected library changed. The device copy was not saved.');
+        const rows = await this.db.sizes.toArray();
+        const itemVersion=Number.isSafeInteger(t.version)?t.version:0;
+        const plan = planOriginalCachePut(rows,{key:e,bytes:i.size,pinned:pin,maxBytes:this.maxBytes,maxEntries:this.maxEntries,itemVersion});
+        for(const key of plan.remove){await this.db.files.delete(key);await this.db.sizes.delete(key);}
         let a = await this.db.sizes.orderBy("used").last();
-        await this.db.files.put({ key: e, blob: i, version: s }), await this.db.sizes.put({ key: e, bytes: i.size, used: Math.max(Date.now(), (a?.used || 0) + 1) });
-        let n = await this.db.sizes.orderBy("used").toArray(), o = n.reduce((u, c) => u + c.bytes, 0), l = n.length;
-        for (let u of n) {
-          if (o <= this.maxBytes && l <= this.maxEntries) break;
-          await this.db.files.delete(u.key), await this.db.sizes.delete(u.key), o -= u.bytes, l--;
-        }
-      }), true);
-    } catch {
+        const previous=await this.db.files.get(e);
+        await this.db.files.put({ key: e, blob: i, version: s ?? previous?.version, pinned:plan.pinned });
+        await this.db.sizes.put({ key: e, bytes:i.size,pinned:plan.pinned,itemVersion:Math.max(itemVersion,rows.find(row=>row.key===e)?.itemVersion||0),used:Math.max(Date.now(),(a?.used||0)+1) });
+        return true;
+      });
+    } catch (error) {
+      if(pin)throw new Error(error?.name==='QuotaExceededError'?'This browser has no space for the offline copy. Existing kept copies were retained.':error.message||'The offline copy could not be saved.');
       return false;
     }
   }
@@ -66,7 +96,42 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
     } catch {
     }
   }
+  async hasPinned(scope,id) {
+    return (await this.db.sizes.toArray()).some(row=>row.pinned===true&&originalCacheItem(row.key,scope,id));
+  }
+  async removeItem(scope,id,isCurrent=()=>true) {
+    return this.db.transaction('rw',this.db.files,this.db.sizes,async()=>{
+      if(!isCurrent())throw Error('The selected library changed. Reopen this item.');
+      for(const row of await this.db.sizes.toArray())if(originalCacheItem(row.key,scope,id)){
+        await this.db.files.delete(row.key);await this.db.sizes.delete(row.key);
+      }
+    });
+  }
 };
+function offlineOriginal(lib,id) {
+  const item=lib.state.items.find(item=>item.id===id);
+  d(!lib.closed&&item&&!item.trashedAt,'This item is unavailable in the selected library.');
+  if(typeof lib.fs.auth.account==='function')d(lib.fs.auth.account()?.homeAccountId===lib.fs.homeId,'Reconnect the Microsoft account that owns this library.');
+  const scope=[lib.fs.homeId,lib.fs.driveId,lib.root.item.id,lib.identity.libraryId];
+  return {item,scope,key:N([...scope,lib.state.paths[id]],item)};
+}
+async function originalOfflineStatus(lib,id) {
+  const {item,scope,key}=offlineOriginal(lib,id),copy=await lib.originalCache.get(key,item);
+  const olderCopy=!copy&&await lib.originalCache.hasPinned(scope,id);
+  d(offlineOriginal(lib,id).key===key,'This item changed. Reopen its current version.');
+  return {available:!!copy,pinned:copy?.pinned===true,olderCopy,bytes:item.bytes};
+}
+async function keepOriginalOffline(lib,id) {
+  const {item,key}=offlineOriginal(lib,id),blob=await lib.original(id);
+  const current=()=>!lib.closed&&(typeof lib.fs.auth.account!=='function'||lib.fs.auth.account()?.homeAccountId===lib.fs.homeId)&&lib.state.items.some(row=>row.id===id&&!row.trashedAt&&row.version===item.version&&row.digest===item.digest&&lib.state.paths[id]===JSON.parse(key)[1][4]);
+  await lib.originalCache.put(key,item,blob,lib.originalVersions?.get(id),{pin:true,isCurrent:current});
+  return originalOfflineStatus(lib,id);
+}
+async function removeOriginalOffline(lib,id) {
+  const {scope}=offlineOriginal(lib,id);
+  await lib.originalCache.removeItem(scope,id,()=>!lib.closed&&(typeof lib.fs.auth.account!=='function'||lib.fs.auth.account()?.homeAccountId===lib.fs.homeId));
+  return originalOfflineStatus(lib,id);
+}
 var J = (h) => typeof h == "string" && h.length <= 85 && /^(?:Archives\/)?[A-Z0-9]+(?:-[A-Z0-9]+)+\.[a-z0-9]{1,10}$/.test(h), F = (h) => JSON.stringify(["cloud-catalog-v1", h.homeId, h.driveId, h.rootId]);
 function ce(h, e) {
   d(h?.libraryId === e && h.info?.libraryId === e && h.info.revision === h.revision && Array.isArray(h.items) && h.paths && typeof h.paths == "object", "Invalid cached catalog."), se(h, `${String(h.revision).padStart(10, "0")}-${h.commitId}.json`, e), h.info.metadataSchema && Z(h.info.metadataSchema), h.info.platformAssociationsV1 && W(h.info.platformAssociationsV1);
@@ -147,6 +212,7 @@ var x = class {
     return structuredClone(this.state.info);
   }
   async close() {
+    this.closed = true;
   }
   async getItem(e) {
     return structuredClone(this.state.items.find((t) => t.id === e));
@@ -156,10 +222,13 @@ var x = class {
   }
   async original(e) {
     let t = await this.getItem(e);
-    if (!t || t.trashedAt || !X(t)) return this.unavailable();
+    if (this.closed || !t || t.trashedAt) return this.unavailable();
     let i = [this.fs.homeId, this.fs.driveId, this.root.item.id, this.identity.libraryId, this.state.paths[e]], s = await this.originalCache.get(N(i, t), t);
-    return d(s?.blob, "This note is not available on this device. Reconnect OneDrive; no empty replacement was created."), s.blob;
+    return d(s?.blob, "This original is not available on this device. Connect OneDrive and choose Keep offline first."), s.blob;
   }
+  async offlineStatus(id) { return originalOfflineStatus(this,id); }
+  async keepOffline(id) { return keepOriginalOffline(this,id); }
+  async removeOffline(id) { return removeOriginalOffline(this,id); }
   async savePrintTemplates() {
     return this.unavailable();
   }
@@ -776,6 +845,9 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
   originalScope() {
     return [this.fs.homeId, this.fs.driveId, this.root.item.id, this.identity.libraryId];
   }
+  async offlineStatus(id) { return originalOfflineStatus(this,id); }
+  async keepOffline(id) { return keepOriginalOffline(this,id); }
+  async removeOffline(id) { return removeOriginalOffline(this,id); }
   async original(e) {
     await this.permission();
     let t = this.state.items.find((r) => r.id === e);
@@ -784,6 +856,11 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
     if (this.originalLoads.has(i)) return this.originalLoads.get(i);
     let s = (async () => {
       let r = await this.originalCache.get(i, t);
+      if(globalThis.navigator?.onLine===false){
+        await this.permission();
+        d(r?.blob,'This original is not available on this device. Connect OneDrive and choose Keep offline first.');
+        return r.blob;
+      }
       if (await this.permission(), r?.version) {
         let o = this.fs.validate(await this.fs.item(r.version.id), r.version.parentId);
         if (o.file && o.eTag === r.version.eTag && o.size === t.bytes && o.name === r.version.name) return await this.permission(), r.blob;
@@ -1268,6 +1345,8 @@ var ve = class {
   }
 };
 export {
+  O as OfflineOriginalCache,
+  z as CachedOneDriveLibrary,
   ve as OneDriveConnection,
   pt as preferLocal,
   ye as wantsOneDrive

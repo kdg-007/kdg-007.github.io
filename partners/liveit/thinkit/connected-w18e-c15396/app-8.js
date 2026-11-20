@@ -581,9 +581,12 @@
     if(!canAdd&&!links.length)return '';
     return `<section class="keepit-links field-group" aria-label="KeepIt links">
       <div class="field-label">KeepIt links</div>
-      ${links.length?`<ul class="keepit-link-list">${links.map((link,index)=>`<li>
+      ${links.length?`<ul class="keepit-link-list">${links.map((link,index)=>`<li${editing?'':' class="keepit-link-offline"'}>
         ${editing?`<span>${esc(link.title)} <small>· ${link.kind}</small></span><button type="button" class="button subtle" data-action="keepit-unlink" data-index="${index}" aria-label="Remove link to ${esc(link.title)}">Remove</button>`
-          :`<button type="button" class="button secondary" data-action="keepit-open" data-index="${index}">${esc(link.title)} <small>· ${link.kind}</small></button>`}
+          :`<button type="button" class="button secondary" data-action="keepit-open" data-index="${index}">${esc(link.title)} <small>· ${link.kind}</small></button>
+          <small data-keepit-offline="${index}">Checking device copy…</small>
+          <button type="button" class="button subtle" data-action="keepit-offline" data-index="${index}" aria-label="Keep ${esc(link.title)} offline">Keep offline</button>
+          <button type="button" class="button subtle" data-action="keepit-remove-offline" data-index="${index}" aria-label="Remove device copy of ${esc(link.title)}" hidden>Remove device copy</button>`}
       </li>`).join('')}</ul>`:''}
       ${canAdd?`<button type="button" class="button secondary" data-action="keepit-pick" aria-controls="keepItPicker" aria-expanded="false" ${links.length>=keepItReferences.limit?'disabled':''}>+ Link from KeepIt</button>
         <div id="keepItPicker" hidden>
@@ -650,16 +653,39 @@
     void persistDraft();
     refreshCaptureLinks('[data-action="keepit-pick"]:enabled');
   }
-  async function openKeepItLink(button) {
+  let offlineLinkSerial=0;
+  async function refreshKeepItOffline(rec) {
+    const serial=++offlineLinkSerial,rows=[...$('#recordContent').querySelectorAll('[data-keepit-offline]')];let cursor=0;
+    async function worker(){while(cursor<rows.length){
+      const status=rows[cursor++],index=Number(status.dataset.keepitOffline),link=rec.keepItLinks?.[index];
+      if(!link||serial!==offlineLinkSerial)return;
+      try{
+        if(!window.liveItKeepItLinks?.offlineStatus)throw Error('Open the connected workspace to check device copies.');
+        const copy=await window.liveItKeepItLinks.offlineStatus(link);
+        if(serial!==offlineLinkSerial||!status.isConnected||ui.detail!==rec.id)return;
+        status.textContent=copy.label;
+        const row=status.closest('li');row.querySelector('[data-action="keepit-offline"]').hidden=!copy.managed||copy.pinned&&copy.available;
+        row.querySelector('[data-action="keepit-remove-offline"]').hidden=!copy.managed||!copy.available&&!copy.olderCopy;
+      }catch(error){if(status.isConnected)status.textContent=error.message;}
+    }}
+    await Promise.all([worker(),worker()]);
+  }
+  async function openKeepItLink(button,action='keepit-open') {
     const record=allScoped({includeArchived:true}).find(row=>row.id===ui.detail);
     const link=record?.keepItLinks?.[Number(button.dataset.index)];
     if(!details.open||!link)return;
     const status=$('#recordContent .keepit-link-status');
-    button.disabled=true;status.textContent='Opening in KeepIt…';
+    const offline=action!=='keepit-open';if(offline)offlineLinkSerial++;
+    button.disabled=true;status.textContent=offline?'Updating this device’s copy…':'Opening in KeepIt…';
     try{
       if(!window.liveItKeepItLinks)throw Error('Open LiveIt from the connected workspace to use KeepIt links.');
-      await window.liveItKeepItLinks.open(link);
+      if(action==='keepit-offline'){
+        void navigator.storage?.persist?.().catch(()=>{});
+        await window.liveItKeepItLinks.keepOffline(link);
+      }else if(action==='keepit-remove-offline')await window.liveItKeepItLinks.removeOffline(link);
+      else await window.liveItKeepItLinks.open(link);
       status.textContent='';
+      if(offline)await refreshKeepItOffline(record);
     }catch(error){status.textContent=error.message;}
     finally{button.disabled=false;}
   }
@@ -802,6 +828,7 @@
       </section>`:''}
       <p class="caption" style="margin-top:15px">${rec.type==='event'?'Event changes sync when the original KeepIt library is available.':'On-device record.'}</p></div>`;
     if(!details.open)details.showModal();
+    if(rec.keepItLinks?.length)void refreshKeepItOffline(rec);
   }
   // Explicit transfer opens the editor: Save is required, never a surprise view switch.
   function beginWorkspaceMove(id,destination){
@@ -955,7 +982,7 @@
     }
     if(action==='keepit-pick'){void toggleKeepItPicker(el);return;}
     if(action==='keepit-add'||action==='keepit-unlink'){editKeepItLinks(action,el);return;}
-    if(action==='keepit-open'){void openKeepItLink(el);return;}
+    if(['keepit-open','keepit-offline','keepit-remove-offline'].includes(action)){void openKeepItLink(el,action);return;}
     if(action==='capture-close') {void closeCapture();return;}
     if(action==='capture-save') {void commitCapture();return;}
     if(action==='capture-more') {ui.captureDetailsOpen=!ui.captureDetailsOpen;renderCapture();$('#captureContent [data-action="capture-more"]')?.focus();return;}

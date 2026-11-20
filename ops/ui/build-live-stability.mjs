@@ -6,6 +6,11 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const {transformSync,version}=require(process.env.KEEPIT_ESBUILD||'esbuild');
 if(version!=='0.28.2')throw Error('Use the reviewed esbuild 0.28.2 runtime.');
+// Keep the publisher's calendar asset proof aligned with the connected UI.
+const calendarProofPath='partners/connected/liveit-calendar-release.json';
+const calendarProof=JSON.parse(readFileSync(calendarProofPath));
+for(const path of Object.keys(calendarProof.files))calendarProof.files[path]=createHash('sha256').update(readFileSync(path)).digest('hex');
+writeFileSync(calendarProofPath,JSON.stringify(calendarProof,null,2)+'\n');
 const proofPath='partners/connected/owner-release.json',proof=JSON.parse(readFileSync(proofPath));
 const source=name=>readFileSync('ops/ui/live-modules/'+name+'.js','utf8');
 function emit(prefix,text){
@@ -67,7 +72,7 @@ html=html.replaceAll(proof.entry,'/'+paths.entry).replaceAll('//assets/','/asset
 writeFileSync('partners/connected/index.html',html);
 proof.entry='/'+paths.entry;
 for(const path of Object.values(paths))proof.files[path]=createHash('sha256').update(readFileSync(path)).digest('hex');
-for(const path of ['partners/connected/connected-nav.js','partners/connected/connected-nav.css','partners/design/app-appearance.js','partners/design/app-appearance.css'])proof.files[path]=createHash('sha256').update(readFileSync(path)).digest('hex');
+for(const path of ['partners/connected/connected-nav.js','partners/connected/connected-nav.css','partners/connected/offline-originals-ui.mjs','partners/design/app-appearance.js','partners/design/app-appearance.css'])proof.files[path]=createHash('sha256').update(readFileSync(path)).digest('hex');
 for(const path of Object.keys(proof.files))proof.files[path]=createHash('sha256').update(readFileSync(path)).digest('hex');
 // Pin the full transitive compiled dependency graph, including older shared
 // editor entry points still used by portable-note tools.

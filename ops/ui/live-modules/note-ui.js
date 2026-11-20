@@ -6,6 +6,7 @@ import { B as R, E as z, F as j, P as x } from "./chunk-3XLEL25X.js";
 import { a as tt, b as $, d as q } from "./chunk-ZJV7P25W.js";
 import { i as W, l as Z, m as Q, q as X, r as O } from "./chunk-G42SHEZJ.js";
 import { b as G } from "./chunk-ZKN76T53.js";
+import { mountOfflineControls } from "/partners/connected/offline-originals-ui.mjs";
 function nt({ container: u, note: t, item: i }) {
   it();
   let e = document.createElement("div");
@@ -415,6 +416,11 @@ var r = (u, t, i) => {
       this.beginEdit().catch((h) => this.error(h));
     }, "primary");
     this.editButton = a, a.title = "Edit note (\u2318 E)", a.disabled = !!s?.historical || !!i.trashedAt || !!s && !s.draftId, this.actions.append(a), this.headerControls({ details: true });
+    if(!s&&!i.trashedAt){
+      const library=this.library,serial=this.loadSerial;
+      mountOfflineControls({container:this.overflowPanel,library,itemId:i.id,
+        isCurrent:()=>this.dialog.open&&this.mode==='preview'&&this.item?.id===i.id&&this.loadSerial===serial&&this.getLibrary()===library});
+    }
     let d = m("\u2922", () => this.toggleFullscreen(!this.fullscreen));
     d.title = "Full screen", d.setAttribute("aria-label", "Full screen"), this.actions.append(d), this.overflowPanel.append(m("Export", () => {
       this.exportMenu().catch((h) => this.error(h));

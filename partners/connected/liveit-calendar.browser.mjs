@@ -93,6 +93,46 @@ try{
   await a.page.locator('#item-dialog[open] #item-heading').filter({hasText:'Synthetic presentation'}).waitFor();
   await a.page.locator('#item-dialog pre').filter({hasText:'Synthetic presentation contents'}).waitFor();
   await a.page.locator('#item-dialog').evaluate(dialog=>dialog.close());
+  // Explicit kept copies survive a provider outage and a page restart. The
+  // resumed cached library must also open non-note originals, without writes.
+  await noteDetail.getByRole('button',{name:'Keep Synthetic meeting note offline',exact:true}).click();
+  await noteDetail.getByRole('button',{name:'Keep Synthetic presentation offline',exact:true}).click();
+  await a.page.waitForFunction(()=>{
+   const frame=document.querySelector('iframe[title="LiveIt journal workspace"]');
+   return [...frame.contentDocument.querySelectorAll('[data-keepit-offline]')].filter(n=>n.textContent==='Kept offline on this device').length===2;
+  });
+  await noteDetail.locator('[data-action="detail-close"]').click();
+  const writesBeforeOffline=fixture.requests.filter(r=>r.method!=='GET').length;
+  a.network.offline=true;await a.page.reload();
+  await a.page.locator('#storage-location-label').filter({hasText:'Last verified gallery'}).waitFor({state:'attached',timeout:30000});
+  await a.frame.getByText('Synthetic LiveIt note with links',{exact:true}).first().click();
+  await noteDetail.getByRole('button',{name:'Synthetic presentation · file'}).click();
+  await a.page.locator('#item-dialog pre').filter({hasText:'Synthetic presentation contents'}).waitFor();
+  assert.equal(await a.page.locator('#item-title').isDisabled(),true);
+  await a.page.locator('#close-item').click();
+  await noteDetail.getByRole('button',{name:'Synthetic meeting note · note'}).click();
+  await a.page.locator('dialog.note-dialog[open]').getByText(noteText,{exact:true}).waitFor();
+  await a.page.locator('dialog.note-dialog[open]').getByRole('button',{name:'Close',exact:true}).click();
+  await a.context.setOffline(true);
+  await noteDetail.getByRole('button',{name:'Synthetic presentation · file'}).click();
+  await a.page.locator('#item-dialog pre').filter({hasText:'Synthetic presentation contents'}).waitFor();
+  await a.page.locator('#close-item').click();
+  assert.equal(fixture.requests.filter(r=>r.method!=='GET').length,writesBeforeOffline);
+  await noteDetail.getByRole('button',{name:'Remove device copy of Synthetic presentation',exact:true}).click();
+  await a.page.waitForFunction(()=>{
+   const frame=document.querySelector('iframe[title="LiveIt journal workspace"]');
+   return [...frame.contentDocument.querySelectorAll('[data-keepit-offline]')].some(n=>n.textContent==='Not saved on this device');
+  });
+  await noteDetail.getByRole('button',{name:'Synthetic presentation · file'}).click();
+  await noteDetail.getByRole('status').filter({hasText:'not available on this device'}).waitFor();
+  // A failed original must leave the viewer closable and retain its catalog row.
+  if(await a.page.locator('#item-dialog[open]').count())await a.page.locator('#close-item').click();
+  await noteDetail.locator('[data-action="detail-close"]').click();
+  await a.context.setOffline(false);a.network.offline=false;
+  await a.page.locator('#connected-cloud-status').click();await a.page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});
+  if(await a.page.locator('#onedrive-dialog[open]').count())await a.page.locator('#onedrive-close').click();
+  await a.frame.getByText('Synthetic LiveIt note with links',{exact:true}).first().click();
+  console.log('KEEPIT_LINKED_NOTE_AND_ORIGINAL_PIN_RESTART_OFFLINE_OPEN_AND_LOCAL_REMOVAL_'+engine.name().toUpperCase()+'_PASS');
   await noteDetail.getByRole('button',{name:'Edit'}).click();
   await a.frame.getByRole('button',{name:'Remove link to Synthetic presentation'}).click();
   await a.frame.locator('#saveCapture').click();
@@ -254,6 +294,9 @@ try{
   await keepItTab.close();
   await addTripDocument('boarding.txt','Synthetic boarding pass');
   await addTripDocument('meeting','Synthetic meeting note');
+  await tripDocs.getByRole('button',{name:'Keep Synthetic boarding pass offline',exact:true}).click();
+  await tripDocs.locator('li').filter({hasText:'Synthetic boarding pass'}).getByText('Kept offline on this device',{exact:true}).waitFor();
+  assert.equal(await tripDocs.locator('li').filter({hasText:'Synthetic boarding pass'}).getByRole('button',{name:'Remove device copy of Synthetic boarding pass',exact:true}).isVisible(),true);
   await tripDocs.getByRole('button',{name:'Open Synthetic meeting note in KeepIt',exact:true}).click();
   await a.page.locator('dialog.note-dialog[open]').getByText('Original meeting notes for the LiveIt link test.',{exact:true}).waitFor();
   await a.page.locator('dialog.note-dialog[open]').getByRole('button',{name:'Close',exact:true}).click();
