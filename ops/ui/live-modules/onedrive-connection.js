@@ -43,6 +43,7 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
   async get(e, t) {
     try {
       let i = await this.db.files.get(e);
+      if(i?.blobData instanceof ArrayBuffer)i={...i,blob:new Blob([i.blobData],{type:i.mime||t.mime||'application/octet-stream'})};
       return i ? !(i.blob instanceof Blob) || i.blob.size !== t.bytes || await y(i.blob) !== t.digest ? (await this.remove(e), null) : (await this.db.transaction("rw", this.db.sizes, async () => {
         let s = await this.db.sizes.orderBy("used").last();
         await this.db.sizes.update(e, { used: Math.max(Date.now(), (s?.used || 0) + 1) });
@@ -56,6 +57,9 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
       if(!r())throw Error('The selected library changed. The device copy was not saved.');
       if(i.size>this.maxFileBytes || i.size>this.maxBytes)throw Error('This file exceeds the offline-copy budget. Download the original for an independent device copy.');
       if(i.size!==t.bytes || await y(i)!==t.digest)throw Error('The original failed verification. No offline copy was saved.');
+      // WebKit can reject Blob values in IndexedDB. Store ordinary bytes and
+      // reconstruct a Blob on read; retain compatibility with existing Blob rows.
+      const blobData=await i.arrayBuffer();
       return await this.db.transaction("rw", this.db.files, this.db.sizes, async () => {
         if (!r()) throw Error('The selected library changed. The device copy was not saved.');
         const rows = await this.db.sizes.toArray();
@@ -64,7 +68,7 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
         for(const key of plan.remove){await this.db.files.delete(key);await this.db.sizes.delete(key);}
         let a = await this.db.sizes.orderBy("used").last();
         const previous=await this.db.files.get(e);
-        await this.db.files.put({ key: e, blob: i, version: s ?? previous?.version, pinned:plan.pinned });
+        await this.db.files.put({ key: e, blobData, mime:i.type||t.mime, version: s ?? previous?.version, pinned:plan.pinned });
         await this.db.sizes.put({ key: e, bytes:i.size,pinned:plan.pinned,itemVersion:Math.max(itemVersion,rows.find(row=>row.key===e)?.itemVersion||0),used:Math.max(Date.now(),(a?.used||0)+1) });
         return true;
       });

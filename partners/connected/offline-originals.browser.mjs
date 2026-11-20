@@ -27,7 +27,7 @@ export async function checkOfflineOriginalCache(browser,origin){
     let stale=false;try{await put(a,true);}catch{stale=true;}expect(stale&&await get(newer),'An older tab displaced the newer kept copy');
     const foreign=await make('a','fff',['owner','drive','other-root','library']);await put(foreign,true);
     await cache.removeItem(scope,'a');expect(!await get(newer),'Own device copy not removed');expect(await get(foreign),'Another library’s copy was removed');
-    await cache.db.files.update(c.key,{blob:new Blob(['XXXXXXXXXX'])});expect(!await get(c),'Damaged cached bytes were accepted');
+    await cache.db.files.update(c.key,{blobData:new TextEncoder().encode('XXXXXXXXXX').buffer});expect(!await get(c),'Damaged cached bytes were accepted');
     expect(await get(foreign),'Corruption cleanup removed an unrelated copy');await put(a,true);
     const cached=new Cached({homeId:'owner',driveId:'drive',rootId:'root'},{identity:{libraryId:'library'},verified:{state:{items:[newer.item],paths:{a:'NEW-a.txt'}}}},{originalCache:cache});
     const status=await cached.offlineStatus('a');expect(!status.available&&status.olderCopy,'An old digest was labelled as the current file');
