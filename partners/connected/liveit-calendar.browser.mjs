@@ -21,7 +21,7 @@ const server=createServer({key:readFileSync(join(temp,'key')),cert:readFileSync(
 let browser;
 try{
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));const origin='https://127.0.0.1:'+server.address().port;
- for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
+ for(const engine of process.env.OWNER_TEST_CHROMIUM_ONLY?[chromium]:[webkit,chromium]){
   browser=await engine.launch({headless:true});await checkMapLifecycle(browser,origin);const fixture=connectionFixture(origin,{writable:true}),contexts=[];uploadFixture=fixture;fixture.uploadEndpoint=origin+'/__calendar-upload';
   async function device(){const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:393,height:852},isMobile:true,hasTouch:true});contexts.push(context);const network={offline:false,expireNextWrite:false,expiredWrites:0};await context.route('**/*',route=>{
     const host=new URL(route.request().url()).hostname;
@@ -115,7 +115,10 @@ try{
   await a.page.locator('dialog.note-dialog[open]').getByRole('button',{name:'Close',exact:true}).click();
   await a.context.setOffline(true);
   await noteDetail.getByRole('button',{name:'Synthetic presentation · file'}).click();
-  await a.page.locator('#item-dialog pre').filter({hasText:'Synthetic presentation contents'}).waitFor();
+  await a.page.locator('#item-dialog pre').filter({hasText:'Synthetic presentation contents'}).waitFor().catch(async error=>{
+   console.error('OFFLINE_ORIGINAL_OPEN_DIAGNOSTIC',await a.page.evaluate(()=>({online:navigator.onLine,preview:document.querySelector('#preview')?.innerText,detail:document.querySelector('#detail-message')?.innerText,storage:document.querySelector('#storage-location-label')?.innerText,linkStatus:document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentDocument.querySelector('.keepit-link-status')?.textContent})),errors);
+   throw error;
+  });
   await a.page.locator('#close-item').click();
   assert.equal(fixture.requests.filter(r=>r.method!=='GET').length,writesBeforeOffline);
   await noteDetail.getByRole('button',{name:'Remove device copy of Synthetic presentation',exact:true}).click();
