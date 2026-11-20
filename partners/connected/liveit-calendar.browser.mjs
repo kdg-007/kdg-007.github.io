@@ -116,7 +116,7 @@ try{
   await a.context.setOffline(true);
   await noteDetail.getByRole('button',{name:'Synthetic presentation · file'}).click();
   await a.page.locator('#item-dialog pre').filter({hasText:'Synthetic presentation contents'}).waitFor().catch(async error=>{
-   console.error('OFFLINE_ORIGINAL_OPEN_DIAGNOSTIC',await a.page.evaluate(()=>({online:navigator.onLine,preview:document.querySelector('#preview')?.innerText,detail:document.querySelector('#detail-message')?.innerText,storage:document.querySelector('#storage-location-label')?.innerText,linkStatus:document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentDocument.querySelector('.keepit-link-status')?.textContent})),errors);
+   console.error('OFFLINE_ORIGINAL_OPEN_DIAGNOSTIC',await a.page.evaluate(()=>({online:navigator.onLine,preview:document.querySelector('#preview')?.innerText,detail:document.querySelector('#detail-message')?.innerText,storage:document.querySelector('#storage-location-label')?.innerText,linkStatus:document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentDocument.querySelector('.keepit-link-status')?.textContent})),a.errors);
    throw error;
   });
   await a.page.locator('#close-item').click();
