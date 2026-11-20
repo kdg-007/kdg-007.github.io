@@ -13,7 +13,7 @@ const server=createServer((req,res)=>{
  const path=resolve(root,'.'+new URL(req.url,'http://127.0.0.1').pathname);
  if(!path.startsWith(root+sep)){res.writeHead(403).end();return;}
  try{
-  const mime={'.js':'text/javascript','.json':'application/json','.png':'image/png'};
+  const mime={'.mjs':'text/javascript','.js':'text/javascript','.json':'application/json','.png':'image/png'};
   res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream'}).end(readFileSync(path));
  }catch{res.writeHead(404).end();}
 });
