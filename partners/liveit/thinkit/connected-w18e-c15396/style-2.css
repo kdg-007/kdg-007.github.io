@@ -288,6 +288,10 @@ html[data-theme="light"][data-workspace="personal"]{
 .keepit-link-list li{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0;overflow-wrap:anywhere}
 .keepit-link-list li>button:only-child{width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere}
 .keepit-link-list small{color:var(--muted)}
+.keepit-link-list li.keepit-link-offline{flex-wrap:wrap;justify-content:flex-start}
+.keepit-link-offline>[data-action="keepit-open"]{flex-basis:100%;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.keepit-link-offline>[data-keepit-offline]{flex-basis:100%}
+.keepit-link-offline>button{min-height:44px}
 #keepItPicker{margin-top:10px}
 #keepItResults{max-height:210px;overflow:auto}
 .keepit-link-status:empty{display:none}

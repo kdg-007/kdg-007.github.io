@@ -571,10 +571,12 @@ function renderTripDocuments(trip){
  const documents=trip.keepItDocuments||[];
  const listed=documents.map(document=>{
   const attrs=`data-document-key="${esc(tripDocumentReferences.key(document))}"`;
-  return `<li class="trip-document"><div><strong>${esc(document.title)}</strong><div class="subtext">KeepIt ${document.kind==='note'?'note':'file'}</div></div>
+  return `<li class="trip-document"><div><strong>${esc(document.title)}</strong><div class="subtext">KeepIt ${document.kind==='note'?'note':'file'}</div><div class="subtext" data-document-offline="${esc(tripDocumentReferences.key(document))}">Checking device copy…</div></div>
    <div class="row wrap">
     ${action('Open in KeepIt','open-trip-document','button button-small',attrs+' aria-label="Open '+esc(document.title)+' in KeepIt"')}
     ${document.kind==='file'?action('Download for offline use','download-trip-document','button button-small',attrs+' aria-label="Download '+esc(document.title)+' for offline use"'):''}
+    ${action('Keep offline','keep-trip-document','button button-small',attrs+' aria-label="Keep '+esc(document.title)+' offline"')}
+    ${action('Remove device copy','remove-offline-trip-document','button button-small',attrs+' hidden aria-label="Remove device copy of '+esc(document.title)+'"')}
     ${action('Remove link','unlink-trip-document','button button-small button-ghost',attrs+' aria-label="Remove link to '+esc(document.title)+'"')}
    </div></li>`;
  }).join('');
@@ -583,7 +585,7 @@ function renderTripDocuments(trip){
   ${action('+ Link from KeepIt','link-trip-document','button button-primary button-small',documents.length>=tripDocumentReferences.limit?'disabled':'')}</div>
   <p class="subtext">Keep passports, itineraries, bookings, brochures and guides in KeepIt. Add links here for this trip.</p>
   ${documents.length?`<ul class="trip-document-list">${listed}</ul>`:'<p class="empty-inline">This trip has no linked files or notes yet.</p>'}
-  <p class="subtext">For offline use, download the files you need to your device while connected. Open KeepIt notes there to print or export a copy.</p>
+  <p class="subtext">Keep offline saves a verified copy in this browser on this device. Download sends a separate copy to your browser. Device copies are not shared with your other devices.</p>
   <a class="button button-small" href="${keepItLibraryUrl}" target="_blank" rel="noopener noreferrer">Add files in KeepIt ↗</a>
   <p id="trip-document-status" class="subtext" role="status"></p>
  </section>`;
@@ -592,6 +594,23 @@ function tripDocumentBridge(){
  const bridge=window.travelItKeepItLinks;
  if(!bridge)throw Error('Open TravelIt from LiveIt’s Apps menu to use KeepIt links.');
  return bridge;
+}
+let documentOfflineSerial=0;
+async function refreshTripDocumentOffline(){
+ const serial=++documentOfflineSerial,trip=selected(),rows=[...document.querySelectorAll('[data-document-offline]')];let cursor=0;
+ async function worker(){while(cursor<rows.length){
+  const status=rows[cursor++],key=status.dataset.documentOffline,reference=trip?.keepItDocuments?.find(item=>tripDocumentReferences.key(item)===key);
+  if(!reference||serial!==documentOfflineSerial)return;
+  try{
+   const bridge=tripDocumentBridge();if(!bridge.offlineStatus)throw Error('Device-copy checks need the connected workspace.');
+   const copy=await bridge.offlineStatus(reference);
+   if(serial!==documentOfflineSerial||!status.isConnected||selected()?.id!==trip.id)return;
+   status.textContent=copy.label;
+   const row=status.closest('li');row.querySelector('[data-action="keep-trip-document"]').hidden=!copy.managed||copy.pinned&&copy.available;
+   row.querySelector('[data-action="remove-offline-trip-document"]').hidden=!copy.managed||!copy.available&&!copy.olderCopy;
+  }catch(error){if(status.isConnected)status.textContent=error.message;}
+ }}
+ await Promise.all([worker(),worker()]);
 }
 function pickTripDocument(trip){
  if(!trip)throw Error('Select a trip first.');
@@ -641,11 +660,17 @@ async function useTripDocument(target,actionName){
    await commit('trip',normalizeTrip({...trip,keepItDocuments:documents.filter(item=>item!==document)}));
    toast('Link removed from this trip.');return;
   }
-  const status=$('#trip-document-status'),download=actionName==='download-trip-document';
+  const status=$('#trip-document-status'),download=actionName==='download-trip-document',offline=['keep-trip-document','remove-offline-trip-document'].includes(actionName);
+  if(offline)documentOfflineSerial++;
   status.textContent=download?'Getting the original from KeepIt…':'Opening in KeepIt…';
   try{
    const bridge=tripDocumentBridge();
-   if(download)await bridge.download(document);
+   if(actionName==='keep-trip-document'){
+    status.textContent='Saving verified copy on this device…';void navigator.storage?.persist?.().catch(()=>{});
+    await bridge.keepOffline(document);await refreshTripDocumentOffline();
+   }else if(actionName==='remove-offline-trip-document'){
+    await bridge.removeOffline(document);await refreshTripDocumentOffline();
+   }else if(download)await bridge.download(document);
    else await bridge.open(document);
    status.textContent=download?'Download sent to your browser. Save the copy on this device for offline use.':'';
   }catch(error){status.textContent=error.message;}
@@ -713,6 +738,7 @@ function renderPreparation(t,{compact=false}={}){
 }
 function renderMore(){return `${section('Library & settings','Your data stays in this local TravelIt workspace')}<div class="grid2"><div class="card"><h3>Local backup and recovery</h3><p class="subtext">Export TravelIt domain records, including KeepIt link titles and references, and local-only change history as JSON. KeepIt originals stay in their library. Do not include sensitive documents: this backup is <strong>not encrypted</strong>.</p><div class="action-line">${action('Export backup','export-backup','button button-primary button-small')}${action('Restore backup','import-backup')}</div>${state.recovery?`<div class="alert blue" style="margin-top:12px"><strong>Previous workspace available</strong><p class="subtext">Snapshot created ${esc(state.recovery.savedAt)} · ${state.recovery.records} records</p><div class="action-line">${action('Undo last restore','undo-restore','button button-small')}</div></div>`:''}<div class="divider"></div><p class="tiny muted">Never clear browser data, uninstall the PWA, or switch devices without exporting and verifying a backup. Browser storage is not guaranteed permanent.</p></div><div class="card"><h3>Local data diagnostics</h3><div class="divider"></div><h4>Offline startup check</h4><p class="subtext">Verify that every application-shell file is actually cached. A registered service worker alone does not prove offline availability.</p><div class="action-line">${action('Prepare for offline use','prepare-offline-shell','button button-primary button-small')}${action('Verify offline shell','verify-offline-shell','button button-primary button-small')}</div>${state.shellReport?`<div role="status" class="alert ${state.shellReport.ready?'blue':'red'}" style="margin-top:10px"><b>${state.shellReport.ready?'Cached for this browser':'Offline shell not verified'}</b><p>${esc(state.shellReport.cached)}/${esc(state.shellReport.total)} required files cached · ${esc(state.shellReport.reason)}</p>${state.shellReport.missing.length?`<p class="tiny">Missing: ${esc(state.shellReport.missing.slice(0,5).join(', '))}${state.shellReport.missing.length>5?' …':''}</p>`:''}</div>`:'<p class="subtext">Not checked yet. This app does not claim offline readiness merely because it has a service worker.</p>'}<div class="divider"></div><p class="subtext">Checks this browser's database for successful temporary write/readback and scans existing records for broken references. This does not prove data survives device clearing or confirm cloud sync.</p><div class="action-line">${action('Run local diagnostic','run-local-diagnostic','button button-primary button-small')}</div>${state.storageHealth?`<div class="alert ${state.storageHealth.ok?'blue':'red'}" style="margin-top:10px">${esc(state.storageHealth.message)}</div>`:''}${state.localAudit?`<p class="subtext" style="margin-top:10px">${state.localAudit.recordCount} records · ${state.localAudit.errors} error(s) · ${state.localAudit.warnings} warning(s) · ${state.localAudit.commandCount} local-only changes</p>${state.localAudit.issues.length?`<ul class="offline-warnings">${state.localAudit.issues.slice(0,15).map(i=>`<li>${esc(i.code)}: ${esc(i.detail)} (${esc(i.entity)})</li>`).join('')}</ul>${state.localAudit.issues.length>15?'<p>Additional issues omitted from this view.</p>':''}`:'<p class="subtext">No relationship problems detected in the scanned records.</p>'}`:''}<p class="tiny muted">Backups are still required. A successful probe proves only immediate write/readback on this device.</p></div><div class="card"><h3>Integration status</h3><div class="row-between" style="margin-top:13px"><span>KeepIt Notes and document assets</span><span class="tag">Trips → Documents</span></div><p class="tiny muted">${state.keepitAssociations.length} saved native-note reference(s), if any, are external dependencies—not backed-up note content. Open native notes using the KeepIt toolbar above.</p><div class="row-between" style="margin-top:13px"><span>LiveIt calendar</span><span class="tag yellow">Not connected</span></div><div class="row-between" style="margin-top:13px"><span>Offline GeoJSON reference maps</span><span class="tag ${activePack()?'':'yellow'}">${activePack()?'Imported locally':'No map loaded'}</span></div><div class="divider"></div><p class="subtext">${state.outbox.length} local change command(s) retained, not synchronized. Do not interpret this count as pending successful cloud delivery.</p></div><div class="card"><h3>Photo library</h3><div class="photo-placeholder" aria-hidden="true">▧</div><p class="subtext">The full travel-photo gallery will link to KeepIt media after the approved read-only bridge is verified. No personal images are imported into this local foundation.</p></div><div class="card"><h3>Travel documents</h3><p class="subtext">Add originals in KeepIt, then choose Trips → Documents in TravelIt to link them to the relevant trip.</p><a class="button button-small" href="${keepItLibraryUrl}" target="_blank" rel="noopener noreferrer">Open KeepIt ↗</a></div>${renderVehicles()}</div>`;}
 function render(){externalRenderPending=false;document.documentElement.dataset.workspaceView=state.view;$('#view-select').value=state.view;disposeStreetMap?.();disposeStreetMap=null;renderNav();$('#page-heading').textContent=({explore:'Explore',map:'Map',trips:'My Trips',today:'Today',packing:'Packing',more:'My Library'})[state.view]||'Explore';colorStatus();$('#main').innerHTML=state.view==='explore'?renderExplore():state.view==='map'?renderMap():state.view==='trips'?renderTrips():state.view==='today'?renderToday():state.view==='packing'?renderPacking():renderMore()+renderOfflineReadiness();
+ if(state.view==='trips'&&state.tripTab==='documents')void refreshTripDocumentOffline();
  if(state.view==='map'&&state.mapMode==='online'){
   const container=$('#street-map'),status=$('#street-map-status');
   void loadStreetMapRuntime().then(()=>{
@@ -930,7 +956,7 @@ async function handler(target){const actionName=target.dataset.action;if(!action
  if(actionName==='gantt-fullscreen'){toggleGanttFullscreen();return;}
  if(actionName==='gantt-save'){await saveGanttSchedule();return;}
  if(actionName==='link-trip-document'){pickTripDocument(selected());return;}
- if(['open-trip-document','download-trip-document','unlink-trip-document'].includes(actionName)){await useTripDocument(target,actionName);return;}
+ if(['open-trip-document','download-trip-document','unlink-trip-document','keep-trip-document','remove-offline-trip-document'].includes(actionName)){await useTripDocument(target,actionName);return;}
  if(actionName==='prep-jump:documents'){
   const trip=tripById(target.dataset.tripId);if(!trip)throw Error('This trip is no longer available.');
   state.selectedTrip=trip.id;state.tripTab='documents';await setNav('trips');return;

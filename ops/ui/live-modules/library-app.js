@@ -1,6 +1,7 @@
 import { readCalendarNotes } from "/partners/connected/liveit-calendar-read.mjs?v=recovery-1";
 import { CALENDAR_SOURCE as ft, CALENDAR_TAG as mt, eventRecord as Qe, eventSignature as Fe, eventNoteId as Mt, eventEnvelope as $i, readEventEnvelope as $t } from "/partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1";
 import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=2";
+import { mountOfflineControls } from "/partners/connected/offline-originals-ui.mjs";
 import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=device-copies-1";
 import { a as qt } from "./chunk-W72KRQYW.js";
 import { b as Ri, c as pt } from "./chunk-C6CZGXK7.js";
@@ -103,7 +104,7 @@ function gt(e) {
   let i = Object.freeze(Object.fromEntries(["describeCapabilities", "createNativeNote", "openNativeNote", "getNativeNoteStatus"].map((o) => [o, (n) => e.host[o](structuredClone(n))])));
   return Object.freeze({ host: i, verifyHost: async (o) => o === i && await e.verifyHost(e.host) === true });
 }
-function Qi({ workspace: e, getLibrary: t, getTarget: i, getNoteUI: o, openItem: openKeepItItem, onClose: n = () => {
+function Qi({ workspace: e, getLibrary: t, getReadLibrary: readLibrary=t, getTarget: i, getNoteUI: o, openItem: openKeepItItem, onClose: n = () => {
 }, canSync: r = () => true }) {
   let s = document.createElement("section");
   s.setAttribute("aria-label", "LiveIt connected workspace"), s.style.cssText = "position:fixed;inset:0;background:#f7f7f3;z-index:1100;display:flex;flex-direction:column";
@@ -122,7 +123,7 @@ function Qi({ workspace: e, getLibrary: t, getTarget: i, getNoteUI: o, openItem:
     }, p.append(z), z;
   }, h = document.createElement("iframe");
   h.title = "LiveIt journal workspace", h.src = "/partners/liveit/thinkit/connected-w18e-c15396/index.html?v=trip-sync-1", h.style.cssText = "border:0;flex:1;width:100%;min-height:0", p.append(d, m, f), s.append(p, h), document.body.append(s);
-  mountLiveItKeepItLinks({ frame: h, getLibrary: t, getTarget: i, openItem: openKeepItItem, isNote: ue });
+  mountLiveItKeepItLinks({ frame: h, getLibrary: readLibrary, getTarget: i, openItem: openKeepItItem, isNote: ue,prepareOffline:prepareOfflineItem });
   let b = Hi({ frame: h, getLibrary: t, getTarget: i, canSync: r }), y = null, I = null, C = false, l = null, c = () => {
     let O = h.contentWindow?.liveItOwnedAccess?.getScope();
     O && O !== l && (l = O, m.replaceChildren(), I = null, f.textContent = O + " workspace \xB7 refresh records to select a native note.");
@@ -167,7 +168,7 @@ function Qi({ workspace: e, getLibrary: t, getTarget: i, getNoteUI: o, openItem:
     b.dispose(), C = true, y?.disconnect(), s.remove(), n();
   } };
 }
-function Vi({ workspace: e, getLibrary: t, getTarget: i, getNoteUI: o, openItem: openTravelDocument, onClose: n = () => {
+function Vi({ workspace: e, getLibrary: t, getReadLibrary: readLibrary=t, getTarget: i, getNoteUI: o, openItem: openTravelDocument, onClose: n = () => {
 } }) {
   let r = document.createElement("section");
   r.setAttribute("aria-label", "TravelIt connected workspace"), r.style.cssText = "position:fixed;inset:0;background:#f7f7f3;z-index:1100;display:flex;flex-direction:column";
@@ -186,7 +187,7 @@ function Vi({ workspace: e, getLibrary: t, getTarget: i, getNoteUI: o, openItem:
     }, s.append(v), v;
   }, g = document.createElement("iframe");
   g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=trip-sync-1", g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
-  mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: t, getTarget: i, openItem: openTravelDocument, isNote: ue, downloadFile: at });
+  mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: readLibrary, getTarget: i, openItem: openTravelDocument, isNote: ue, downloadFile: at,prepareOffline:prepareOfflineItem });
   let h = null, b = null, y = false, I = () => {
     let c = g.contentWindow?.travelItOwnedHooks;
     if (!c) throw Error("TravelIt is still opening.");
@@ -1395,18 +1396,21 @@ async function ce() {
   }
   return Z;
 }
+async function prepareOfflineItem(item){
+  if(ue(item))await ce();
+}
 var Q = null, Je = Zi(location.search, { enabled: true }), zo = false;
 Xi();
 function ii() {
   if (!(!Je || zo)) {
     if (zo = true, document.title = Je.name + " \xB7 KeepIt connected", Je.id === "liveit") {
-      Q = Qi({ canSync: () => !$ && !re && !Te() && !V.running, workspace: V, getLibrary: () => te && !ye && !J?.startTask && u && !u.readOnly ? u : null, getTarget: G, getNoteUI: ce, openItem: ot, onClose: () => {
+      Q = Qi({ canSync: () => !$ && !re && !Te() && !V.running, workspace: V, getReadLibrary:()=>u, getLibrary: () => te && !ye && !J?.startTask && u && !u.readOnly ? u : null, getTarget: G, getNoteUI: ce, openItem: ot, onClose: () => {
         Q = null;
       } });
       return;
     }
     if (Je.id === "travelit") {
-      Q = Vi({ workspace: V, getLibrary: () => te && !ye && !J?.startTask && u && !u.readOnly ? u : null, getTarget: G, getNoteUI: ce, openItem: ot, onClose: () => {
+      Q = Vi({ workspace: V, getReadLibrary:()=>u, getLibrary: () => te && !ye && !J?.startTask && u && !u.readOnly ? u : null, getTarget: G, getNoteUI: ce, openItem: ot, onClose: () => {
         Q = null;
       } });
       return;
@@ -1470,13 +1474,16 @@ var oe = [], X = "all", T = null, $ = false, ne = null, Ne = 0, Ze = new yt(), O
   return t ? u.original(t.id) : null;
 }, open: async (e) => {
   try {
-    let t = (await u.list()).find((s) => s.digest === e.digest);
+    const library=u;
+    let t = (await library.list()).find((s) => s.digest === e.digest);
+    if(u!==library)throw Error('The selected KeepIt library changed. Reopen this attachment.');
     if (!t) throw new Error("This linked file is missing. Restore it from backup.");
     it?.();
     let i = ++Xe, o = a("attachment-preview");
     o.replaceChildren(), a("attachment-heading").textContent = t.title, a("attachment-dialog").showModal();
-    let n = await u.original(t.id);
+    let n = await library.original(t.id);
     if (i !== Xe) return;
+    if(u!==library)throw Error('The selected KeepIt library changed. Reopen this attachment.');
     if (await Lt(n, t) === "image") {
       let s = U("img"), p = URL.createObjectURL(new Blob([n], { type: Ue(t) }));
       s.alt = t.title, s.src = p, o.append(s), it = () => URL.revokeObjectURL(p);
@@ -1488,6 +1495,8 @@ var oe = [], X = "all", T = null, $ = false, ne = null, Ne = 0, Ze = new yt(), O
       }
       it = s.cleanup, s.handled || o.append(U("p", "Download the original to open this format in its usual app.", "preview-fallback"));
     }
+    const controls=mountOfflineControls({container:o,library,itemId:t.id,isCurrent:()=>i===Xe&&u===library&&a('attachment-dialog').open});
+    const priorCleanup=it;it=()=>{priorCleanup?.();controls?.dispose();};
     a("attachment-download").onclick = () => at(n, t.originalName);
   } catch (t) {
     E(t.message, true, T ? "detail-message" : "message");
@@ -1649,6 +1658,7 @@ async function W(e, t = "message", { capture: i = false, propagate: o = false } 
     $ = false, document.querySelectorAll("button").forEach((n) => {
       n.closest(".note-dialog") || (n.disabled = false);
     }), Fo(), Be && !he && !u?.isCloud && (a("add-files").disabled = true, a("empty-add").disabled = false), me && !re && xe();
+    if(T&&a('item-dialog').open)applyOriginalReadPermissions();
   }
 }
 async function M({ reload: e = true } = {}) {
@@ -1775,6 +1785,10 @@ function No(e, t) {
     if (e.pendingNote) throw new Error("This note still has a pending save. Open it to review its status first.");
     await p(i), await M({ reload: false });
   }), r = (p) => E(j(p), true), s = [{ label: "Open", run: o, error: r }, { label: "Share\u2026", run: () => dn(e), error: r }];
+  if(!e.trashedAt&&!e.pendingNote&&typeof i?.keepOffline==='function')s.push({label:'Keep offline on this device',error:r,run:()=>W(async()=>{
+    if(u!==i)throw Error('The selected library changed. Reopen this menu.');
+    await prepareOfflineItem(e);await i.keepOffline(e.id);E('Kept offline on this device.');
+  })});
   e.trashedAt ? s.push({ label: "Restore from Trash", disabled: u?.readOnly, run: () => n((p) => p.trash(e.id, e.version, true)), error: r }) : s.push({ label: "Duplicate", disabled: e.pendingNote || u?.readOnly, run: () => n(async (p) => {
     await p.duplicate(e.id, e.version), E("Copy added to your library.");
   }), error: r }, { label: e.archivedAt ? "Unarchive" : "Archive", disabled: e.pendingNote || u?.readOnly, run: () => n(async (p) => {
@@ -1783,7 +1797,15 @@ function No(e, t) {
     await p.trash(e.id, e.version), E("Moved to Recently deleted. You can restore it there.");
   }), error: r }), Ut(e.title, s, { returnFocus: t });
 }
+let itemOfflineControls=null;
+function applyOriginalReadPermissions(){
+  const readOnly=!!u?.readOnly||!!u?.isCloud&&navigator.onLine===false;
+  for(const field of a('item-form').querySelectorAll('input,select,textarea,button[type="submit"]'))field.disabled=readOnly;
+  for(const id of ['trash-item','delete-item','item-name-edit'])a(id).disabled=readOnly;
+  return readOnly;
+}
 async function Po() {
+  itemOfflineControls?.dispose();itemOfflineControls=null;
   Ne++, ni?.(), ni = null, ne && (await ne.close(), ne = null), De && URL.revokeObjectURL(De), De = null, a("preview").replaceChildren(), a("pdf-controls").hidden = true, a("preview-status").textContent = "";
 }
 function Fo() {
@@ -1803,14 +1825,26 @@ async function ot(e, expectedLibrary) {
     await editor.open(n, { expectedLibrary });
     return;
   }
-  if (u?.readOnly) throw T = null, new Error("The gallery is available, but OneDrive is still reconnecting. Wait for the connection to open originals.");
   for (let [n, r] of [["title", T.title], ["tags", T.tags.join(", ")], ["source", T.source], ["notes", T.notes]]) a(`item-${n}`).value = r;
   ze(a("item-collection"), ae.categories, T.domain), ze(a("item-record-type"), lt(ae), T.recordType || "", "Unspecified"), li(T.customFields || []), a("item-favorite").checked = T.favorite, Et = nt(), a("item-heading").textContent = T.title, a("detail-message").hidden = true, a("item-info").textContent = `${T.originalName} \xB7 ${pe(T.bytes)} \xB7 Added ${new Date(T.createdAt).toLocaleDateString()}`, ai = T.shortCode || Se(), Ce = null, kt = null, a("item-name-options").hidden = true, a("item-name-edit").setAttribute("aria-expanded", "false"), a("item-domain-code").value = T.domainCode || zt(T.domain), a("item-type-code").value = T.typeCode || ki(T.originalName, T.mime, T.title), a("item-managed-name").textContent = T.managedName || "Original filename retained", a("trash-item").textContent = T.trashedAt ? "Restore from Trash" : "Move to Trash", a("delete-item").hidden = !T.trashedAt, a("item-dialog").open || a("item-dialog").showModal(), a("preview").append(U("p", "Opening preview\u2026", "preview-fallback"));
-  let i = await u.original(e);
+  const openedLibrary=u;
+  const readOnly=applyOriginalReadPermissions();
+  let i;
+  try{i=await openedLibrary.original(e);}
+  catch(error){
+    if(t===Ne){a('preview').replaceChildren(U('p',error.message,'preview-fallback'));E(error.message,true,'detail-message');}
+    throw error;
+  }
   if (t !== Ne) return;
+  if(u!==openedLibrary)throw Error('The active KeepIt library changed. Reopen this item.');
+  if(readOnly)a('item-info').textContent+=' · Last verified device copy · metadata read only';
+  itemOfflineControls=mountOfflineControls({container:a('preview').parentElement,library:openedLibrary,itemId:e,isCurrent:()=>T?.id===e&&u===openedLibrary&&t===Ne});
   a("preview").replaceChildren();
   let o = await Lt(i, T);
   if (t === Ne) if (o === "pdf") {
+    if(navigator.onLine===false){
+      const preview=await Vt(i,T,a('preview'),()=>t===Ne);ni=preview.cleanup;return;
+    }
     if (i.size > 128 * 1024 ** 2) {
       a("preview").append(U("p", "This PDF is stored. It exceeds the 128 MiB in-browser rendering budget; download the original to open it in your PDF app.", "preview-fallback"));
       return;
@@ -1955,6 +1989,7 @@ a("item-dialog").addEventListener("cancel", (e) => {
 });
 a("item-form").onsubmit = (e) => {
   e.preventDefault(), W(async () => {
+    if(u?.readOnly||u?.isCloud&&navigator.onLine===false)throw Error('This device copy is read only. Reconnect OneDrive before changing file metadata.');
     T = await u.edit(T.id, T.version, { ...nt(), ...Ce ? { namingChange: Ce } : {} }), Ce = null, Et = nt(), a("item-managed-name").textContent = T.managedName || "Original filename retained", a("item-heading").textContent = T.title, await M({ reload: false }), E("Changes saved.", false, "detail-message");
   }, "detail-message");
 };
@@ -2063,7 +2098,7 @@ function si() {
     return;
   }
   if (u?.readOnly) {
-    document.body.classList.remove("folder-library-mode"), a("storage-location-label").textContent = "OneDrive \xB7 Last verified gallery", document.querySelector(".device-badge").textContent = "Reconnecting", a("settings-folder").textContent = u.displayPath, a("storage-description").textContent = "Showing your last verified gallery while OneDrive reconnects. New files can queue on this device. Originals need a connection.", a("backup-location-copy").textContent = "Connect OneDrive before exporting a complete backup of your originals.";
+    document.body.classList.remove("folder-library-mode"), a("storage-location-label").textContent = "OneDrive \xB7 Last verified gallery", document.querySelector(".device-badge").textContent = "Reconnecting", a("settings-folder").textContent = u.displayPath, a("storage-description").textContent = "Showing your last verified gallery while OneDrive reconnects. New files can queue on this device. Kept originals can open on this device. Other originals need a connection.", a("backup-location-copy").textContent = "Connect OneDrive before exporting a complete backup of your originals.";
     return;
   }
   if (u?.isCloud) {

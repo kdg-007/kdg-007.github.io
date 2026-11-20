@@ -1,4 +1,5 @@
 import {hashText} from './app-repository-store.mjs';
+import {offlineCopyLabel} from './offline-originals-ui.mjs';
 import {CALENDAR_SOURCE, CALENDAR_TAG} from '../liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1';
 import '../liveit/thinkit/connected-w18e-c15396/keepit-reference.js?v=1';
 
@@ -11,7 +12,7 @@ const isVisible = item => item && !item.trashedAt && isItemId(item.id) &&
   !(item.source === CALENDAR_SOURCE &&
     item.tags?.includes(CALENDAR_TAG));
 
-export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getTarget, openItem, isNote, downloadFile}) {
+export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getTarget, openItem, isNote, downloadFile,prepareOffline=async()=>{}}) {
   if (!Object.hasOwn(apps,app)) throw Error('Unsupported KeepIt link consumer.');
   const target = apps[app];
   function install() {
@@ -43,7 +44,7 @@ export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getTarget
       async list() {
         const {library, scope, assertCurrent} = await connection();
         // Travel documents may have just been added in a separate KeepIt tab.
-        if (app === 'travelit' && library.isFolder) await library.reload();
+        if (app === 'travelit' && library.isFolder && !library.readOnly && globalThis.navigator?.onLine!==false) await library.reload();
         assertCurrent();
         const items = await library.list();
         assertCurrent();
@@ -56,6 +57,22 @@ export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getTarget
       async open(reference) {
         const {item, library} = await resolve(reference);
         await openItem(item.id, library);
+      },
+      async offlineStatus(reference) {
+        const {item,library,assertCurrent}=await resolve(reference);
+        const status=typeof library.offlineStatus==='function'?await library.offlineStatus(item.id):{available:!library.isCloud,pinned:!library.isCloud,olderCopy:false};
+        assertCurrent();return {...status,managed:typeof library.offlineStatus==='function',label:typeof library.offlineStatus==='function'?offlineCopyLabel(status):'Available in the selected local library'};
+      },
+      async keepOffline(reference) {
+        const {item,library,assertCurrent}=await resolve(reference);
+        if(typeof library.keepOffline!=='function')throw Error('This library already keeps its files locally.');
+        await prepareOffline(item);assertCurrent();
+        const status=await library.keepOffline(item.id);assertCurrent();return {...status,managed:true,label:offlineCopyLabel(status)};
+      },
+      async removeOffline(reference) {
+        const {item,library,assertCurrent}=await resolve(reference);
+        if(typeof library.removeOffline!=='function')throw Error('Only a OneDrive device copy can be removed here.');
+        const status=await library.removeOffline(item.id);assertCurrent();return {...status,managed:true,label:offlineCopyLabel(status)};
       },
       ...(downloadFile ? {async download(reference) {
         const {item, library, assertCurrent} = await resolve(reference);
