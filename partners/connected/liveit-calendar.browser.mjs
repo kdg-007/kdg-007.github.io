@@ -1,5 +1,6 @@
 // Real compiled MSAL redirect/callback and canonical catalog reader, synthetic services only.
 import assert from 'node:assert/strict';
+import {setOriginalTestOffline} from './offline-test-network.mjs';
 import {createServer} from 'node:https';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync,statSync} from 'node:fs';
@@ -113,7 +114,9 @@ try{
   await noteDetail.getByRole('button',{name:'Synthetic meeting note · note'}).click();
   await a.page.locator('dialog.note-dialog[open]').getByText(noteText,{exact:true}).waitFor();
   await a.page.locator('dialog.note-dialog[open]').getByRole('button',{name:'Close',exact:true}).click();
-  await a.context.setOffline(true);
+  await setOriginalTestOffline(a.context,true);
+  assert.equal(await a.page.evaluate(()=>navigator.onLine),false);
+  assert.equal(await a.page.evaluate(()=>fetch('/__offline_http_probe').then(()=>false,()=>true)),true);
   await noteDetail.getByRole('button',{name:'Synthetic presentation · file'}).click();
   await a.page.locator('#item-dialog pre').filter({hasText:'Synthetic presentation contents'}).waitFor().catch(async error=>{
    console.error('OFFLINE_ORIGINAL_OPEN_DIAGNOSTIC',await a.page.evaluate(()=>({online:navigator.onLine,preview:document.querySelector('#preview')?.innerText,detail:document.querySelector('#detail-message')?.innerText,storage:document.querySelector('#storage-location-label')?.innerText,linkStatus:document.querySelector('iframe[title="LiveIt journal workspace"]')?.contentDocument.querySelector('.keepit-link-status')?.textContent})),a.errors);
@@ -131,7 +134,7 @@ try{
   // A failed original must leave the viewer closable and retain its catalog row.
   if(await a.page.locator('#item-dialog[open]').count())await a.page.locator('#close-item').click();
   await noteDetail.locator('[data-action="detail-close"]').click();
-  await a.context.setOffline(false);a.network.offline=false;
+  a.network.offline=false;await setOriginalTestOffline(a.context,false);
   await a.page.locator('#connected-cloud-status').click();await a.page.locator('#connected-cloud-status[data-phase="connected"]').waitFor({timeout:30000});
   if(await a.page.locator('#onedrive-dialog[open]').count())await a.page.locator('#onedrive-close').click();
   await a.frame.getByText('Synthetic LiveIt note with links',{exact:true}).first().click();

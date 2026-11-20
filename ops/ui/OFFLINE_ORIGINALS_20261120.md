@@ -12,6 +12,8 @@ A cached OneDrive gallery can open verified ordinary originals as well as native
 
 45 focused Node checks cover cache planning, connection recovery, catalog reads and device-copy continuity. CI additionally exercises actual IndexedDB in Chromium/WebKit and linked-note/file keeping, provider-outage restart, offline opening, local removal and TravelIt document controls, alongside the existing suite regressions.
 
+The pinned Playwright WebKit offline switch also rejects local in-memory Blob reads (reproduced with a new Blob from retained bytes). The WebKit offline checks therefore abort **all HTTP(S)** requests through routing, set `navigator.onLine=false` in every live frame, and assert that an HTTP probe fails. Chromium uses native context offline emulation. Neither path skips cached-byte verification or the linked-file open/removal assertions. This is automation evidence, separate from actual Safari acceptance. Relevant upstream context: https://github.com/microsoft/playwright/issues/42775 and the v1.56.1 `browser_patches/webkit/patches/bootstrap.diff` unconditional offline check in `WebLoaderStrategy::scheduleLoad`.
+
 ## Remaining acceptance
 
 No bulk trip/document download, recursive linked-file collection, above-budget file support or operating-system storage guarantee is claimed. Actual iPhone cold-start latency, installed-app airplane-mode restart and the owner's Mac-to-iPhone-to-Mac roundtrip remain physical-device acceptance gates. Automation uses synthetic provider fixtures and contains no owner's file content.
