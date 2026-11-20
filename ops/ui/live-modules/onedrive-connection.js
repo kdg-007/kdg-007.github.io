@@ -864,7 +864,8 @@ var G = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, we = 
       if (await this.permission(), r?.version) {
         let o = this.fs.validate(await this.fs.item(r.version.id), r.version.parentId);
         if (o.file && o.eTag === r.version.eTag && o.size === t.bytes && o.name === r.version.name) return await this.permission(), r.blob;
-        await this.originalCache.remove(i);
+        // Retain the verified device copy until a replacement has passed validation.
+        // The atomic put also preserves its explicit kept policy.
       }
       let a = await this.thumbnailSource(e);
       d(a.size === t.bytes && await y(a) === t.digest, "The file was changed or damaged outside KeepIt. Its original record was retained."), await this.permission();

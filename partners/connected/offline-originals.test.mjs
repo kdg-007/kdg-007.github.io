@@ -75,3 +75,14 @@ test('an already-open cloud library uses only verified device bytes when the bro
  assert.equal(await reader.original('file'),blob);assert.equal(metadata,0);assert.equal(permission,2);
  reader.originalCache.get=async()=>null;await assert.rejects(()=>reader.original('file'),/not available on this device/);assert.equal(metadata,0);
 });
+
+test('changed remote metadata followed by a failed transfer retains the verified device copy',async()=>{
+ const start=source.indexOf('  async original(e) {',source.indexOf('  originalScope() {'));
+ const method=source.slice(start,source.indexOf('  async thumbnailSource(e) {',start));
+ const Klass=vm.runInNewContext('(class {'+method+'})',{navigator:{onLine:true},N:(s,t)=>JSON.stringify([s,t.id,t.digest]),d:(ok,msg)=>{if(!ok)throw Error(msg);}});
+ const reader=new Klass(),blob=new Blob(['safe']);let removed=0;
+ Object.assign(reader,{state:{items:[{id:'file',digest:'same',bytes:4}],paths:{file:'FILE.txt'}},originalLoads:new Map(),originalScope:()=>scope,
+  permission:async()=>{},originalCache:{get:async()=>({blob,pinned:true,version:{id:'remote',parentId:'files',eTag:'old',name:'FILE.txt'}}),remove:async()=>{removed++;}},
+  fs:{item:async()=>({file:true,id:'remote',eTag:'new',size:4,name:'FILE.txt'}),validate:value=>value},thumbnailSource:async()=>{throw Error('Transfer unavailable');}});
+ await assert.rejects(()=>reader.original('file'),/Transfer unavailable/);assert.equal(removed,0);
+});

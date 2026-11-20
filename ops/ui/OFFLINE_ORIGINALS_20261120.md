@@ -10,7 +10,7 @@ A cached OneDrive gallery can open verified ordinary originals as well as native
 
 ## Validation
 
-44 focused Node checks cover cache planning, connection recovery, catalog reads and device-copy continuity. CI additionally exercises actual IndexedDB in Chromium/WebKit and linked-note/file keeping, provider-outage restart, offline opening, local removal and TravelIt document controls, alongside the existing suite regressions.
+45 focused Node checks cover cache planning, connection recovery, catalog reads and device-copy continuity. CI additionally exercises actual IndexedDB in Chromium/WebKit and linked-note/file keeping, provider-outage restart, offline opening, local removal and TravelIt document controls, alongside the existing suite regressions.
 
 ## Remaining acceptance
 
