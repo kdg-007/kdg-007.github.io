@@ -2098,7 +2098,7 @@ function si() {
     return;
   }
   if (u?.readOnly) {
-    document.body.classList.remove("folder-library-mode"), a("storage-location-label").textContent = "OneDrive \xB7 Last verified gallery", document.querySelector(".device-badge").textContent = "Reconnecting", a("settings-folder").textContent = u.displayPath, a("storage-description").textContent = "Showing your last verified gallery while OneDrive reconnects. New files can queue on this device. Originals need a connection.", a("backup-location-copy").textContent = "Connect OneDrive before exporting a complete backup of your originals.";
+    document.body.classList.remove("folder-library-mode"), a("storage-location-label").textContent = "OneDrive \xB7 Last verified gallery", document.querySelector(".device-badge").textContent = "Reconnecting", a("settings-folder").textContent = u.displayPath, a("storage-description").textContent = "Showing your last verified gallery while OneDrive reconnects. New files can queue on this device. Kept originals can open on this device. Other originals need a connection.", a("backup-location-copy").textContent = "Connect OneDrive before exporting a complete backup of your originals.";
     return;
   }
   if (u?.isCloud) {
