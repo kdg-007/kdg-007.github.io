@@ -38,7 +38,7 @@ function planOriginalCachePut(rows, {key,bytes,pinned,maxBytes,maxEntries,itemVe
 }
 var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O = class {
   constructor({ name: e = "keepit-originals-cache-v1", maxBytes: t = 256 * 1024 ** 2, maxFileBytes: i = 64 * 1024 ** 2, maxEntries: s = 512 } = {}) {
-    this.db = new E(e), this.db.version(1).stores({ files: "&key", sizes: "&key,used" }), Object.assign(this, { maxBytes: t, maxFileBytes: i, maxEntries: s });
+    this.db = new E(e), this.db.version(2).stores({ files: "&key", sizes: "&key,used" }), Object.assign(this, { maxBytes: t, maxFileBytes: i, maxEntries: s });
   }
   async get(e, t) {
     try {
