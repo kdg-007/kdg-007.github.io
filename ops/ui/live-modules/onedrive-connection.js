@@ -37,12 +37,37 @@ function planOriginalCachePut(rows, {key,bytes,pinned,maxBytes,maxEntries,itemVe
   return {remove:[...removed],pinned:keepPinned};
 }
 var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O = class {
-  constructor({ name: e = "keepit-originals-cache-v1", maxBytes: t = 256 * 1024 ** 2, maxFileBytes: i = 64 * 1024 ** 2, maxEntries: s = 512 } = {}) {
-    this.db = new E(e), this.db.version(1).stores({ files: "&key", sizes: "&key,used" }), Object.assign(this, { maxBytes: t, maxFileBytes: i, maxEntries: s });
+  constructor({ name: e = "keepit-originals-cache-v2", legacyName: l = e === "keepit-originals-cache-v2" ? "keepit-originals-cache-v1" : null, maxBytes: t = 256 * 1024 ** 2, maxFileBytes: i = 64 * 1024 ** 2, maxEntries: s = 512 } = {}) {
+    this.db = new E(e), this.db.version(1).stores({ files: "&key", sizes: "&key,used", legacyBlocked: "&key" }), Object.assign(this, { maxBytes: t, maxFileBytes: i, maxEntries: s });
+    this.legacy = l ? new E(l) : null;
+    this.legacy?.version(1).stores({files:"&key",sizes:"&key,used"});
+
+  }
+  legacyItemKey(key) {
+    const parts=JSON.parse(key);
+    return JSON.stringify([parts[1].slice(0,4),parts[2]]);
+  }
+  async legacyAvailable() {
+    if(!this.legacy)return false;
+    if(this.legacyPresent===undefined)this.legacyPresent=await E.exists(this.legacy.name);
+    return this.legacyPresent;
+  }
+  async readLegacy(key,item) {
+    if(!await this.legacyAvailable() || await this.db.legacyBlocked.get(this.legacyItemKey(key)))return null;
+    const row=await this.legacy.files.get(key);
+    if(!row)return null;
+    const blob=row.blobData instanceof ArrayBuffer ? new Blob([row.blobData],{type:row.mime||item.mime}) : row.blob;
+    if(!(blob instanceof Blob)||blob.size!==item.bytes||await y(blob)!==item.digest)return null;
+    // The old cache remains independent. Claim kept status only after adoption
+    // into the protected cache succeeds within its budget.
+    const stored=await this.put(key,item,blob,row.version,{pin:row.pinned===true,fromLegacy:true}).catch(()=>false);
+    if(await this.db.legacyBlocked.get(this.legacyItemKey(key)))return null;
+    return stored ? this.db.files.get(key) : {...row,blob,pinned:false};
   }
   async get(e, t) {
     try {
       let i = await this.db.files.get(e);
+      if(!i)i=await this.readLegacy(e,t);
       if(i?.blobData instanceof ArrayBuffer)i={...i,blob:new Blob([i.blobData],{type:i.mime||t.mime||'application/octet-stream'})};
       return i ? !(i.blob instanceof Blob) || i.blob.size !== t.bytes || await y(i.blob) !== t.digest ? (await this.remove(e), null) : (await this.db.transaction("rw", this.db.sizes, async () => {
         let s = await this.db.sizes.orderBy("used").last();
@@ -52,7 +77,7 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
       return null;
     }
   }
-  async put(e, t, i, s, { isCurrent: r = () => true, pin = false } = {}) {
+  async put(e, t, i, s, { isCurrent: r = () => true, pin = false, fromLegacy = false } = {}) {
     try {
       if(!r())throw Error('The selected library changed. The device copy was not saved.');
       if(i.size>this.maxFileBytes || i.size>this.maxBytes)throw Error('This file exceeds the offline-copy budget. Download the original for an independent device copy.');
@@ -60,8 +85,9 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
       // WebKit can reject Blob values in IndexedDB. Store ordinary bytes and
       // reconstruct a Blob on read; retain compatibility with existing Blob rows.
       const blobData=await i.arrayBuffer();
-      return await this.db.transaction("rw", this.db.files, this.db.sizes, async () => {
+      return await this.db.transaction("rw", this.db.files, this.db.sizes, this.db.legacyBlocked, async () => {
         if (!r()) throw Error('The selected library changed. The device copy was not saved.');
+        if(fromLegacy && await this.db.legacyBlocked.get(this.legacyItemKey(e)))return false;
         const rows = await this.db.sizes.toArray();
         const itemVersion=Number.isSafeInteger(t.version)?t.version:0;
         const plan = planOriginalCachePut(rows,{key:e,bytes:i.size,pinned:pin,maxBytes:this.maxBytes,maxEntries:this.maxEntries,itemVersion});
@@ -79,18 +105,16 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
   }
   async clearScope(e, t) {
     try {
-      let i = await this.db.sizes.toArray();
-      for (let s of i) {
-        let r;
-        try {
-          r = JSON.parse(s.key);
-        } catch {
-          continue;
+      const previous=await this.legacyAvailable()?await this.legacy.sizes.toArray():[];
+      const rows=[...await this.db.sizes.toArray(),...previous],items=new Map();
+      for(const row of rows){
+        let parts;try{parts=JSON.parse(row.key);}catch{continue;}
+        if(e.every((value,index)=>parts[1]?.[index]===value)&&(!t||parts[2]===t)){
+          const scope=parts[1].slice(0,4),id=parts[2];items.set(JSON.stringify([scope,id]),[scope,id]);
         }
-        e.every((a, n) => r[1]?.[n] === a) && (!t || r[2] === t) && await this.remove(s.key);
       }
-    } catch {
-    }
+      for(const [scope,id] of items.values())await this.removeItem(scope,id);
+    } catch {}
   }
   async remove(e) {
     try {
@@ -101,13 +125,23 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
     }
   }
   async hasPinned(scope,id) {
-    return (await this.db.sizes.toArray()).some(row=>row.pinned===true&&originalCacheItem(row.key,scope,id));
+    if((await this.db.sizes.toArray()).some(row=>row.pinned===true&&originalCacheItem(row.key,scope,id)))return true;
+    if(await this.legacyAvailable()&&!await this.db.legacyBlocked.get(JSON.stringify([scope,id])))
+      return (await this.legacy.sizes.toArray()).some(row=>row.pinned===true&&originalCacheItem(row.key,scope,id));
+    return false;
   }
   async removeItem(scope,id,isCurrent=()=>true) {
-    return this.db.transaction('rw',this.db.files,this.db.sizes,async()=>{
+    await this.db.transaction('rw',this.db.files,this.db.sizes,this.db.legacyBlocked,async()=>{
       if(!isCurrent())throw Error('The selected library changed. Reopen this item.');
+      await this.db.legacyBlocked.put({key:JSON.stringify([scope,id])});
       for(const row of await this.db.sizes.toArray())if(originalCacheItem(row.key,scope,id)){
         await this.db.files.delete(row.key);await this.db.sizes.delete(row.key);
+      }
+    });
+    if(await this.legacyAvailable())await this.legacy.transaction('rw',this.legacy.files,this.legacy.sizes,async()=>{
+      if(!isCurrent())throw Error('The selected library changed. Reopen this item.');
+      for(const row of await this.legacy.sizes.toArray())if(originalCacheItem(row.key,scope,id)){
+        await this.legacy.files.delete(row.key);await this.legacy.sizes.delete(row.key);
       }
     });
   }
