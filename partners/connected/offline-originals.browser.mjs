@@ -4,7 +4,7 @@ export async function checkOfflineOriginalCache(browser,origin){
  const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'});
  try{
   await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
-  const page=await context.newPage();await page.goto(origin+'/partners/connected/status.json');
+  const page=await context.newPage();await page.exposeFunction('__setOriginalCacheOffline',offline=>context.setOffline(offline));await page.goto(origin+'/partners/connected/status.json');
   const path=JSON.parse(readFileSync('ops/ui/LIVE_STABILITY_MODULES.json')).paths.connection;
   const result=await page.evaluate(async path=>{
    const {OfflineOriginalCache:Cache,CachedOneDriveLibrary:Cached}=await import('/'+path);
@@ -32,10 +32,19 @@ export async function checkOfflineOriginalCache(browser,origin){
     const cached=new Cached({homeId:'owner',driveId:'drive',rootId:'root'},{identity:{libraryId:'library'},verified:{state:{items:[newer.item],paths:{a:'NEW-a.txt'}}}},{originalCache:cache});
     const status=await cached.offlineStatus('a');expect(!status.available&&status.olderCopy,'An old digest was labelled as the current file');
     let missing=false;try{await cached.original('a');}catch{missing=true;}expect(missing,'An old digest was substituted for the current original');
-    return {protected:true,quotaSafe:true,scoped:true,corruptionRejected:true,olderVersionLabelled:true};
+    await window.__setOriginalCacheOffline(true);
+    const offlineCopy=await get(a);
+    if(!offlineCopy){
+     const raw=await cache.db.files.get(a.key);let blobRead;
+     try{blobRead=await digest(new Blob([raw.blobData]));}catch(error){blobRead=error.name+': '+error.message;}
+     throw Error('Fully offline cache read failed: '+JSON.stringify({present:!!raw,pinned:raw?.pinned,bytes:raw?.blobData?.byteLength,blobRead,expected:a.item.digest}));
+    }
+    expect(await offlineCopy.blob.text()==='aaaaaaaaaa','Offline bytes must remain previewable');
+    await window.__setOriginalCacheOffline(false);
+    return {protected:true,quotaSafe:true,scoped:true,corruptionRejected:true,olderVersionLabelled:true,fullyOffline:true};
    }finally{await cache.db.delete();}
   },path);
   assert.ok(Object.values(result).every(Boolean));
   console.log('KEEPIT_OFFLINE_ORIGINAL_REAL_INDEXEDDB_PIN_QUOTA_SCOPE_CORRUPTION_'+browser.browserType().name().toUpperCase()+'_PASS');
- }finally{await context.close();}
+ }finally{await context.setOffline(false);await context.close();}
 }
