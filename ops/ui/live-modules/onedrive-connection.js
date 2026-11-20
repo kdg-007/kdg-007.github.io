@@ -60,7 +60,8 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
     if(!(blob instanceof Blob)||blob.size!==item.bytes||await y(blob)!==item.digest)return null;
     // The old cache remains independent. Claim kept status only after adoption
     // into the protected cache succeeds within its budget.
-    const stored=await this.put(key,item,blob,row.version,{pin:row.pinned===true}).catch(()=>false);
+    const stored=await this.put(key,item,blob,row.version,{pin:row.pinned===true,fromLegacy:true}).catch(()=>false);
+    if(await this.db.legacyBlocked.get(this.legacyItemKey(key)))return null;
     return stored ? this.db.files.get(key) : {...row,blob,pinned:false};
   }
   async get(e, t) {
@@ -76,7 +77,7 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
       return null;
     }
   }
-  async put(e, t, i, s, { isCurrent: r = () => true, pin = false } = {}) {
+  async put(e, t, i, s, { isCurrent: r = () => true, pin = false, fromLegacy = false } = {}) {
     try {
       if(!r())throw Error('The selected library changed. The device copy was not saved.');
       if(i.size>this.maxFileBytes || i.size>this.maxBytes)throw Error('This file exceeds the offline-copy budget. Download the original for an independent device copy.');
@@ -84,8 +85,9 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
       // WebKit can reject Blob values in IndexedDB. Store ordinary bytes and
       // reconstruct a Blob on read; retain compatibility with existing Blob rows.
       const blobData=await i.arrayBuffer();
-      return await this.db.transaction("rw", this.db.files, this.db.sizes, async () => {
+      return await this.db.transaction("rw", this.db.files, this.db.sizes, this.db.legacyBlocked, async () => {
         if (!r()) throw Error('The selected library changed. The device copy was not saved.');
+        if(fromLegacy && await this.db.legacyBlocked.get(this.legacyItemKey(e)))return false;
         const rows = await this.db.sizes.toArray();
         const itemVersion=Number.isSafeInteger(t.version)?t.version:0;
         const plan = planOriginalCachePut(rows,{key:e,bytes:i.size,pinned:pin,maxBytes:this.maxBytes,maxEntries:this.maxEntries,itemVersion});
@@ -103,7 +105,8 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
   }
   async clearScope(e, t) {
     try {
-      const rows=[...await this.db.sizes.toArray(),...await this.legacyAvailable()?await this.legacy.sizes.toArray():[]],items=new Map();
+      const previous=await this.legacyAvailable()?await this.legacy.sizes.toArray():[];
+      const rows=[...await this.db.sizes.toArray(),...previous],items=new Map();
       for(const row of rows){
         let parts;try{parts=JSON.parse(row.key);}catch{continue;}
         if(e.every((value,index)=>parts[1]?.[index]===value)&&(!t||parts[2]===t)){

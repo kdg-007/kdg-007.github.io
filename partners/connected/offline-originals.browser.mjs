@@ -7,7 +7,7 @@ export async function checkOfflineOriginalCache(browser,origin){
   await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
   const page=await context.newPage();await page.exposeFunction('__setOriginalCacheOffline',offline=>setOriginalTestOffline(context,offline));await page.goto(origin+'/partners/connected/status.json');
   const path=JSON.parse(readFileSync('ops/ui/LIVE_STABILITY_MODULES.json')).paths.connection;
-  const result=await page.evaluate(async path=>{
+  const result=await page.evaluate(async ({path,engineName})=>{
    const {OfflineOriginalCache:Cache,CachedOneDriveLibrary:Cached}=await import('/'+path);
    const {m:Dexie}=await import('/assets/chunk-AAYJLHGB.js');
    const prefix='offline-originals-qa-'+crypto.randomUUID(),name=prefix+'-v2',legacyName=prefix+'-v1',legacy=new Dexie(legacyName);
@@ -22,7 +22,9 @@ export async function checkOfflineOriginalCache(browser,origin){
    try{
     const a=await make('a','aaaaaaaaaa'),b=await make('b','bbbbbbbbbb'),c=await make('c','cccccccccc');
     // Existing bytes are adopted, and an older writer remains isolated.
-    await legacy.files.put({key:a.key,blobData:await a.blob.arrayBuffer(),mime:a.item.mime,pinned:false});
+    const legacyRow={key:a.key,mime:a.item.mime,pinned:false};
+    if(engineName==='webkit')legacyRow.blobData=await a.blob.arrayBuffer();else legacyRow.blob=a.blob;
+    await legacy.files.put(legacyRow);
     await legacy.sizes.put({key:a.key,bytes:a.blob.size,used:1});
     expect(await get(a),'The updated cache lost an existing original');
     await put(a,true);
@@ -37,7 +39,20 @@ export async function checkOfflineOriginalCache(browser,origin){
     expect(!await get(a),'Old kept version must be replaced only after the new copy fits');expect(await get(newer),'Updated kept original missing');
     let stale=false;try{await put(a,true);}catch{stale=true;}expect(stale&&await get(newer),'An older tab displaced the newer kept copy');
     const foreign=await make('a','fff',['owner','drive','other-root','library']);await put(foreign,true);
-    await cache.removeItem(scope,'a');\n    await legacy.files.put({key:newer.key,blobData:await newer.blob.arrayBuffer(),mime:newer.item.mime,pinned:true});\n    await legacy.sizes.put({key:newer.key,bytes:newer.blob.size,used:1,pinned:true});\n    expect(!await get(newer),'Own device copy not removed');expect(await get(foreign),'Another library’s copy was removed');
+    await cache.removeItem(scope,'a');
+    await legacy.files.put({key:newer.key,blobData:await newer.blob.arrayBuffer(),mime:newer.item.mime,pinned:true});
+    await legacy.sizes.put({key:newer.key,bytes:newer.blob.size,used:1,pinned:true});
+    expect(!await get(newer),'Own device copy not removed');expect(await get(foreign),'Another library’s copy was removed');
+    const raced=await make('race','rr');
+    await legacy.files.put({key:raced.key,blobData:await raced.blob.arrayBuffer(),mime:raced.item.mime});
+    await legacy.sizes.put({key:raced.key,bytes:raced.blob.size,used:1});
+    const originalGet=cache.legacy.files.get.bind(cache.legacy.files);
+    let reached,release;
+    const reading=new Promise(resolve=>{reached=resolve;}),resume=new Promise(resolve=>{release=resolve;});
+    cache.legacy.files.get=async key=>{const row=await originalGet(key);if(key===raced.key){reached();await resume;}return row;};
+    const adopting=get(raced);await reading;await cache.removeItem(scope,'race');release();
+    expect(!await adopting,'An in-flight legacy adoption resurrected a removed device copy');
+    cache.legacy.files.get=originalGet;
     await cache.db.files.update(c.key,{blobData:new TextEncoder().encode('XXXXXXXXXX').buffer});expect(!await get(c),'Damaged cached bytes were accepted');
     expect(await get(foreign),'Corruption cleanup removed an unrelated copy');await put(a,true);
     const cached=new Cached({homeId:'owner',driveId:'drive',rootId:'root'},{identity:{libraryId:'library'},verified:{state:{items:[newer.item],paths:{a:'NEW-a.txt'}}}},{originalCache:cache});
@@ -56,7 +71,7 @@ export async function checkOfflineOriginalCache(browser,origin){
     await window.__setOriginalCacheOffline(false);
     return {protected:true,quotaSafe:true,scoped:true,corruptionRejected:true,olderVersionLabelled:true,fullyOffline:true,oldWritersIsolated:true};
    }finally{cache.legacy?.close();legacy.close();await cache.db.delete();await legacy.delete();}
-  },path);
+  },{path,engineName:browser.browserType().name()});
   assert.ok(Object.values(result).every(Boolean));
   console.log('KEEPIT_OFFLINE_ORIGINAL_REAL_INDEXEDDB_PIN_QUOTA_SCOPE_CORRUPTION_'+browser.browserType().name().toUpperCase()+'_PASS');
  }finally{await setOriginalTestOffline(context,false);await context.close();}
