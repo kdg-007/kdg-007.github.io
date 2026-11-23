@@ -1051,7 +1051,7 @@ var ve = class {
     copyStatus.setAttribute('aria-live','polite'); copyStatus.hidden = true;
     manual.id = 'onedrive-connection-manual-copy'; manual.readOnly = true; manual.hidden = true;
     manual.setAttribute('aria-label','Connection report for manual copy');
-    manual.style.cssText = 'width:100%;max-width:100%;box-sizing:border-box;min-height:100px;margin-top:6px';
+    if(manual.style) manual.style.cssText = 'width:100%;max-width:100%;box-sizing:border-box;min-height:100px;margin-top:6px';
     copy.onclick = async () => {
       if(copy.disabled)return;
       // Same privacy-limited report as the download: no raw errors, URLs,
