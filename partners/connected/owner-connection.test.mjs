@@ -148,6 +148,24 @@ try{
   assert.ok(report.phases.some(p=>p.phase==='legacy-history'&&p.durationMs>0));
   assert.ok(report.requests['file-read'].peak>=3&&report.requests['file-read'].peak<=4);
   assert.doesNotMatch(JSON.stringify(report),/owner@example|fixture-user|fixture-access|fixture-drive|Travel Library|downloadUrl|https?:/);
+  // iPhone Safari: copying is easier to share than downloading and locating JSON.
+  // A blocked clipboard must expose the same sanitized JSON for manual selection.
+  await phone.evaluate(()=>{
+   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copiedConnectionReport=text;}}});
+  });
+  await phone.locator('#onedrive-connection-copy').click();
+  await phone.waitForFunction(()=>!!window.__copiedConnectionReport);
+  assert.deepEqual(JSON.parse(await phone.evaluate(()=>window.__copiedConnectionReport)),report);
+  await phone.locator('#onedrive-connection-copy-status').filter({hasText:'copied'}).waitFor();
+  assert.equal(await phone.locator('#onedrive-connection-manual-copy').isVisible(),false);
+  await phone.evaluate(()=>{
+   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('Permission denied');}}});
+  });
+  await phone.locator('#onedrive-connection-copy').click();
+  await phone.locator('#onedrive-connection-manual-copy').waitFor({state:'visible'});
+  const manual=await phone.locator('#onedrive-connection-manual-copy').inputValue();
+  assert.deepEqual(JSON.parse(manual),report);
+  assert.doesNotMatch(manual,/owner@example|fixture-user|fixture-access|fixture-drive|Travel Library|downloadUrl|https?:/);
   await phone.locator('#onedrive-close').click();
   console.log('OWNER_PHONE_FIRST_OPEN_LEGACY_HISTORY_AND_PRIVATE_REPORT_'+engine.name().toUpperCase()+'_PASS',JSON.stringify({legacyDownloads:nested.legacyDownloads,peakConcurrent:nested.peakLegacy,legacyMs:report.phases.find(p=>p.phase==='legacy-history').durationMs,totalMs:report.totalMs}));
   assert.equal(await phone.evaluate(()=>JSON.parse(localStorage.getItem('keepit-onedrive-owner-1')).path),'Documents / Travel Library');
