@@ -1044,8 +1044,31 @@ var ve = class {
       link.href = url; link.download = 'KeepIt_Connection_Report.json'; link.click();
       setTimeout(()=>URL.revokeObjectURL(url),1000);
     };
-    details.append(timing,report); this.$('onedrive-browser').before(details);
-    this.traceSummary = summary; this.traceTiming = timing; this.traceReport = report;
+    const copy = document.createElement('button'), copyStatus = document.createElement('p'), manual = document.createElement('textarea');
+    copy.id = 'onedrive-connection-copy'; copy.type = 'button'; copy.className = 'secondary';
+    copy.textContent = 'Copy connection report'; copy.disabled = true;
+    copyStatus.id = 'onedrive-connection-copy-status'; copyStatus.setAttribute('role','status');
+    copyStatus.setAttribute('aria-live','polite'); copyStatus.hidden = true;
+    manual.id = 'onedrive-connection-manual-copy'; manual.readOnly = true; manual.hidden = true;
+    manual.setAttribute('aria-label','Connection report for manual copy');
+    manual.style.cssText = 'display:block;width:100%;max-width:100%;box-sizing:border-box;min-height:100px;margin-top:6px';
+    copy.onclick = async () => {
+      if(copy.disabled)return;
+      // Same privacy-limited report as the download: no raw errors, URLs,
+      // account, folder names, tokens or original file contents.
+      const data = JSON.stringify(this.connectionTrace.snapshot(),null,2);
+      copyStatus.hidden = false; manual.hidden = true; manual.value = '';
+      try {
+        if(typeof navigator.clipboard?.writeText !== 'function')throw Error('Clipboard unavailable');
+        await navigator.clipboard.writeText(data);
+        copyStatus.textContent = 'Connection report copied. Paste it into this conversation for diagnosis.';
+      } catch {
+        manual.value = data; manual.hidden = false; manual.focus(); manual.select();
+        copyStatus.textContent = 'Clipboard permission is unavailable. Select and copy the report below.';
+      }
+    };
+    details.append(timing,report,copy,copyStatus,manual); this.$('onedrive-browser').before(details);
+    this.traceSummary = summary; this.traceTiming = timing; this.traceReport = report; this.traceCopy = copy;
     window.addEventListener('keepit-auth-state',event=>{
       if(event.detail?.homeId!==this.auth.account()?.homeAccountId)return;
       const phase=event.detail.phase;
@@ -1104,6 +1127,7 @@ var ve = class {
     this.traceSummary.textContent = 'Connection details · '+seconds(report.totalMs);
     this.traceTiming.textContent = report.phases.map(step=>(labels[step.phase]||step.phase)+': '+seconds(step.durationMs)).join(' · ');
     this.traceReport.disabled = !report.startedAt;
+    this.traceCopy.disabled = !report.startedAt;
   }
   connectionStage(phase, message) {
     this.connectionTrace.phase(phase); this.renderConnectionTiming();
