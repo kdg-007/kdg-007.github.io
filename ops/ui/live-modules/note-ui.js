@@ -214,7 +214,7 @@ var r = (u, t, i) => {
     if (this.getLibrary() !== this.library) throw new Error("The selected library changed. Your draft remains attached to its original library.");
   }
   cleanup() {
-    this.nativeAutosave?.dispose(), this.nativeAutosave = null, this.loadSerial = (this.loadSerial || 0) + 1, this.editToken = null, this.session = null, this.editor?.destroy(), this.editor = null, this.viewer?.destroy(), this.viewer = null, this.fieldEditor?.dispose(), this.fieldEditor = null, this.viewportCleanup?.(), this.viewportCleanup = null, this.mode = null, this.help = null, this.metadataPanel = null, this.setMetadata = null, this.setTools = null, this.saveButton = null, this.editButton = null, this.dialog.classList.remove("note-fullscreen"), this.fullscreen = false;
+    this.nativeAutosave?.dispose(), this.nativeAutosave = null, this.loadSerial = (this.loadSerial || 0) + 1, this.editToken = null, this.session = null, this.editor?.destroy(), this.editor = null, this.viewer?.destroy(), this.viewer = null, this.fieldEditor?.dispose(), this.fieldEditor = null, this.viewportCleanup?.(), this.viewportCleanup = null, this.mode = null, this.historical = false, this.help = null, this.metadataPanel = null, this.setMetadata = null, this.setTools = null, this.saveButton = null, this.editButton = null, this.dialog.classList.remove("note-fullscreen"), this.fullscreen = false;
   }
   shell(t) {
     this.cleanup(), this.dialog.dataset.mode = "menu", this.dialog.replaceChildren(), this.head = r("header", void 0, "note-head"), this.heading = r("h2", t), this.status = r("p", "", "note-status"), this.status.setAttribute("role", "status");
@@ -407,9 +407,35 @@ var r = (u, t, i) => {
     }
     await this.openSaved(t, { expectedLibrary: i, expectedTarget: e });
   }
-  async openSaved(t, { expectedLibrary: i, expectedTarget: e } = {}) {
+  async refreshSavedPreview(library) {
+    if (this.mode !== 'preview' || this.pending || this.historical || !this.dialog.open || this.library !== library || this.getLibrary() !== library) return;
+    const item = this.item, serial = this.loadSerial;
+    const current = () => this.loadSerial === serial && this.mode === 'preview' && !this.pending &&
+      this.dialog.open && this.item === item && this.getLibrary() === library;
+    const latest = await library.getItem(item.id);
+    if (!current()) return;
+    if (!latest || latest.trashedAt) {
+      this.status.textContent = 'This note was moved or removed on another device. The open copy is still available.';
+      return;
+    }
+    if (latest.version === item.version && latest.digest === item.digest) return;
+    const drafts = await this.workspace.drafts(this.target);
+    if (!current()) return;
+    if (drafts.some(draft => draft.itemId === item.id && (!draft.baseItem ||
+      JSON.stringify(W(draft.document)) !== JSON.stringify(W(draft.baseDocument)) ||
+      JSON.stringify(x(draft.values)) !== JSON.stringify(x(draft.baseItem))))) {
+      this.status.textContent = 'A newer version is available in OneDrive. Your working draft is retained on this device.';
+      return;
+    }
+    const jobs = await this.workspace.jobs(this.target);
+    if (!current() || jobs.some(job => job.itemId === item.id && job.state !== 'saved')) return;
+    await this.openSaved(item.id, {expectedLibrary:library, expectedTarget:this.target, isCurrent:current});
+  }
+  async openSaved(t, { expectedLibrary: i, expectedTarget: e, isCurrent = () => true } = {}) {
     if (this.library = this.getLibrary(), this.target = await this.getTarget(), this.library !== this.getLibrary() || i && this.library !== i || e !== void 0 && this.target !== e) throw new Error("The selected library changed before reading the note.");
+    if (!isCurrent()) return;
     let s = this.library, a = s.getItem ? await s.getItem(t) : await s.db.items.get(t);
+    if (!isCurrent()) return;
     if (!a) throw new Error("This note is no longer in the library.");
     this.shell(a.title), this.status.textContent = "Opening note\u2026";
     const checkingCloud = s.isCloud && !s.readOnly && globalThis.navigator?.onLine !== false;
@@ -436,7 +462,7 @@ var r = (u, t, i) => {
     }
   }
   showPreview(t, i, e, s = null, verifiedCloud = false) {
-    this.shell(i.title), this.mode = "preview", this.dialog.dataset.mode = this.mode, this.note = t, this.item = i, this.blob = e, this.pending = s?.id ? s : null, this.status.textContent = s?.historical ? 'Previous revision · Read only' : s ? pendingNoteStatus(s,this.library) : storedNoteStatus(this.library,verifiedCloud);
+    this.shell(i.title), this.mode = "preview", this.dialog.dataset.mode = this.mode, this.note = t, this.item = i, this.blob = e, this.pending = s?.id ? s : null, this.historical = !!s?.historical, this.status.textContent = s?.historical ? 'Previous revision · Read only' : s ? pendingNoteStatus(s,this.library) : storedNoteStatus(this.library,verifiedCloud);
     let a = m("Edit", () => {
       this.beginEdit().catch((h) => this.error(h));
     }, "primary");

@@ -84,3 +84,25 @@ test('failed timing operations retain the original error while recording no erro
  await assert.rejects(()=>trace.measure('graph',async()=>{throw error;}),e=>e===error);
  trace.finish('error');const report=trace.snapshot();assert.equal(report.requests.graph.failed,1);assert.equal(report.outcome,'error');assert.doesNotMatch(JSON.stringify(report),/SECRET|owner@example/);
 });
+
+const appSource=readFileSync(new URL('../../ops/ui/live-modules/library-app.js',import.meta.url),'utf8');
+const refreshSource=appSource.slice(appSource.indexOf('async function refreshRemoteLibrary()'),appSource.indexOf('setInterval(() => { void refreshRemoteLibrary();'));
+test('remote revisions refresh an open note reader and keep local editors untouched',async()=>{
+ let revision=1, reads=0,refreshes=0;
+ const dialog={},library={isCloud:true,state:{revision:0},fs:{auth:{}},readHead:async()=>{reads++;return {revision};}};
+ const editor={dialog,mode:'preview',refreshSavedPreview:async lib=>{assert.equal(lib,library);refreshes++;}};
+ const env={u:library,Z:editor,ei:false,$:false,document:{hidden:false,querySelectorAll:()=>[dialog]},navigator:{onLine:true},M:async()=>{},E:assert.fail,j:e=>e};
+ const refresh=vm.runInNewContext('('+refreshSource+')',env);
+ await refresh();assert.equal(refreshes,1);revision=2;await refresh();assert.equal(refreshes,2);
+ editor.mode='edit';revision=3;await refresh();assert.equal(reads,2);assert.equal(library.state.revision,2);
+ editor.mode='preview';editor.pending={};await refresh();assert.equal(reads,2);
+ editor.pending=null;editor.historical=true;await refresh();assert.equal(reads,2);
+});
+test('an edit begun during a remote catalog request prevents the response from replacing the editor',async()=>{
+ const gate=(()=>{let release;return {wait:new Promise(r=>release=r),release:()=>release()};})();
+ const dialog={},library={isCloud:true,state:{revision:0},fs:{auth:{}},readHead:async()=>{await gate.wait;return {revision:1};}};
+ const editor={dialog,mode:'preview',refreshSavedPreview:assert.fail};
+ const env={u:library,Z:editor,ei:false,$:false,document:{hidden:false,querySelectorAll:()=>[dialog]},navigator:{onLine:true},M:assert.fail,E:assert.fail,j:e=>e};
+ const refresh=vm.runInNewContext('('+refreshSource+')',env),pending=refresh();
+ editor.mode='edit';gate.release();await pending;assert.equal(library.state.revision,0);
+});
