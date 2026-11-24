@@ -1647,7 +1647,7 @@ async function W(e, t = "message", { capture: i = false, propagate: o = false } 
     if (o) throw new Error("Another operation is still running. Retry this upload.");
     return E("Please wait for the current operation to finish.", false, t);
   }
-  $ = true, document.querySelectorAll("button:not(#startup-reload):not(.viewer-exit):not(.card-open):not(.viewer-dock button)").forEach((n) => {
+  $ = true, document.querySelectorAll("button:not(#startup-reload):not(.viewer-exit):not(.card-open):not(.viewer-dock button):not(.item-pane-tabs button)").forEach((n) => {
     n.closest(".note-dialog") || (n.disabled = true);
   }), i && sn(true);
   try {
@@ -1785,6 +1785,11 @@ function No(e, t) {
     if (e.pendingNote) throw new Error("This note still has a pending save. Open it to review its status first.");
     await p(i), await M({ reload: false });
   }), r = (p) => E(j(p), true), s = [{ label: "Open", run: o, error: r }, { label: "Share\u2026", run: () => dn(e), error: r }];
+  if (!ue(e) && !e.pendingNote) s.splice(1, 0, {
+    label: "Details & notes",
+    run: () => ot(e.id, i, "details"),
+    error: r
+  });
   if(!e.trashedAt&&!e.pendingNote&&typeof i?.keepOffline==='function')s.push({label:'Keep offline on this device',error:r,run:()=>W(async()=>{
     if(u!==i)throw Error('The selected library changed. Reopen this menu.');
     await prepareOfflineItem(e);await i.keepOffline(e.id);E('Kept offline on this device.');
@@ -1811,7 +1816,7 @@ async function Po() {
 function Fo() {
   a("pdf-previous").disabled = $ || !ne?.doc || ne.page <= 1, a("pdf-forward").disabled = $ || !ne?.doc || (ne.pageEnd || ne.page) >= ne.doc.numPages;
 }
-async function ot(e, expectedLibrary) {
+async function ot(e, expectedLibrary, pane = "preview") {
   await Po();
   if (expectedLibrary && u !== expectedLibrary) throw Error("The active KeepIt library changed. Try again.");
   let t = Ne, item = u.getItem ? await u.getItem(e) : await u.db.items.get(e);
@@ -1827,23 +1832,29 @@ async function ot(e, expectedLibrary) {
   }
   for (let [n, r] of [["title", T.title], ["tags", T.tags.join(", ")], ["source", T.source], ["notes", T.notes]]) a(`item-${n}`).value = r;
   ze(a("item-collection"), ae.categories, T.domain), ze(a("item-record-type"), lt(ae), T.recordType || "", "Unspecified"), li(T.customFields || []), a("item-favorite").checked = T.favorite, Et = nt(), a("item-heading").textContent = T.title, a("detail-message").hidden = true, a("item-info").textContent = `${T.originalName} \xB7 ${pe(T.bytes)} \xB7 Added ${new Date(T.createdAt).toLocaleDateString()}`, ai = T.shortCode || Se(), Ce = null, kt = null, a("item-name-options").hidden = true, a("item-name-edit").setAttribute("aria-expanded", "false"), a("item-domain-code").value = T.domainCode || zt(T.domain), a("item-type-code").value = T.typeCode || ki(T.originalName, T.mime, T.title), a("item-managed-name").textContent = T.managedName || "Original filename retained", a("trash-item").textContent = T.trashedAt ? "Restore from Trash" : "Move to Trash", a("delete-item").hidden = !T.trashedAt, a("item-dialog").open || a("item-dialog").showModal(), a("preview").append(U("p", "Opening preview\u2026", "preview-fallback"));
-  const openedLibrary=u;
-  const readOnly=applyOriginalReadPermissions();
-  let i;
-  try{i=await openedLibrary.original(e);}
-  catch(error){
-    if(t===Ne){a('preview').replaceChildren(U('p',error.message,'preview-fallback'));E(error.message,true,'detail-message');}
-    throw error;
+  const openedLibrary = u;
+  const readOnly = applyOriginalReadPermissions();
+  if (readOnly) a("item-info").textContent += " · Last verified device copy · metadata read only";
+  if (pane === "details") {
+    await Promise.resolve();
+    a("item-tab-details").click();
   }
-  if (t !== Ne) return;
-  if(u!==openedLibrary)throw Error('The active KeepIt library changed. Reopen this item.');
-  if(readOnly)a('item-info').textContent+=' · Last verified device copy · metadata read only';
+  void renderItemPreview(e, t, openedLibrary).catch(error => {
+    if (t !== Ne || u !== openedLibrary || !a("item-dialog").open) return;
+    a("preview").replaceChildren(U("p", error.message, "preview-fallback"));
+  });
+}
+async function renderItemPreview(e, t, openedLibrary) {
+  const i = await openedLibrary.original(e);
+  if (t !== Ne || u !== openedLibrary || !a("item-dialog").open) return;
   itemOfflineControls=mountOfflineControls({container:a('preview').parentElement,library:openedLibrary,itemId:e,isCurrent:()=>T?.id===e&&u===openedLibrary&&t===Ne});
   a("preview").replaceChildren();
   let o = await Lt(i, T);
   if (t === Ne) if (o === "pdf") {
     if(navigator.onLine===false){
-      const preview=await Vt(i,T,a('preview'),()=>t===Ne);ni=preview.cleanup;return;
+      const preview=await Vt(i,T,a('preview'),()=>t===Ne);
+      if (t === Ne) ni=preview.cleanup; else preview.cleanup();
+      return;
     }
     if (i.size > 128 * 1024 ** 2) {
       a("preview").append(U("p", "This PDF is stored. It exceeds the 128 MiB in-browser rendering budget; download the original to open it in your PDF app.", "preview-fallback"));
@@ -1853,16 +1864,19 @@ async function ot(e, expectedLibrary) {
       a("preview").append(U("p", "This file does not contain a recognizable PDF header.", "preview-fallback"));
       return;
     }
+    if (t !== Ne) return;
     let n = U("canvas");
     a("preview").append(n), a("preview-status").textContent = "Opening PDF\u2026";
     try {
       let { PdfReader: r } = await import("./chunk-V6NBNB24.js");
       if (t !== Ne) return;
       ne = new r(n, a("preview"), (s, p, d) => {
+        if (t !== Ne) return;
         a("preview-status").textContent = /^(?:PDF page ready|Rendered within|No document open)/.test(s) ? "" : s, a("pdf-position").textContent = `Page ${p} of ${d}`, Fo();
-      }), await ne.load({ data: new Uint8Array(await i.arrayBuffer()) }), a("pdf-controls").hidden = false;
+      }), await ne.load({ data: new Uint8Array(await i.arrayBuffer()) });
+      if (t === Ne) a("pdf-controls").hidden = false;
     } catch {
-      a("preview-status").textContent = "This PDF could not be displayed here. Download the original to open it in your PDF reader.";
+      if (t === Ne) a("preview-status").textContent = "This PDF could not be displayed here. Download the original to open it in your PDF reader.";
     }
   } else if (o === "image") {
     let n = U("img");
