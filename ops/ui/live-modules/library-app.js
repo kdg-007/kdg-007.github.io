@@ -2247,19 +2247,35 @@ async function pn() {
 }
 mo();
 var ei = false;
-setInterval(async () => {
-  if (!(!u?.isCloud || u.readOnly || u.pending || u.fs.auth.reconnectRequired || $ || ei || document.hidden || document.querySelector("dialog[open]"))) {
-    ei = true;
-    try {
-      let e = u, t = await e.readHead();
-      !$ && !document.querySelector("dialog[open]") && u === e && t.revision !== e.state.revision && (e.state = t, await M());
-    } catch (e) {
-      E(j(e), true);
-    } finally {
-      ei = false;
+async function refreshRemoteLibrary() {
+  const canRefresh = () => {
+    const dialogs = [...document.querySelectorAll('dialog[open]')];
+    return u?.isCloud && !u.readOnly && !u.pending && !u.fs.auth.reconnectRequired &&
+      !$ && !document.hidden && navigator.onLine !== false &&
+      dialogs.every(dialog => dialog === Z?.dialog && Z.mode === 'preview' && !Z.pending && !Z.historical);
+  };
+  if (ei || !canRefresh()) return;
+  ei = true;
+  try {
+    const library = u, state = await library.readHead();
+    if (u !== library || !canRefresh()) return;
+    if (state.revision !== library.state.revision) {
+      library.state = state;
+      await M({reload:false});
     }
+    if (u === library && canRefresh()) await Z?.refreshSavedPreview(library);
+  } catch (error) {
+    E(j(error), true);
+  } finally {
+    ei = false;
   }
-}, 3e4);
+}
+setInterval(() => { void refreshRemoteLibrary(); }, 3e4);
+window.addEventListener('focus', () => { void refreshRemoteLibrary(); });
+window.addEventListener('online', () => { void refreshRemoteLibrary(); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) void refreshRemoteLibrary();
+});
 pn().then(ii).catch((e) => E(j(e), true));
 var ti = false, di = 0;
 async function Tt() {
