@@ -60,7 +60,7 @@ paths.entry=emit('library-app',source('library-app')
  .replaceAll('./keepit-note-link-256bd3efc430.js','./'+paths.link.split('/')[1])
  .replaceAll('./keepit-onedrive-connect-7eae6a4687c3.js','./'+paths.connection.split('/')[1])
  .replace('./chunk-O6257ALA.js','./'+paths.noteWorkspace.split('/')[1]));
-const superseded=[proof.entry.replace(/^\//,''),'assets/library-app-bd256253b2c7.js',...Object.keys(proof.files).filter(p=>/^assets\/(?:keepit-note-ui-|keepit-note-link-|keepit-note-workspace-|keepit-auth-live-|keepit-onedrive-connect-|keepit-transfer-hosts-|keepit-graph-provider-)/.test(p))];
+const superseded=[proof.entry.replace(/^\//,''),'assets/library-app-bd256253b2c7.js',...Object.keys(proof.files).filter(p=>/^assets\/(?:keepit-note-ui-|keepit-note-drawing-|keepit-note-editor-|keepit-note-link-|keepit-note-workspace-|keepit-auth-live-|keepit-onedrive-connect-|keepit-transfer-hosts-|keepit-graph-provider-)/.test(p))];
 for(const path of superseded)delete proof.files[path];
 let html=readFileSync('partners/connected/index.html','utf8');
 // Microsoft's consumer OneDrive signed-download endpoints can differ from the Graph
