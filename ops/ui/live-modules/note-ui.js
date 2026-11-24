@@ -643,7 +643,7 @@ var r = (u, t, i) => {
         });
       }
     }, "primary");
-    this.saveButton = F, F.title = "Save note (\u2318 S)", F.setAttribute("aria-keyshortcuts", "Meta+S Control+S"), this.actions.append(F), this.headerControls({ tools: true, details: true }), this.toolsButton.setAttribute("aria-controls", g.id), this.detailsButton.setAttribute("aria-controls", T.id), this.setMetadata(showDetails || this.display.detailsOpen), this.setTools(this.display.toolsHidden), this.overflowPanel.append(m("Download current draft", async () => {
+    this.saveButton = F, F.title = "Save note (\u2318 S)", F.setAttribute("aria-keyshortcuts", "Meta+S Control+S"), this.actions.append(F), g.prepend(m("Draw", () => this.editor.draw())), this.headerControls({ tools: true, details: true }), this.toolsButton.setAttribute("aria-controls", g.id), this.detailsButton.setAttribute("aria-controls", T.id), this.setMetadata(showDetails || this.display.detailsOpen), this.setTools(this.display.toolsHidden), this.overflowPanel.append(m("Download current draft", async () => {
       let o = await this.editor.read();
       U(await X({ noteId: e.draft.noteId || e.draft.itemId, ...o, exportMetadata: { values: x(N()), recovery: true } }), "KeepIt-current-draft.keepitnote");
     })), this.overflowPanel.append(m("Save a copy", () => this.withEditingLock(async () => {

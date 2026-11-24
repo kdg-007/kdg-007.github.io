@@ -102,6 +102,20 @@ try{
    });
    assert.deepEqual(created,{domain:'Aviation',notes:'Review the apron layout'});
    console.log('KEEPIT_NEW_NOTE_VISIBLE_METADATA_AND_DRAFT_PERSISTENCE_'+engine.name().toUpperCase()+'_PASS');
+   await dialog.getByRole('button',{name:'Draw',exact:true}).click();
+   const drawing=page.getByRole('dialog',{name:'Note drawing'});
+   const surface=await drawing.locator('canvas').boundingBox();
+   await page.mouse.move(surface.x+20,surface.y+20);
+   await page.mouse.down();
+   await page.mouse.move(surface.x+100,surface.y+60,{steps:6});
+   await page.mouse.up();
+   await drawing.getByRole('button',{name:'Insert drawing'}).click();
+   await dialog.locator('.note-editor figure').waitFor();
+   assert.equal(await page.evaluate(async()=>{
+    const {ui}=window.qaNote;
+    const result=await ui.editor.read();
+    return result.assets.some(asset=>asset.name==='KeepIt drawing.png'&&asset.blob.size>0);
+   }),true);
    assert.deepEqual(errors,[]);
    console.log('KEEPIT_SINGLE_TAB_DRAFT_AND_SAFE_COPY_'+engine.name().toUpperCase()+'_PASS');
   }finally{await browser.close();}
