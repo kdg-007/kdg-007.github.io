@@ -32,9 +32,18 @@ export async function checkOfflineOriginalCache(browser,origin){
     expect((await get(a))?.pinned,'An old build displaced the kept original');
     await put(b);await put(c);
     expect((await get(a))?.pinned,'Kept original was evicted by an automatic read');expect(!await get(b),'Automatic least-used original should be evicted');
-    await put(c,true);let full=false;
-    try{await put(await make('extra','x'),true);}catch(error){full=/full of kept copies/.test(error.message);}
-    expect(full,'Kept-copy budget must reject overflow');expect(await get(a)&&await get(c),'Quota rejection removed a previous copy');
+    await put(c,true);
+    const large=await make('extra','x'.repeat(32));
+    await put(large,true);
+    expect((await get(large))?.pinned,'A chosen original exceeded the automatic cache budget');
+    const replacement=await make('extra','replacement');replacement.item.version=2;
+    const putFile=cache.db.files.put;
+    cache.db.files.put=async()=>{throw new DOMException('Device storage full','QuotaExceededError');};
+    let full=false;
+    try{await put(replacement,true);}catch(error){full=/no space/.test(error.message);}
+    finally{cache.db.files.put=putFile;}
+    expect(full && (await get(large))?.pinned,'A failed replacement must preserve the earlier copy');
+    expect(!await get(replacement),'A failed replacement was reported as saved');
     const newer=await make('a','AAAAAAA');newer.item.version=2;await put(newer,true);
     expect(!await get(a),'Old kept version must be replaced only after the new copy fits');expect(await get(newer),'Updated kept original missing');
     let stale=false;try{await put(a,true);}catch{stale=true;}expect(stale&&await get(newer),'An older tab displaced the newer kept copy');

@@ -16,8 +16,10 @@ test('automatic cache eviction preserves explicitly kept files even when they ar
  const p=plan([first,second],{key:key('new'),bytes:10,pinned:false,maxBytes:20,maxEntries:2});
  assert.deepEqual(Array.from(p.remove),[second.key]);assert.equal(p.pinned,false);
 });
-test('a full kept-copy budget fails before changing the previous copies',()=>{
- assert.throws(()=>plan([row('a',10,true),row('b',10,true)],{key:key('c'),bytes:1,pinned:true,maxBytes:20,maxEntries:3}),/full of kept copies/);
+test('explicitly kept originals have no application size, count or total budget',()=>{
+ const existing=Array.from({length:513},(_,i)=>row(String(i),1024**2,true));
+ const result=plan(existing,{key:key('large'),bytes:300*1024**2,pinned:true,maxBytes:256*1024**2,maxEntries:512});
+ assert.equal(result.pinned,true);assert.equal(result.remove.length,0);
 });
 test('version replacement removes only this item’s kept copies in the exact library scope',()=>{
  const own=row('same',10,true),other=row('same',10,true,2,['account','drive','other-root','library']);
@@ -30,7 +32,7 @@ test('ordinary reads of a kept version retain its kept policy',()=>{
 });
 test('an old browser tab cannot evict a newer kept revision of the same original',()=>{
  const newer={...row('same',10,true),itemVersion:3};
- assert.throws(()=>plan([newer],{key:key('same','old'),bytes:10,pinned:true,maxBytes:10,maxEntries:1,itemVersion:1}),/full of kept copies/);
+ assert.throws(()=>plan([newer],{key:key('same','old'),bytes:10,pinned:true,maxBytes:10,maxEntries:1,itemVersion:1}),/newer version/);
 });
 test('cache accounting corruption fails without guessing how much pinned data to remove',()=>{
  assert.throws(()=>plan([{...row('kept',10,true),bytes:NaN}],{key:key('new'),bytes:1,pinned:true,maxBytes:20,maxEntries:2}),/accounting/);
