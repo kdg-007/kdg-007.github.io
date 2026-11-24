@@ -643,6 +643,16 @@ var r = (u, t, i) => {
         });
       }
     }, "primary");
+    const drawingImage = target => target?.closest?.('img[alt="KeepIt drawing.png"]');
+    C.addEventListener('selectstart',event=>{if(drawingImage(event.target))event.preventDefault();});
+    C.addEventListener('contextmenu',event=>{if(drawingImage(event.target))event.preventDefault();});
+    C.addEventListener('pointerdown',event=>{
+      const image=drawingImage(event.target);
+      if(image && event.pointerType==="pen"){
+        event.preventDefault();event.stopPropagation();
+        this.editor.draw(image).catch(error=>this.error(error));
+      }
+    },true);
     this.saveButton = F, F.title = "Save note (\u2318 S)", F.setAttribute("aria-keyshortcuts", "Meta+S Control+S"), this.actions.append(F), g.prepend(m("Draw", () => this.editor.draw())), this.headerControls({ tools: true, details: true }), this.toolsButton.setAttribute("aria-controls", g.id), this.detailsButton.setAttribute("aria-controls", T.id), this.setMetadata(showDetails || this.display.detailsOpen), this.setTools(this.display.toolsHidden), this.overflowPanel.append(m("Download current draft", async () => {
       let o = await this.editor.read();
       U(await X({ noteId: e.draft.noteId || e.draft.itemId, ...o, exportMetadata: { values: x(N()), recovery: true } }), "KeepIt-current-draft.keepitnote");

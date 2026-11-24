@@ -48,7 +48,7 @@ paths.connection=emit('keepit-onedrive-connect',connectionSource
 paths.drawing=emit('keepit-note-drawing',source('note-drawing'));
 paths.editor=emitPatchedChunk('keepit-note-editor','assets/chunk-5ZHMQH23.js',
  'insertImage:()=>$.click(),insertTable:ue',
- 'insertImage:()=>$.click(),draw:async()=>{const {editDrawing}=await import("./'+paths.drawing.split('/')[1]+'");return editDrawing({editor:d,assets:l,selection:_n(d.state).figure,insertPosition:()=>ip(d.state),makeAsset:Na,canEdit:()=>!c&&d.isEditable});},insertTable:ue');
+ 'insertImage:()=>$.click(),draw:async(image)=>{const {editDrawing}=await import("./'+paths.drawing.split('/')[1]+'");return editDrawing({editor:d,assets:l,selection:image?(()=>{const pos=d.view.posAtDOM(image.closest("figure"),0)-1;return {pos,node:d.state.doc.nodeAt(pos)}})():_n(d.state).figure,insertPosition:()=>ip(d.state),makeAsset:Na,canEdit:()=>!c&&d.isEditable});},insertTable:ue');
 paths.ui=emit('keepit-note-ui',source('note-ui').replace('./chunk-5ZHMQH23.js','./'+paths.editor.split('/')[1]));
 paths.link=emit('keepit-note-link',readFileSync('assets/keepit-note-link-256bd3efc430.js','utf8').replace('./keepit-note-ui-db4948167388.js','./'+paths.ui.split('/')[1]));
 // A pending note can contain an ArrayBuffer instead of a Blob, or retain

@@ -241,3 +241,5 @@ section.gantt-shell-fullscreen iframe[title="TravelIt trip planning workspace"]{
   padding: 12px;
  }
 }
+
+.note-editor figure:has(img[alt="KeepIt drawing.png"]), .note-editor img[alt="KeepIt drawing.png"] { user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }

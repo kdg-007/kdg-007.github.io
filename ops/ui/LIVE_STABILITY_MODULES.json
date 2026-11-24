@@ -7,11 +7,11 @@
     "transfer": "assets/keepit-transfer-hosts-6e9b7483e8b2.js",
     "provider": "assets/keepit-graph-provider-a6dfefa333bb.js",
     "connection": "assets/keepit-onedrive-connect-372cbc7f560b.js",
-    "drawing": "assets/keepit-note-drawing-7d09be8b357c.js",
-    "editor": "assets/keepit-note-editor-da183ef05f67.js",
-    "ui": "assets/keepit-note-ui-e8b1b15521cc.js",
-    "link": "assets/keepit-note-link-62b9e6de304d.js",
+    "drawing": "assets/keepit-note-drawing-0038639e38b1.js",
+    "editor": "assets/keepit-note-editor-1298d93f16c3.js",
+    "ui": "assets/keepit-note-ui-6fe552c514c4.js",
+    "link": "assets/keepit-note-link-57f9898f80f2.js",
     "noteWorkspace": "assets/keepit-note-workspace-5ed1d98a3c40.js",
-    "entry": "assets/library-app-7f80c4d19a40.js"
+    "entry": "assets/library-app-447100f3f16f.js"
   }
 }

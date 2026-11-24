@@ -107,7 +107,14 @@ try{
    assert.equal(await drawing.getByLabel('Paper size').inputValue(),'A4');
    await drawing.getByLabel('Paper guides').selectOption('Grid');
    await drawing.getByLabel('Paper size').selectOption('A3');
-   const surface=await drawing.locator('canvas').boundingBox();
+   await drawing.getByRole('button',{name:'Add layer',exact:true}).click();
+   await drawing.getByLabel('Hex ink color').fill('#aa3344');
+   await drawing.getByRole('button',{name:'Ruler',exact:true}).click();
+   const ruler=drawing.locator('[data-ruler]');
+   await ruler.dblclick();
+   assert.equal(await ruler.locator('span').textContent(),'90°');
+   await drawing.getByRole('button',{name:'Ruler',exact:true}).click();
+   const surface=await drawing.locator('canvas[aria-label^="Drawing surface"]').boundingBox();
    await page.mouse.move(surface.x+20,surface.y+20);
    await page.mouse.down();
    await page.mouse.move(surface.x+100,surface.y+60,{steps:6});
