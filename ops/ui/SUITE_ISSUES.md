@@ -1,6 +1,6 @@
 # Suite user comments — completion ledger
 
-Updated 2026-11-13. “Implemented” describes shipped code and checks; it does not certify the owner's physical devices or Microsoft account.
+Updated 2026-11-24. “Implemented” describes shipped code and checks; it does not certify the owner's physical devices or Microsoft account.
 
 | User comment | Implementation / evidence | Still required |
 | --- | --- | --- |
@@ -22,6 +22,14 @@ Updated 2026-11-13. “Implemented” describes shipped code and checks; it does
 | ThinkIt contrast, BMC rich text/images/tables/notes, outline reorder | Implementations exist in prior releases | Complete feature audit; not all closed |
 
 No new decision gate is needed for these engineering fixes. Ask for the owner's input only for a concrete product choice or account/device access that cannot be verified here. Do not turn this ledger into another manual test checklist for the owner.
+
+## KeepIt follow-up · 24 November 2026
+
+- Release #68 refreshes open note readers across successive remote revisions, including foreground return. Chromium and WebKit regression checks passed. The owner reported a first phone-to-Mac edit arriving in about 30 seconds, followed by a later edit remaining stale for over a minute before this fix. Repeated edits on the physical devices remain unconfirmed.
+- Release #69 adds Notes, Tags, Source link and Favorite to file capture. Saved-file metadata can open through the card action menu while the preview loads. Fullscreen hides device-copy controls and returns that space to the document. Creation, edit and reopen browser checks passed.
+- Explicitly kept originals have no KeepIt per-file, total-byte or file-count cap. Automatic cache is bounded. Device/browser storage capacity still applies.
+- New typed notes now open with classification, tags and additional details visible, including after the user previously collapsed the panel. Browser verification is pending for this follow-up.
+- OneDrive account stability, full-library performance, repeated physical-device sync, and any remaining freeze reports stay open. Pencil drawing remains queued after these refinements.
 
 ## Owner priorities · 24 November 2026
 

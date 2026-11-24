@@ -306,7 +306,7 @@ var r = (u, t, i) => {
     if (this.getLibrary() !== a || e !== void 0 && d !== e) throw new Error("The selected library changed before creating the note.");
     this.library = a, this.target = d;
     let n = { id: s, target: d, itemId: t, noteId: t, document: Q(), assets: [], values: { title: i, domain: "", recordType: j(this.getSchema()).find((c) => c.toLowerCase() === "notes"), customFields: [], tags: [], notes: "", source: "", favorite: false }, baseItem: null, revision: 0, rootHandle: a.isFolder && !a.isCloud ? a.root : null };
-    if (await this.editDraft(n), this.session?.error || !this.session || this.session.revision < 1) throw this.session?.error || new Error("The new note draft was not verified on this device.");
+    if (await this.editDraft(n, { showDetails: true }), this.session?.error || !this.session || this.session.revision < 1) throw this.session?.error || new Error("The new note draft was not verified on this device.");
     return { itemId: t, target: d, state: "draft-saved-locally", repositoryVersion: 0 };
   }
   async migrateThinkIt({ html: t, title: i, target: e, binding: s, library: a }) {
@@ -521,7 +521,7 @@ var r = (u, t, i) => {
     if(this.pending&&!this.pending.historical)throw Error('This older pending save has no retained working draft. Its source is safe; use Save a copy from Pending saves to continue.');
     await this.editDraft({ id: crypto.randomUUID(), target: this.target, itemId: this.item.id, noteId: this.note.noteId, baseItem: this.item, baseDocument: this.note.document, baseBlob: this.blob, document: this.note.document, assets: this.note.assets, values: this.item, revision: 0, rootHandle: this.library.isFolder && !this.library.isCloud ? this.library.root : null });
   }
-  async editDraft(t) {
+  async editDraft(t, { showDetails = false } = {}) {
     this.shell(t.baseItem ? "Edit note" : "Write a note"), this.mode = "edit", this.dialog.dataset.mode = this.mode;
     let i = /* @__PURE__ */ Symbol();
     this.editToken = i;
@@ -588,7 +588,7 @@ var r = (u, t, i) => {
         this.flush?.();
       }, 0), y;
     } };
-    this.fieldEditor = Y(f, this.getSchema(), n.value, t.values.customFields || [], w), this.getSchema().fields.some((o) => !o.archived && o.required && (!o.category || o.category === n.value)) && (b.open = true), n.onchange = () => {
+    this.fieldEditor = Y(f, this.getSchema(), n.value, t.values.customFields || [], w), (showDetails || this.getSchema().fields.some((o) => !o.archived && o.required && (!o.category || o.category === n.value))) && (b.open = true), n.onchange = () => {
       let o = this.fieldEditor.read();
       this.fieldEditor.dispose(), this.fieldEditor = Y(f, this.getSchema(), n.value, o, w), A();
     };
@@ -643,7 +643,7 @@ var r = (u, t, i) => {
         });
       }
     }, "primary");
-    this.saveButton = F, F.title = "Save note (\u2318 S)", F.setAttribute("aria-keyshortcuts", "Meta+S Control+S"), this.actions.append(F), this.headerControls({ tools: true, details: true }), this.toolsButton.setAttribute("aria-controls", g.id), this.detailsButton.setAttribute("aria-controls", T.id), this.setMetadata(this.display.detailsOpen), this.setTools(this.display.toolsHidden), this.overflowPanel.append(m("Download current draft", async () => {
+    this.saveButton = F, F.title = "Save note (\u2318 S)", F.setAttribute("aria-keyshortcuts", "Meta+S Control+S"), this.actions.append(F), this.headerControls({ tools: true, details: true }), this.toolsButton.setAttribute("aria-controls", g.id), this.detailsButton.setAttribute("aria-controls", T.id), this.setMetadata(showDetails || this.display.detailsOpen), this.setTools(this.display.toolsHidden), this.overflowPanel.append(m("Download current draft", async () => {
       let o = await this.editor.read();
       U(await X({ noteId: e.draft.noteId || e.draft.itemId, ...o, exportMetadata: { values: x(N()), recovery: true } }), "KeepIt-current-draft.keepitnote");
     })), this.overflowPanel.append(m("Save a copy", () => this.withEditingLock(async () => {
