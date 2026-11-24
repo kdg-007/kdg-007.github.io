@@ -1750,7 +1750,7 @@ async function L() {
       let R = U("div", void 0, "card-tags");
       l.tags.slice(0, 3).forEach((_) => R.append(U("span", _, "tag"))), l.tags.length > 3 && R.append(U("span", `+${l.tags.length - 3}`, "tag")), N.append(R);
     }
-    w.append(v, N), c.append(w), l.favorite && c.append(U("span", "\u2605", "card-favorite")), w.onclick = () => ue(l) ? ce().then((R) => R.open(l.id)).catch((R) => E(j(R), true)) : re ? ot(l.id).catch((R) => E(j(R), true)) : W(() => ot(l.id)), a("items").append(c);
+    w.append(v, N), c.append(w), l.favorite && c.append(U("span", "\u2605", "card-favorite")), w.onclick = () => ue(l) ? ce().then((R) => R.open(l.id)).catch((R) => E(j(R), true)) : re ? ot(l.id).catch((R) => E(j(R), true)) : W(() => ot(l.id, u, "preview", true)), a("items").append(c);
     let z = U("button", "\u22EF", "card-more");
     z.type = "button", z.setAttribute("aria-label", `Actions for ${l.title}`), z.setAttribute("aria-haspopup", "dialog"), z.onclick = () => No(l, z), c.append(z), Li(w, () => No(l, w)), (O === "image" && l.bytes <= 128 * 1024 ** 2 || ["video", "pdf", "note"].includes(O)) && (v.thumbnailJob = { item: l, preview: v }, L.thumbObserver ? L.thumbObserver.observe(v) : f.push(v.thumbnailJob));
   }
@@ -1787,7 +1787,7 @@ function No(e, t) {
   }), r = (p) => E(j(p), true), s = [{ label: "Open", run: o, error: r }, { label: "Share\u2026", run: () => dn(e), error: r }];
   if (!ue(e) && !e.pendingNote) s.splice(1, 0, {
     label: "Details & notes",
-    run: () => ot(e.id, i, "details"),
+    run: () => ot(e.id, i, "details", true),
     error: r
   });
   if(!e.trashedAt&&!e.pendingNote&&typeof i?.keepOffline==='function')s.push({label:'Keep offline on this device',error:r,run:()=>W(async()=>{
@@ -1816,7 +1816,7 @@ async function Po() {
 function Fo() {
   a("pdf-previous").disabled = $ || !ne?.doc || ne.page <= 1, a("pdf-forward").disabled = $ || !ne?.doc || (ne.pageEnd || ne.page) >= ne.doc.numPages;
 }
-async function ot(e, expectedLibrary, pane = "preview") {
+async function ot(e, expectedLibrary, pane = "preview", backgroundPreview = false) {
   await Po();
   if (expectedLibrary && u !== expectedLibrary) throw Error("The active KeepIt library changed. Try again.");
   let t = Ne, item = u.getItem ? await u.getItem(e) : await u.db.items.get(e);
@@ -1839,10 +1839,12 @@ async function ot(e, expectedLibrary, pane = "preview") {
     await Promise.resolve();
     a("item-tab-details").click();
   }
-  void renderItemPreview(e, t, openedLibrary).catch(error => {
+  const preview = renderItemPreview(e, t, openedLibrary).catch(error => {
     if (t !== Ne || u !== openedLibrary || !a("item-dialog").open) return;
     a("preview").replaceChildren(U("p", error.message, "preview-fallback"));
+    if (!backgroundPreview) throw error;
   });
+  if (!backgroundPreview) await preview;
 }
 async function renderItemPreview(e, t, openedLibrary) {
   const i = await openedLibrary.original(e);
