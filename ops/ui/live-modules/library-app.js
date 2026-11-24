@@ -1940,6 +1940,7 @@ function pi(e) {
   if (!u) return E("Choose a library folder first.");
   let t = [...e];
   if (!t.length) return;
+  a("capture-form").reset();
   ri = t, we = t[0];
   let i = t.length > 1;
   a("capture-title").hidden = i, a("capture-title").disabled = i, document.querySelector('[for="capture-title"]').hidden = i, a("capture-form").querySelector("button[type=submit]").textContent = i ? `Save ${t.length} files` : "Save", a("capture-title").value = we.name.replace(/\.[^.]+$/, "") || we.name, a("capture-file").textContent = t.length > 1 ? `${t.length} files \xB7 ${pe(t.reduce((o, n) => o + n.size, 0))} \xB7 Filenames supply individual titles. These metadata values apply to all selected files.` : `${we.name} \xB7 ${pe(we.size)}`, ze(a("capture-category"), ae.categories), ze(a("capture-record-type"), lt(ae), "", "Unspecified"), a("capture-extra").open = false, Uo([]), a("capture-dialog").showModal();
@@ -1960,7 +1961,19 @@ a("capture-form").onsubmit = (e) => {
   if (e.preventDefault(), !we || $ && !re) return;
   let t = [...ri], i = a("capture-title").value.trim();
   if (t.length === 1 && !i) return a("capture-title").focus();
-  let o = { ...t.length === 1 ? { title: i } : {}, domain: a("capture-category").value, recordType: a("capture-record-type").value, customFields: Me?.read() || [] }, n = u;
+  const notes = a("capture-notes").value;
+  const tags = a("capture-tags").value.split(",").map(tag => tag.trim()).filter(Boolean);
+  const source = a("capture-source").value.trim();
+  let o = {
+    ...t.length === 1 ? { title: i } : {},
+    domain: a("capture-category").value,
+    recordType: a("capture-record-type").value,
+    customFields: Me?.read() || [],
+    ...(notes && { notes }),
+    ...(tags.length && { tags: [...new Set(tags)] }),
+    ...(source && { source }),
+    ...(a("capture-favorite").checked && { favorite: true })
+  }, n = u;
   we = null, ri = [], a("capture-dialog").close(), (async () => {
     try {
       if (!me) throw new Error("The upload queue is not available. Reload KeepIt and try again.");
