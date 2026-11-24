@@ -42,3 +42,7 @@ html.mylibrary-pdf-fullscreen,body.mylibrary-pdf-fullscreen{overflow:hidden!impo
 .viewer-exit[hidden]{display:none!important}
 .viewer-exit{--exit-safe-top:env(safe-area-inset-top,0px);--exit-safe-right:env(safe-area-inset-right,0px);position:fixed!important;right:auto!important;bottom:auto!important;transform-origin:top left!important;z-index:2147483646!important;display:block!important;pointer-events:auto!important;width:80px!important;min-width:80px!important;min-height:44px!important;padding:8px!important;margin:0!important;border:1px solid #ffffff88!important;border-radius:10px!important;background:#0d2f4ff2!important;color:#fff!important;font:700 15px/1.3 -apple-system,BlinkMacSystemFont,sans-serif!important;touch-action:manipulation}
 .viewer-fullscreen .reader-actions,.viewer-fullscreen .attachment-actions{visibility:hidden!important}
+
+/* Device-copy controls belong to the normal file and attachment previews. */
+.viewer-fullscreen .offline-original-controls,
+.pdf-fullscreen .offline-original-controls { display: none !important; }

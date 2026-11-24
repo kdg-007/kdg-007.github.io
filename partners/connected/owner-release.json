@@ -9,7 +9,7 @@
   "cloudSignInVerified": false,
   "cloudOriginalReadbackVerified": false,
   "files": {
-    "partners/connected/index.html": "6d517ab59a376b65ee47dcd743bddccb3aa00b28d2b62df4dffb95c32cff4cf0",
+    "partners/connected/index.html": "2498d9df90f8636637661c19b47f418a5c2a65c0202bef645cd90d0ba4fd3e67",
     "partners/connected/owner-auth-callback.html": "0b54950fe912aa992dafa5c15f79fb020c5a50df96939ef20ceae032844c5e8e",
     "assets/chunk-SGTLM5CQ.js": "d8b3360139a617b3c6d7a53ec96230177ff6869b520a578c5bbea7f5529804f9",
     "assets/chunk-OZVKXUIX.js": "7d853cc51c52b7203db69e44c6d2fedcccc3c2712416f534f812c3dc5869aebc",
@@ -69,7 +69,7 @@
     "assets/chunk-HG7NYSTC.js": "0cbdabd86083b84fa26820ea6cd210c56e753a47d7b9817e4e39617c3da125a7",
     "assets/chunk-W72KRQYW.js": "2cf173bae91ebb0989156b70716dda32d605f99237ed520dcda5a707bded2df4",
     "assets/chunk-SMVO73KC.js": "0781a30b3ead7d6c332de19be579f98ced62cdbbe760774662d45e8f2f064252",
-    "assets/ui04-fullscreen.css": "1c5d7fd529a7ab5cc6de5519360b1771f3825824f420236781be480bbe74afb3",
+    "assets/ui04-fullscreen.css": "632a64f7e78a6dac0cc1c4f51bb3d25d25db699d2668402be0fec579533b3a44",
     "assets/chunk-AK6V5RSI.js": "82565764401350e3af1bee11d900562e54efdaf3c616e1f6ec7dad495fb7e824",
     "assets/chunk-NPSJH3PO.js": "f0f5697dbf282b6eb2f4feaca45077a413e749e5b8ca1bc5e08219625c33a530",
     "assets/chunk-L3TF6PEU.js": "5cdcf8a55dbce0d3c4ef95e05f64a4c13effbe0bece774d6062525300a26d29b",
@@ -251,7 +251,8 @@
     "assets/keepit-note-link-6ef1551b1798.js": "6ef1551b1798ae6fe8764c1483b544371ee196af0f7b1cb44de2c927092344c8",
     "assets/keepit-note-workspace-5ed1d98a3c40.js": "5ed1d98a3c4027c3372639d1f648f3a0c88c077d57d1839a22c9e713c85bf76c",
     "assets/library-app-c162b163e339.js": "c162b163e339ba423e33e5410b4f66b58dcfcb63665dd714f554c92c096e7f10",
-    "assets/keepit-note-ui-db4948167388.js": "db49481673885b8c82e9591d14f44bf98c64bb41bc1fd2eb13dafb434ae52fd7"
+    "assets/keepit-note-ui-db4948167388.js": "db49481673885b8c82e9591d14f44bf98c64bb41bc1fd2eb13dafb434ae52fd7",
+    "assets/ui04-fullscreen-632a64f7e78a.css": "632a64f7e78a6dac0cc1c4f51bb3d25d25db699d2668402be0fec579533b3a44"
   },
   "normalEntry": "/",
   "entryRelease": "owner-connection-v3",
