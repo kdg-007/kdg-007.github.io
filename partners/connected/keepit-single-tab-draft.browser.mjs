@@ -104,6 +104,9 @@ try{
    console.log('KEEPIT_NEW_NOTE_VISIBLE_METADATA_AND_DRAFT_PERSISTENCE_'+engine.name().toUpperCase()+'_PASS');
    await dialog.getByRole('button',{name:'Draw',exact:true}).click();
    const drawing=page.getByRole('dialog',{name:'Note drawing'});
+   assert.equal(await drawing.getByLabel('Paper size').inputValue(),'A4');
+   await drawing.getByLabel('Paper guides').selectOption('Grid');
+   await drawing.getByLabel('Paper size').selectOption('A3');
    const surface=await drawing.locator('canvas').boundingBox();
    await page.mouse.move(surface.x+20,surface.y+20);
    await page.mouse.down();
