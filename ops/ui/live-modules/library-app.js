@@ -2291,6 +2291,7 @@ to({ onResume: () => {
   e({ workspace: V, getLibrary: () => u, getTarget: G });
 } });
 window.addEventListener("online", () => {
+  di = 0;
   Tt().catch(() => {
   });
 });

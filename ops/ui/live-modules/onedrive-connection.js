@@ -1201,6 +1201,10 @@ var ve = class {
   }
   async start(e = {}) {
     if (this.startTask) return this.startTask;
+    if (!e.selected && !e.interactive && !e.force && ye() && globalThis.navigator?.onLine === false) {
+      this.publish('waiting','Offline · OneDrive will reconnect when the network returns');
+      return false;
+    }
     this.$("onedrive-signin").disabled = true, this.$("onedrive-retry").disabled = true;
     let t = this.bound;
     return this.bound = false, this.startTask = this.restore({ ...e, priorBound: t }).finally(() => {

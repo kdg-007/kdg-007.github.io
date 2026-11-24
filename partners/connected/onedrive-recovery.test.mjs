@@ -222,3 +222,21 @@ test('each arriving download chunk gets its own idle deadline', async () => {
   assert.equal((await readOneDriveChunk(reader)).value, 1);
   assert.equal((await readOneDriveChunk(reader)).value, 2);
 });
+
+test('an offline background reopen waits without sign-in and then restores the same folder online',async()=>{
+ const f=rememberedReconnect();
+ f.env.navigator={onLine:false};
+ f.env.ye=()=>true;
+ let signIns=0;
+ f.c.prepareAuth=async()=>{signIns++;};
+ assert.equal(await f.c.start(),false);
+ assert.equal(f.c.phase,'waiting');
+ assert.equal(signIns,0);
+ f.env.navigator.onLine=true;
+ const attempts=[];
+ f.c.bindLibrary=async(root,path)=>{attempts.push([root.id,path]);return true;};
+ assert.equal(await f.c.start(),true);
+ assert.equal(signIns,1);
+ assert.deepEqual(attempts,[[f.savedRoot.id,f.binding.path]]);
+ assert.equal(f.pickerOpens,0);
+});
