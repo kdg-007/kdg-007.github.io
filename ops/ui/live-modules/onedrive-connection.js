@@ -44,6 +44,12 @@ function planOriginalCachePut(rows, {key,bytes,pinned,maxBytes,maxEntries,itemVe
   const keepPinned = pinned || existing?.pinned===true;
   const retained = rows.filter(row=>row.key!==key && !removed.has(row.key));
   if (retained.some(row=>!Number.isSafeInteger(row.bytes)||row.bytes<0)) throw Error('Offline storage accounting needs review. Existing copies were retained.');
+  if (keepPinned) {
+    if (retained.some(row => row.pinned && row.itemVersion > itemVersion && originalCacheItem(row.key,scope,itemId))) {
+      throw Error('A newer version is already kept on this device. Reopen the current version.');
+    }
+    return {remove:[...removed],pinned:true};
+  }
   let total = bytes + retained.reduce((sum,row)=>sum+row.bytes,0), count = retained.length + 1;
   for (const row of [...retained].sort((a,b)=>a.used-b.used)) {
     if (total<=maxBytes && count<=maxEntries) break;
@@ -97,7 +103,7 @@ var N = (h, e) => JSON.stringify(["original-v1", h, e.id, e.digest, e.bytes]), O
   async put(e, t, i, s, { isCurrent: r = () => true, pin = false, fromLegacy = false } = {}) {
     try {
       if(!r())throw Error('The selected library changed. The device copy was not saved.');
-      if(i.size>this.maxFileBytes || i.size>this.maxBytes)throw Error('This file exceeds the offline-copy budget. Download the original for an independent device copy.');
+      if(!pin && (i.size>this.maxFileBytes || i.size>this.maxBytes))return false;
       if(i.size!==t.bytes || await y(i)!==t.digest)throw Error('The original failed verification. No offline copy was saved.');
       // WebKit can reject Blob values in IndexedDB. Store ordinary bytes and
       // reconstruct a Blob on read; retain compatibility with existing Blob rows.
