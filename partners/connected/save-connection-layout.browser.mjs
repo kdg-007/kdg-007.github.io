@@ -118,7 +118,7 @@ async function connected(browser){
   await note.locator('.note-status').filter({hasText:'Verified synced to OneDrive'}).waitFor({timeout:40000});
   assert.equal(await note.getByRole('textbox',{name:'Subject'}).inputValue(),'Latest offline change must survive');
   await reader.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await reading.getByRole('heading',{name:'Latest offline change must survive',exact:true}).waitFor({timeout:40000});
+  await reading.getByRole('heading',{name:'Latest offline change must survive',exact:true,level:1}).waitFor({timeout:40000});
   await reader.waitForFunction(()=>document.querySelector('dialog.note-dialog[open]')?.dataset.mode==='preview');
 
   networkOffline=true;await note.getByRole('textbox',{name:'Subject'}).fill('Closed offline note must resume automatically');
@@ -127,7 +127,7 @@ async function connected(browser){
   await page.locator('#connected-cloud-status[data-phase=connected]').waitFor({timeout:30000});
   await page.getByText('Closed offline note must resume automatically',{exact:true}).first().waitFor({timeout:40000});
   await reader.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await reading.getByRole('heading',{name:'Closed offline note must resume automatically',exact:true}).waitFor({timeout:40000});
+  await reading.getByRole('heading',{name:'Closed offline note must resume automatically',exact:true,level:1}).waitFor({timeout:40000});
   await reader.waitForFunction(()=>document.querySelector('dialog.note-dialog[open]')?.dataset.mode==='preview');
   console.log('KEEPIT_OPEN_NOTE_REFRESHES_TWO_SUCCESSIVE_REMOTE_REVISIONS_'+browser.browserType().name().toUpperCase()+'_PASS');
   } finally {await readerContext.close();}
