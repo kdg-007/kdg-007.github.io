@@ -55,6 +55,7 @@ export function mountAppRepository({getLibrary}){
   await request(store.put({cacheKey:prefix+envelope.revision,scopeKey,scope,app,...envelope}));
   if(envelope.parent!=='root')await request(store.delete(prefix+envelope.parent));
  });
+ const hasDeviceRevision=(scope,key,revision)=>cacheRecords('readonly',store=>request(store.getKey(`${app}:${scope}:${key}:${revision}`)));
  const localFiles=scope=>cacheRecords('readonly',store=>request(store.index('scopeKey').getAll(`${app}:${scope}`)));
  const panel=document.createElement('dialog');panel.className='settings-dialog';panel.setAttribute('aria-label',`${folder} files in KeepIt`);
  panel.style.cssText='width:min(480px,92vw);max-height:82dvh;overflow:auto;padding:18px';
@@ -189,6 +190,8 @@ export function mountAppRepository({getLibrary}){
    if(heads.length){
     const found=await cloud.repo.openSingle(key);
     if(found.state==='ready'&&found.version.digest===await hashText(current.payload)){
+     await remember(cloud.scope,found.version);
+     if(!cloud.isCurrent())throw Error('The selected KeepIt folder changed.');
      binding={scope:cloud.scope,key,revision:found.version.revision,digest:found.version.digest,identity:current.identity};saveBinding(binding);
     }else{status.textContent='This project has another saved version in KeepIt. Open ThinkIt files to review it.';return;}
    }else{binding={scope:cloud.scope,key,revision:'root',digest:'',identity:current.identity};saveBinding(binding);}
@@ -201,6 +204,8 @@ export function mountAppRepository({getLibrary}){
     const digest=await hashText(current.payload);
     if(current.empty){if(await openCopy(found.version,cloud.scope,cloud.isCurrent,{background:true}))adapter()?.syncStatus?.(contentLabel+' opened from KeepIt.');return;}
     if(digest===found.version.digest){
+     await remember(cloud.scope,found.version);
+     if(!cloud.isCurrent())throw Error('The selected KeepIt folder changed.');
      saveBinding({scope:cloud.scope,key:found.version.key,revision:found.version.revision,digest,identity:current.identity});
      adapter()?.syncStatus?.(contentLabel+' saved in KeepIt.');return;
     }
@@ -234,7 +239,14 @@ export function mountAppRepository({getLibrary}){
     if(await openCopy(newer,cloud.scope,cloud.isCurrent,{background:true}))status.textContent=contentLabel+' updated from KeepIt.';
    }else if(heads.length!==1){status.textContent='Review the file versions in KeepIt before continuing.';client.syncStatus?.(status.textContent);}
    else{
-    if(!quiet)status.textContent=`Up to date with KeepIt / ${folder}.`;
+    if(!quiet){
+     if(!await hasDeviceRevision(cloud.scope,binding.key,binding.revision)){
+      const original=await cloud.repo.open(binding.key,binding.revision);
+      await remember(cloud.scope,original);
+     }
+     if(!cloud.isCurrent())throw Error('The selected KeepIt folder changed.');
+     status.textContent=`Up to date with KeepIt / ${folder}.`;
+    }
     client.syncStatus?.(contentLabel+' saved in KeepIt.');
    }
    return;

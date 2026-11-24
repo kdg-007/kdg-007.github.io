@@ -1,6 +1,5 @@
 // KeepIt owns the selected library. These app folders sit outside its gallery catalog.
 export const APP_FOLDERS = Object.freeze({thinkit:'ThinkIt',liveit:'LiveIt',travelit:'TravelIt'});
-export const MAX_FILE_BYTES = 32 * 1024 * 1024;
 const uuid = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}';
 const keyPattern = new RegExp(`^${uuid}--[a-z0-9-]{1,60}$`);
 const revisionPattern = /^([0-9a-f]{64})--(root|[0-9a-f]{64})\.json$/;
@@ -47,7 +46,7 @@ export function createAppRepository({app, library, isCurrent}) {
  };
  const read = async (key, head) => {
   assertCurrent();
-  const blob = await fs.read(head.item,{cache:false,max:MAX_FILE_BYTES});
+  const blob = await fs.read(head.item,{cache:false});
   assertCurrent();
   const envelope = JSON.parse(await blob.text());
   if(envelope?.schema!=='keepit-app-file-v1'||envelope.app!==app||envelope.key!==key||envelope.parent!==head.parent||envelope.revision!==head.id||typeof envelope.title!=='string'||typeof envelope.payload!=='string')throw Error('App file metadata could not be verified.');
@@ -57,13 +56,11 @@ export function createAppRepository({app, library, isCurrent}) {
  };
  async function write({key,parent,title,payload,kind='workspace'}){
    if(!['workspace','map','trash'].includes(kind)||(kind==='map'&&app!=='travelit')||(parent!=='root'&&!/^[0-9a-f]{64}$/.test(parent))||typeof title!=='string'||typeof payload!=='string')throw Error('Invalid app file save request.');
-   if(encoder.encode(payload).byteLength>MAX_FILE_BYTES)throw Error('This app file exceeds the 32 MiB sync limit.');
    title=title.slice(0,150);
    const digest=await hashText(payload),revision=await hashText(JSON.stringify([app,key,parent,kind,title,digest]));
    const name=revision+'--'+parent+'.json';
    const envelope={schema:'keepit-app-file-v1',app,key,parent,revision,title,kind,digest,payload};
    const blob=new Blob([JSON.stringify(envelope)],{type:'application/json'});
-   if(blob.size>MAX_FILE_BYTES)throw Error('This app file exceeds the 32 MiB sync limit.');
    const directory=await fileFolder(key,parent==='root');
    if(!directory)throw Error('The KeepIt file folder was removed. Save a new copy to preserve local changes.');
    const heads=await getHeads(directory),same=heads.find(head=>head.id===revision);

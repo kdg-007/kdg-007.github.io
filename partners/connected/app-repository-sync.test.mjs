@@ -35,7 +35,7 @@ function tab(f,payload='original',session=storage()){
  const env={app:f.app,folder:f.app,contentLabel:'Project',loadBinding:(...args)=>bindings.load(...args),saveBinding:value=>bindings.save(value),adapter:()=>client,
  connected:async()=>({scope:f.scope,repo:f.repo,isCurrent:f.isCurrent}),hashText,newFileKey,projectFileKey,travelWorkspaceKey,findTravelWorkspace,liveWorkspaceKey,findLiveWorkspace,lastRead:0,
  status:{textContent:''},saveSession:crypto.randomUUID(),resyncRequested:false,task:null,panel:{querySelectorAll:()=>[]},queueMicrotask,console,
- remember:async(scope,version)=>{copies.push(version);},Date,followups:0};
+ hasDeviceRevision:async(scope,key,revision)=>copies.some(row=>row.key===key&&row.revision===revision),remember:async(scope,version)=>{copies.push(version);},Date,followups:0};
  env.openCopy=async(version,scope,isCurrent,{background=false}={})=>{
   const local=bindings.load(state.identity,scope);
   if(background&&!state.empty&&local?.digest!==await hashText(state.payload))return false;
@@ -209,4 +209,20 @@ test('offline app status resumes to a verified cloud save when the library is re
  t.env.navigator.onLine=true;t.env.library={isCloud:true};auto();await t.env.task;
  assert.equal((await f.repo.openSingle(liveWorkspaceKey(f.scope))).version.payload,'local tasks and journal');
  assert.match(t.messages.at(-1),/saved in KeepIt/);
+});
+
+test('matching app data on another device acquires the verified offline revision without uploading',async()=>{
+ for(const app of ['thinkit','liveit','travelit']){
+  const f=fixture(app),first=tab(f,'same workspace');await first.sync();
+  const second=tab({...f,shared:storage()},'same workspace');await second.sync();
+  assert.equal(second.copies.length,1);
+  assert.equal(second.copies[0].payload,'same workspace');
+  assert.equal(second.copies[0].revision,first.bindings.load().revision);
+ }
+});
+test('manual sync repairs an older receipt without a device copy and reuses it on later syncs',async()=>{
+ const f=fixture(),binding=await seed(f),t=tab(f);
+ await t.sync();await t.sync();
+ assert.deepEqual(t.copies.map(row=>row.revision),[binding.revision]);
+ assert.equal((await f.repo.heads(binding.key)).length,1);
 });

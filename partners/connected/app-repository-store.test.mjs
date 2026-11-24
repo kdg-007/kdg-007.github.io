@@ -56,5 +56,8 @@ assert.equal(recovered.envelope.payload,'canvas with a picture');
 assert.equal((await think.list()).find(row=>row.key===removableKey).trashed,false);
 await assert.rejects(()=>think.trash(removableKey,original.envelope.revision),/file changed/);
 console.log('KEEPIT_APP_FILE_TRASH_RESTORE_AND_STALE_DEVICE_PROTECTION_PASS');
+const largeKey=newFileKey('Large diagram'),largePayload='A'.repeat(32*1024**2+1);
+const large=await think.save({key:largeKey,parent:'root',title:'Large diagram',payload:largePayload});
+assert.equal((await think.open(largeKey,large.envelope.revision)).payload,largePayload);
 current=false;await assert.rejects(()=>think.list(),/folder changed/);
 console.log('KEEPIT_APP_FOLDER_SCOPES_READBACK_RETRY_CONFLICT_PASS');
