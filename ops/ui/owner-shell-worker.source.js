@@ -1,5 +1,5 @@
 const CACHE='liveit-owner-shell-entry-v3';
-const INITIAL=['/','/manifest.webmanifest','/assets/owner-entry-v2.js'];
+const INITIAL=['/','/manifest.webmanifest','/assets/owner-entry-v2.js','/partners/connected/'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
  for(const path of INITIAL){const response=await fetch(path,{cache:'no-store'});if(!response.ok)throw Error('Live shell resource unavailable');await cache.put(path,response);}
@@ -18,6 +18,18 @@ self.addEventListener('fetch',event=>{
   const immutable=!document&&/\/assets\/[^/]+-[A-Za-z0-9]{8,}\.(?:js|mjs|css)$/.test(url.pathname);
   if(immutable){const hit=await cache.match(request);if(hit)return hit;}
   try{const response=await fetch(request,{cache:'no-store'});if(response.ok&&response.type!=='opaque')await cache.put(request,response.clone());return response;}
-  catch(error){const hit=await cache.match(request);if(hit)return hit;if(document&&(url.pathname==='/'||url.pathname==='/index.html')){const entry=await cache.match('/');if(entry)return entry;}throw error;}
+  catch(error){
+   const hit=await cache.match(request);
+   if(hit)return hit;
+   if(document && (url.pathname==='/partners/connected/' || url.pathname.startsWith('/partners/travelit/') || url.pathname.startsWith('/thinkit/'))){
+    const shell=await cache.match(request,{ignoreSearch:true});
+    if(shell)return shell;
+   }
+   if(document&&(url.pathname==='/'||url.pathname==='/index.html')){
+    const entry=await cache.match('/');
+    if(entry)return entry;
+   }
+   throw error;
+  }
  })());
 });
