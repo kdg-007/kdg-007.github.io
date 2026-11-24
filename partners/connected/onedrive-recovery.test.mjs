@@ -203,3 +203,22 @@ test('a null OneDrive catalog original produces a safe readback error, not null.
  assert.equal(await item.getFile(),healthy);
  assert.equal(attempts,2,'Transient null cache result must recover with exactly one read-only bypass');
 });
+
+const readOneDriveChunk = vm.runInNewContext(
+  '(' + source.slice(source.indexOf('async function readOneDriveChunk'), source.indexOf('function originalCacheItem')) + ')',
+  {setTimeout, clearTimeout}
+);
+test('a stalled download body releases the caller even if transport cancellation hangs', async () => {
+  let cancelled = 0;
+  const never = new Promise(() => {});
+  const reader = {read: () => never, cancel: () => { cancelled++; return never; }};
+  await assert.rejects(readOneDriveChunk(reader, 5), /KI-OD-READ-TIMEOUT/);
+  assert.equal(cancelled, 1);
+  assert.match(source, /await readOneDriveChunk\(u\)/);
+});
+test('each arriving download chunk gets its own idle deadline', async () => {
+  let chunks = 0;
+  const reader = {async read() { return {value: ++chunks, done: false}; }};
+  assert.equal((await readOneDriveChunk(reader)).value, 1);
+  assert.equal((await readOneDriveChunk(reader)).value, 2);
+});

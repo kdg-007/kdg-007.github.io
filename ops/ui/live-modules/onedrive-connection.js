@@ -12,6 +12,23 @@ import "./chunk-ZJV7P25W.js";
 import { l as X } from "./chunk-G42SHEZJ.js";
 import { b as y } from "./chunk-ZKN76T53.js";
 import "./chunk-OOJM4CTU.js";
+async function readOneDriveChunk(reader, idleMs = 20000) {
+  let timer;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('The OneDrive download stopped responding (KI-OD-READ-TIMEOUT). Retry the connection.')), idleMs);
+      })
+    ]);
+  } catch (error) {
+    // A stalled transport may never acknowledge cancellation.
+    void reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function originalCacheItem(key, scope, itemId) {
   try {
     const parts = JSON.parse(key);
@@ -644,7 +661,7 @@ var T = encodeURIComponent, B = () => new DOMException("File not found in OneDri
     }
     let a = D(r["@microsoft.graph.downloadUrl"]), n = await this.provider.request("GET", a.href, { transfer: true, tag: "KeepIt download" }), o = [], l = 0, u = n.body.getReader();
     for (; ; ) {
-      let f = await u.read();
+      let f = await readOneDriveChunk(u);
       if (f.done) break;
       if (l += f.value.byteLength, l > i || l > e.size) throw await u.cancel(), new Error("OneDrive returned an unexpected file length.");
       o.push(f.value);
