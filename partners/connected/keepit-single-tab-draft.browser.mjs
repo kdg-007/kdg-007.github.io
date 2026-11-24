@@ -82,6 +82,26 @@ try{
     return {original:drafts.find(row=>row.id===originalId).values.title,copy:copy.values.title,table:JSON.stringify(copy.document).includes('Keep this table cell'),image:copy.assets.some(asset=>asset.digest===assetDigest)};
    });
    assert.deepEqual(evidence,{original:'Competing saved subject',copy:'Unsaved subject to keep (copy)',table:true,image:true});
+   // A previously collapsed panel must be discoverable on every new note.
+   await page.evaluate(async()=>{
+    const {ui}=window.qaNote;
+    await ui.session.chain;
+    ui.setMetadata(false);
+    await ui.newNote();
+   });
+   await dialog.getByRole('combobox',{name:'Category',exact:true}).waitFor();
+   await dialog.getByRole('combobox',{name:'Document type',exact:true}).waitFor();
+   await dialog.getByRole('textbox',{name:'Comments',exact:true}).waitFor();
+   await dialog.getByRole('combobox',{name:'Category',exact:true}).selectOption('Aviation');
+   await dialog.getByRole('textbox',{name:'Comments',exact:true}).fill('Review the apron layout');
+   const created=await page.evaluate(async()=>{
+    const {ui,workspace,target}=window.qaNote;
+    await ui.session.chain;
+    const draft=(await workspace.drafts(target)).find(row=>row.id===ui.session.draft.id);
+    return {domain:draft.values.domain,notes:draft.values.notes};
+   });
+   assert.deepEqual(created,{domain:'Aviation',notes:'Review the apron layout'});
+   console.log('KEEPIT_NEW_NOTE_VISIBLE_METADATA_AND_DRAFT_PERSISTENCE_'+engine.name().toUpperCase()+'_PASS');
    assert.deepEqual(errors,[]);
    console.log('KEEPIT_SINGLE_TAB_DRAFT_AND_SAFE_COPY_'+engine.name().toUpperCase()+'_PASS');
   }finally{await browser.close();}

@@ -1,7 +1,7 @@
 {
   "schema": "keepit.owner-live-release.v1",
   "buildId": "suite-travelit-map-lifecycle-20261113",
-  "entry": "/assets/library-app-f93e53269903.js",
+  "entry": "/assets/library-app-63d1c31f72b3.js",
   "target": "OneDrive / KeepIt",
   "sourceArchiveSha256": "d55d4131aa28f25d96b718389b673de71ac3190ca974621dd5e7f6eec7feb51a",
   "privateSourceBase": "f9b7a3fc5473df6b6ef06542ec3f9f4a0953984f",
@@ -9,7 +9,7 @@
   "cloudSignInVerified": false,
   "cloudOriginalReadbackVerified": false,
   "files": {
-    "partners/connected/index.html": "cedb8c9a5a9e830ce3fdb813bbb80f837f278b1a4ee94577475210c663f5c1d2",
+    "partners/connected/index.html": "330b33bdef0539c200826771a505d08af026e0303eb512a5e13540bd79d0957e",
     "partners/connected/owner-auth-callback.html": "0b54950fe912aa992dafa5c15f79fb020c5a50df96939ef20ceae032844c5e8e",
     "assets/chunk-SGTLM5CQ.js": "d8b3360139a617b3c6d7a53ec96230177ff6869b520a578c5bbea7f5529804f9",
     "assets/chunk-OZVKXUIX.js": "7d853cc51c52b7203db69e44c6d2fedcccc3c2712416f534f812c3dc5869aebc",
@@ -248,10 +248,10 @@
     "assets/keepit-transfer-hosts-6e9b7483e8b2.js": "6e9b7483e8b2281dedfa75819c4d34e792d4363aa6b393d93371beb946039abd",
     "assets/keepit-graph-provider-a6dfefa333bb.js": "a6dfefa333bb5da52282d3622edd6fd1a485cd12c2f6b6e70c1a06aa134bbf97",
     "assets/keepit-onedrive-connect-372cbc7f560b.js": "372cbc7f560b8fc9efb62d1ee4da6956da5507c56b63415b91bcfab93053d0b8",
-    "assets/keepit-note-ui-40552662bcf1.js": "40552662bcf127bb5d982cc36f2b302451fe407da200587563d4c40f3c9e0f9f",
-    "assets/keepit-note-link-6ef1551b1798.js": "6ef1551b1798ae6fe8764c1483b544371ee196af0f7b1cb44de2c927092344c8",
+    "assets/keepit-note-ui-dc952a654579.js": "dc952a6545792b4eb8311b78b46bbe6be8016801350c54755126ca6a91fab325",
+    "assets/keepit-note-link-8a7d8c23ca3c.js": "8a7d8c23ca3cd7414061372e7785c4e27a780f8ad6a18e8417c897aab62f0ba7",
     "assets/keepit-note-workspace-5ed1d98a3c40.js": "5ed1d98a3c4027c3372639d1f648f3a0c88c077d57d1839a22c9e713c85bf76c",
-    "assets/library-app-f93e53269903.js": "f93e53269903bcba81678d7fc8086aa02647fad845da38b7b801c5f74a8f0360",
+    "assets/library-app-63d1c31f72b3.js": "63d1c31f72b3e68b22976ed85979507bdffad55eec82d6d33f4076e991ff6aa8",
     "assets/keepit-note-ui-db4948167388.js": "db49481673885b8c82e9591d14f44bf98c64bb41bc1fd2eb13dafb434ae52fd7"
   },
   "normalEntry": "/",
