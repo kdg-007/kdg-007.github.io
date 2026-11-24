@@ -57,7 +57,7 @@ async function authAndEditor(browser){
   const editor=page.getByRole('dialog',{name:'KeepIt note'}),subject=editor.getByRole('textbox',{name:'Subject'});
   await subject.fill('Saved while disconnected');await editor.getByRole('button',{name:'Save',exact:true}).click();
   await page.waitForFunction(()=>saveQA.ui.session.draft.connectedAuto&&!saveQA.ui.preparing);
-  assert.match(await editor.locator('.note-status').innerText(),/Saved on this device/);
+  await editor.locator('.note-status').filter({hasText:'Saved on this device'}).waitFor();
   assert.equal(await subject.isEnabled(),true);assert.equal(await editor.getAttribute('data-mode'),'edit');
   await subject.fill('Latest edit while disconnected');
   await page.evaluate(async()=>{await saveQA.ui.session.chain;saveQA.session=saveQA.ui.session;saveQA.library=saveQA.nextLibrary();saveQA.writable=true;await saveQA.ui.reconnectThinkItLibrary(saveQA.library);});
