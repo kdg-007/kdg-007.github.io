@@ -22,3 +22,9 @@ Updated 2026-11-13. “Implemented” describes shipped code and checks; it does
 | ThinkIt contrast, BMC rich text/images/tables/notes, outline reorder | Implementations exist in prior releases | Complete feature audit; not all closed |
 
 No new decision gate is needed for these engineering fixes. Ask for the owner's input only for a concrete product choice or account/device access that cannot be verified here. Do not turn this ledger into another manual test checklist for the owner.
+
+## Owner priorities · 24 November 2026
+
+Finish the existing launch, OneDrive connection/reopen, save recovery and cross-device work first. Device acceptance uses the MacBook, iPhone and the owner's 11-inch M4 iPad Air with Apple Pencil Pro, replacing the planned iPad mini.
+
+After the earlier comments are addressed, add editable handwriting and drawings within KeepIt notes, alongside typed content. Cover offline editing, OneDrive save/reopen and viewing drawings on Mac and iPhone. Evaluate pressure, tilt, hover, barrel roll, double-tap, squeeze and haptic feedback on the actual iPad Air. Record what the web app can expose and any native iPadOS dependency before committing to advanced controls.
