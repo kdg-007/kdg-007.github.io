@@ -1552,7 +1552,7 @@ function j(e) {
   return e.name === "AbortError" ? "Operation cancelled. Existing library files were retained." : Be && ["NotAllowedError", "SecurityError"].includes(e.name) ? "Folder permission is unavailable. Reconnect the folder or choose another one. Files are not saved into browser storage as a fallback." : /quota/i.test(`${e.name} ${e.message}`) ? "Device storage is full. Existing items were retained. Export a backup before making space." : e.name === "OpenFailedError" || e.name === "SecurityError" ? "Browser storage is unavailable. Open in a normal browser tab and allow site storage." : e.message || "The operation stopped. Your existing library is retained.";
 }
 function sn(e) {
-  for (let t of ["add-files", "add-upload", "write-note", "note-drafts", "take-photo", "empty-add", "capture-close"]) a(t).disabled = !e;
+  for (let t of ["add-files", "add-upload", "sketch-note", "write-note", "note-drafts", "take-photo", "empty-add", "capture-close"]) a(t).disabled = !e;
   a("capture-form").querySelectorAll("button").forEach((t) => t.disabled = !e);
 }
 async function ci() {
@@ -1944,6 +1944,18 @@ a("add-files").onclick = () => {
 };
 a("add-upload").onclick = a("empty-add").onclick = () => {
   a("add-menu").hidden = true, u ? a("file-input").click() : J?.show();
+};
+a("sketch-note").onclick = async () => {
+  a("add-menu").hidden = true;
+  try {
+    const ui=await ce();
+    await ui.newNote({title:"Sketchbook page"});
+    await ui.editor.draw();
+    const page=document.querySelector('dialog[aria-label="Note drawing"][open]');
+    page?.addEventListener("close",()=>{
+      if(page.returnValue==="inserted" && ui.mode==="edit") ui.saveButton?.click();
+    },{once:true});
+  } catch(error){ E(j(error),true); }
 };
 a("write-note").onclick = () => {
   a("add-menu").hidden = true, ce().then((e) => e.newNote()).catch((e) => E(j(e), true));
