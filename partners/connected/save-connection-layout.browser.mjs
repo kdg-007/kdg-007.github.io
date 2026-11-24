@@ -57,6 +57,7 @@ async function authAndEditor(browser){
   const editor=page.getByRole('dialog',{name:'KeepIt note'}),subject=editor.getByRole('textbox',{name:'Subject'});
   await subject.fill('Saved while disconnected');await editor.getByRole('button',{name:'Save',exact:true}).click();
   await page.waitForFunction(()=>saveQA.ui.session.draft.connectedAuto&&!saveQA.ui.preparing);
+  assert.match(await editor.locator('.note-status').innerText(),/Saved on this device/);
   assert.equal(await subject.isEnabled(),true);assert.equal(await editor.getAttribute('data-mode'),'edit');
   await subject.fill('Latest edit while disconnected');
   await page.evaluate(async()=>{await saveQA.ui.session.chain;saveQA.session=saveQA.ui.session;saveQA.library=saveQA.nextLibrary();saveQA.writable=true;await saveQA.ui.reconnectThinkItLibrary(saveQA.library);});
@@ -69,6 +70,7 @@ async function authAndEditor(browser){
   const guarded=await page.evaluate(async()=>{await saveQA.ui.session.chain;return {accepted:saveQA.wrongAccepted,target:saveQA.ui.session.draft.target,title:saveQA.ui.session.draft.values.title,writes:saveQA.writes};});
   assert.equal(guarded.accepted,false);assert.ok(guarded.target.includes('synthetic-account'));assert.equal(guarded.title,'Keep in the original library');assert.equal(guarded.writes,1);
   await page.evaluate(async()=>{const note=await (await import('/assets/chunk-G42SHEZJ.js')).r(saveQA.saved.blob);saveQA.ui.showPreview(note,saveQA.saved.item,saveQA.saved.blob,{id:'synthetic-old-pending',state:'failed'});});
+  assert.match(await editor.locator('.note-status').innerText(),/Saved on this device · Sync needs attention/);
   assert.equal(await editor.getByRole('button',{name:'Edit',exact:true}).isDisabled(),true,'Legacy pending sources remain protected until a recovery copy is made');
  }finally{await context.close();}
 }
