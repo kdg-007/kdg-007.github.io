@@ -53,6 +53,19 @@ var M = class {
     }
   }
 };
+function pendingNoteStatus(job = {}, library) {
+  if (job.pendingSourceUnavailable) return 'Pending edit needs recovery on this device';
+  const target = library?.isCloud ? 'OneDrive' : 'the library';
+  if (job.state === 'saving') return 'Saved on this device · Saving to ' + target + '…';
+  if (!job.state || job.state === 'queued' || Number.isFinite(job.retryAt)) return 'Saved on this device · Waiting to sync to ' + target;
+  return 'Saved on this device · Sync needs attention' + (job.error ? ' · ' + job.error : '');
+}
+function storedNoteStatus(library, verified = false) {
+  if (library.isCloud && (library.readOnly || globalThis.navigator?.onLine === false || !verified)) return 'Last verified copy on this device';
+  if (library.isCloud) return 'Verified synced to OneDrive';
+  if (library.isFolder) return verified ? 'Saved in your folder · Verified' : 'Saved in your folder';
+  return verified ? 'Saved on this device · Verified in KeepIt' : 'Saved on this device';
+}
 function _(u) {
   return u && (Number.isFinite(u.retryAt) || u.state === "queued" || u.state === "saving") ? "pending" : "attention";
 }
@@ -76,7 +89,7 @@ var H = class {
         this.state("Save needs attention \xB7 draft not saved: " + t.error.message);
         return;
       }
-      this.state(t.pending ? "Saving on this device\u2026" : "Saved on this device \xB7 Pending KeepIt sync"), t.pending || this.later();
+      this.state(t.pending ? "Saving on this device\u2026" : pendingNoteStatus(undefined,this.library)), t.pending || this.later();
     }
   }
   async flush() {
@@ -92,7 +105,7 @@ var H = class {
       if (await this.workspace.drain(this.target, this.library, { isCurrent: () => this.isCurrent() && this.canWrite() }), !this.isCurrent()) throw Error("Original library changed; local draft retained.");
       if (s = await this.workspace.db.operations.get(s.id), s && s.state !== "saved") {
         let l = _(s);
-        return this.state(l === "pending" ? "Saved on this device \xB7 Pending KeepIt sync" : "Save needs attention \xB7 " + (s.error || s.state)), l === "pending" && this.later(Math.max(1500, (s.retryAt || Date.now() + 1500) - Date.now())), { state: l, operationId: s.id };
+        return this.state(pendingNoteStatus(s,this.library)), l === "pending" && this.later(Math.max(1500, (s.retryAt || Date.now() + 1500) - Date.now())), { state: l, operationId: s.id };
       }
       e = (await this.workspace.jobs(this.target)).filter((l) => l.itemId === i.itemId);
     }
@@ -102,6 +115,7 @@ var H = class {
       if (!l || l.trashedAt || l.version !== a.item.version || l.digest !== a.digest) throw Error("The note changed after this save. Both the native draft and pending source were retained for review.");
       let p = await this.library.original(l.id), k = await O(p), S = this.library.getItem ? await this.library.getItem(l.id) : await this.library.db.items.get(l.id);
       if (!S || S.version !== l.version || S.digest !== l.digest || await G(p) !== a.digest || !this.isCurrent()) throw Error("Native readback could not be verified. Local draft retained.");
+      this.verifiedDigest = a.digest;
       let base = { baseItem: l, baseDocument: k.document, baseBlob: p };
       if (!this.persistRebase) Object.assign(this.session.draft, base);
       else {
@@ -116,8 +130,8 @@ var H = class {
     if (!this.isCurrent()) throw Error("Original library changed; local draft retained.");
     if (await this.session.chain, this.session.error) throw this.session.error;
     let d = structuredClone(this.session.draft);
-    if (d.baseItem && JSON.stringify(W(d.document)) === JSON.stringify(W(d.baseDocument)) && JSON.stringify(x(d.values)) === JSON.stringify(x(d.baseItem))) return this.state(this.library.isCloud ? "Verified synced to OneDrive" : this.library.isFolder ? "Saved in your folder \xB7 Verified" : "Saved on this device \xB7 Verified in KeepIt"), { state: "verified", itemId: d.itemId };
-    if (t) return this.state("Saved on this device \xB7 Pending KeepIt sync"), this.later(), { state: "pending" };
+    if (d.baseItem && JSON.stringify(W(d.document)) === JSON.stringify(W(d.baseDocument)) && JSON.stringify(x(d.values)) === JSON.stringify(x(d.baseItem))) return this.state(storedNoteStatus(this.library,this.verifiedDigest === d.baseItem.digest)), { state: "verified", itemId: d.itemId };
+    if (t) return this.state(pendingNoteStatus(undefined,this.library)), this.later(), { state: "pending" };
     this.validate(d);
     let c;
     try {
@@ -126,11 +140,11 @@ var H = class {
       if (/draft changed while preparing|already has a pending save/.test(l.message)) return this.later(), { state: "pending" };
       throw l;
     }
-    this.state("Saved on this device \xB7 Pending KeepIt sync"), await this.workspace.drain(this.target, this.library, { isCurrent: () => this.isCurrent() && this.canWrite() });
+    this.state(pendingNoteStatus(undefined,this.library)), await this.workspace.drain(this.target, this.library, { isCurrent: () => this.isCurrent() && this.canWrite() });
     let h = await this.workspace.db.operations.get(c.id);
     if (h?.state === "saved") return this.step(true);
     let v = _(h);
-    return this.state(v === "pending" ? "Saved on this device \xB7 Pending KeepIt sync" : "Save needs attention \xB7 " + (h?.error || "pending repository save")), v === "pending" && this.later(Math.max(1500, (h?.retryAt || Date.now() + 1500) - Date.now())), { state: v, operationId: c.id };
+    return this.state(pendingNoteStatus(h,this.library)), v === "pending" && this.later(Math.max(1500, (h?.retryAt || Date.now() + 1500) - Date.now())), { state: v, operationId: c.id };
   }
   dispose() {
     this.disposed = true, this.cancel(this.timer), this.timer = null;
@@ -269,9 +283,9 @@ var r = (u, t, i) => {
       this.body.append(r("h3", "Pending note saves"));
       for (let e of i) {
         let s = r("section", void 0, "note-pending-row");
-        s.append(r("p", e.values.title + " \xB7 " + (e.state === "saving" ? "Saving to library\u2026" : "Needs synchronization")), m("Preview pending version", () => {
+        s.append(r("p", e.values.title + ' · ' + pendingNoteStatus(e,this.library)), m("Preview pending version", () => {
           this.open(e.itemId).catch((a) => this.error(a));
-        })), e.error && s.append(r("p", e.error)), ["failed", "review"].includes(e.state) && (s.append(m("Discard pending save", async () => {
+        })), ["failed", "review"].includes(e.state) && (s.append(m("Discard pending save", async () => {
           confirm("Discard this pending version? Its changes will be lost. The last committed note stays intact.") && (await this.workspace.discardOperation(e.id), await this.menu());
         }), m("Retry safely", async () => {
           await this.workspace.retry(e.id), this.pump(), await this.menu();
@@ -398,20 +412,31 @@ var r = (u, t, i) => {
     let s = this.library, a = s.getItem ? await s.getItem(t) : await s.db.items.get(t);
     if (!a) throw new Error("This note is no longer in the library.");
     this.shell(a.title), this.status.textContent = "Opening note\u2026";
+    const checkingCloud = s.isCloud && !s.readOnly && globalThis.navigator?.onLine !== false;
     let d = this.loadSerial, n;
     try {
       if (n = await s.original(t), d !== this.loadSerial || !this.dialog.open || s !== this.getLibrary()) return;
       this.status.textContent = "Preparing photos and text\u2026";
       let c = await O(n);
       if (d !== this.loadSerial || !this.dialog.open || s !== this.getLibrary()) return;
-      this.showPreview(c, a, n);
+      let verifiedCloud = false;
+      if (checkingCloud && globalThis.navigator?.onLine !== false) {
+        const digest = await G(n);
+        const current = await s.getItem(t);
+        if (d !== this.loadSerial || !this.dialog.open || s !== this.getLibrary()) return;
+        if (!current || current.trashedAt || current.version !== a.version || current.digest !== digest || a.digest !== digest) {
+          throw Error('This note changed during verification. Reopen its current version.');
+        }
+        verifiedCloud = true;
+      }
+      this.showPreview(c, a, n, null, verifiedCloud);
     } catch (c) {
       if (d !== this.loadSerial || !this.dialog.open) return;
       this.error(c), n && this.body.append(m("Download original for recovery", () => U(n, a.originalName)));
     }
   }
-  showPreview(t, i, e, s = null) {
-    this.shell(i.title), this.mode = "preview", this.dialog.dataset.mode = this.mode, this.note = t, this.item = i, this.blob = e, this.pending = s?.id ? s : null, this.status.textContent = s?.historical ? "Previous revision \xB7 Read only" : s ? "Saved on this device \xB7 " + (s.state === "saving" ? "Saving to library\u2026" : s.state === "queued" ? "Pending sync" : s.retryAt ? "Waiting for connection \xB7 Retry scheduled" : `Save needs attention. ${s.error || ""}`) : this.library.readOnly ? "Last verified copy on this device \xB7 OneDrive unavailable" : this.library.isCloud ? "Synced to OneDrive" : this.library.isFolder ? "Saved in your folder" : "Saved on this device";
+  showPreview(t, i, e, s = null, verifiedCloud = false) {
+    this.shell(i.title), this.mode = "preview", this.dialog.dataset.mode = this.mode, this.note = t, this.item = i, this.blob = e, this.pending = s?.id ? s : null, this.status.textContent = s?.historical ? 'Previous revision · Read only' : s ? pendingNoteStatus(s,this.library) : storedNoteStatus(this.library,verifiedCloud);
     let a = m("Edit", () => {
       this.beginEdit().catch((h) => this.error(h));
     }, "primary");
@@ -480,7 +505,11 @@ var r = (u, t, i) => {
           this.nativeAutosave.localState(o);
           return;
         }
-        o.error ? this.error(new Error("Draft not saved: " + o.error.message)) : !o.pending && !this.preparing && (this.status.textContent = "Draft saved on this device", this.status.classList.remove("error"));
+        if (o.error) this.error(new Error("Draft not saved: " + o.error.message));
+        else if (!this.preparing) {
+          this.status.textContent = o.pending ? 'Saving draft on this device…' : 'Draft saved on this device';
+          this.status.classList.remove('error');
+        }
       }
     } });
     this.session = e, this.draft = e.draft, this.autosaveError = null, this.autosavePending = 0;
@@ -682,13 +711,16 @@ var r = (u, t, i) => {
   }
   async pump() {
     let t = this.library, i = this.target;
-    if (await this.workspace.drain(i, t, { isCurrent: () => this.getLibrary() === t && this.canWrite() }), await this.onChange(), this.mode === "preview" && this.pending && this.getLibrary() === t) {
-      let e = await this.workspace.db.operations.get(this.pending.id);
+    const pending = this.pending, serial = this.loadSerial;
+    const current = () => this.loadSerial === serial && this.pending === pending && this.getLibrary() === t;
+    if (await this.workspace.drain(i, t, { isCurrent: () => this.getLibrary() === t && this.canWrite() }), await this.onChange(), this.mode === "preview" && pending && current()) {
+      let e = await this.workspace.db.operations.get(pending.id);
+      if (!current()) return;
       if(e?.state==='saved'){
         const draft=e.draftId&&(await this.workspace.drafts(i)).find(row=>row.id===e.draftId);
-        if(draft&&draft.revision===this.pending.retainedRevision)await this.workspace.discard(draft.id,draft.revision);
-        await this.openSaved(e.itemId);
-      }else if(e)this.status.textContent='Saved on this device · '+(e.error||e.state);
+        if(draft&&draft.revision===pending.retainedRevision)await this.workspace.discard(draft.id,draft.revision);
+        if (current()) await this.openSaved(e.itemId);
+      }else if(e)this.status.textContent=pendingNoteStatus(e,t);
     }
   }
   async history() {
