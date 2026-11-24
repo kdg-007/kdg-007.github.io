@@ -60,10 +60,11 @@ function pendingNoteStatus(job = {}, library) {
   if (!job.state || job.state === 'queued' || Number.isFinite(job.retryAt)) return 'Saved on this device · Waiting to sync to ' + target;
   return 'Saved on this device · Sync needs attention' + (job.error ? ' · ' + job.error : '');
 }
-function storedNoteStatus(library, verifiedCloud = false) {
-  if (library.isCloud && (library.readOnly || globalThis.navigator?.onLine === false || !verifiedCloud)) return 'Last verified copy on this device';
+function storedNoteStatus(library, verified = false) {
+  if (library.isCloud && (library.readOnly || globalThis.navigator?.onLine === false || !verified)) return 'Last verified copy on this device';
   if (library.isCloud) return 'Verified synced to OneDrive';
-  return library.isFolder ? 'Saved in your folder' : 'Saved on this device';
+  if (library.isFolder) return verified ? 'Saved in your folder · Verified' : 'Saved in your folder';
+  return verified ? 'Saved on this device · Verified in KeepIt' : 'Saved on this device';
 }
 function _(u) {
   return u && (Number.isFinite(u.retryAt) || u.state === "queued" || u.state === "saving") ? "pending" : "attention";
