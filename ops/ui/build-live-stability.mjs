@@ -45,7 +45,11 @@ paths.connection=emit('keepit-onedrive-connect',connectionSource
  .replace('./AUTH_MODULE.js','./'+paths.auth.split('/')[1])
  .replace('./chunk-VUEURUCM.js','./'+paths.transfer.split('/')[1])
  .replace('./chunk-7XPOT35Y.js','./'+paths.provider.split('/')[1]));
-paths.ui=emit('keepit-note-ui',source('note-ui'));
+paths.drawing=emit('keepit-note-drawing',source('note-drawing'));
+paths.editor=emitPatchedChunk('keepit-note-editor','assets/chunk-5ZHMQH23.js',
+ 'insertImage:()=>$.click(),insertTable:ue',
+ 'insertImage:()=>$.click(),draw:async()=>{const {editDrawing}=await import("./'+paths.drawing.split('/')[1]+'");return editDrawing({editor:d,assets:l,selection:_n(d.state).figure,insertPosition:()=>ip(d.state),makeAsset:Na,canEdit:()=>!c&&d.isEditable});},insertTable:ue');
+paths.ui=emit('keepit-note-ui',source('note-ui').replace('./chunk-5ZHMQH23.js','./'+paths.editor.split('/')[1]));
 paths.link=emit('keepit-note-link',readFileSync('assets/keepit-note-link-256bd3efc430.js','utf8').replace('./keepit-note-ui-db4948167388.js','./'+paths.ui.split('/')[1]));
 // A pending note can contain an ArrayBuffer instead of a Blob, or retain
 // recovery metadata after its source bytes became unreadable.
@@ -56,7 +60,7 @@ paths.entry=emit('library-app',source('library-app')
  .replaceAll('./keepit-note-link-256bd3efc430.js','./'+paths.link.split('/')[1])
  .replaceAll('./keepit-onedrive-connect-7eae6a4687c3.js','./'+paths.connection.split('/')[1])
  .replace('./chunk-O6257ALA.js','./'+paths.noteWorkspace.split('/')[1]));
-const superseded=[proof.entry.replace(/^\//,''),'assets/library-app-bd256253b2c7.js',...Object.keys(proof.files).filter(p=>/^assets\/(?:keepit-note-ui-|keepit-note-link-|keepit-note-workspace-|keepit-auth-live-|keepit-onedrive-connect-|keepit-transfer-hosts-|keepit-graph-provider-)/.test(p))];
+const superseded=[proof.entry.replace(/^\//,''),'assets/library-app-bd256253b2c7.js',...Object.keys(proof.files).filter(p=>/^assets\/(?:keepit-note-ui-|keepit-note-drawing-|keepit-note-editor-|keepit-note-link-|keepit-note-workspace-|keepit-auth-live-|keepit-onedrive-connect-|keepit-transfer-hosts-|keepit-graph-provider-)/.test(p))];
 for(const path of superseded)delete proof.files[path];
 let html=readFileSync('partners/connected/index.html','utf8');
 // Microsoft's consumer OneDrive signed-download endpoints can differ from the Graph
