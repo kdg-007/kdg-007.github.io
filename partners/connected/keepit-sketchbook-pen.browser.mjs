@@ -134,6 +134,19 @@ try{
    });
    const after=await surface.evaluate(c=>{const g=c.getContext('2d'),d=g.getImageData(0,Math.round(c.height*.1)-40,c.width,80).data;let n=0;for(let i=0;i<d.length;i+=4)if(d[i]<120)n++;return n;});
    assert.ok(after>before+200,'stylus touch without pointer events still draws: '+before+' -> '+after);
+   // 4c. A Pencil touch on a panel, button or the ruler never draws on the paper behind it.
+   const ink=()=>surface.evaluate(c=>{const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=4)if(d[i]<120)n++;return n;});
+   const inkBefore=await ink();
+   await dialog.evaluate(async d=>{
+    const c=d.querySelector('canvas'),r=c.getBoundingClientRect(),targets=[d.querySelector('button'),d.querySelector('[data-ruler]')].filter(Boolean);
+    for(const target of targets){
+     const mk=x=>{const t=new Touch({identifier:21,target,clientX:r.left+r.width*x,clientY:r.top+r.height*.5,force:.4});Object.defineProperty(t,'touchType',{value:'stylus'});return t;};
+     const fire=(type,t)=>target.dispatchEvent(new TouchEvent(type,{bubbles:true,cancelable:true,changedTouches:[t],touches:type==='touchend'?[]:[t],targetTouches:type==='touchend'?[]:[t]}));
+     fire('touchstart',mk(.3));for(let i=1;i<=10;i++){fire('touchmove',mk(.3+.03*i));await new Promise(z=>setTimeout(z,8));}
+     fire('touchend',mk(.6));await new Promise(z=>setTimeout(z,120));
+    }
+   });
+   assert.equal(await ink(),inkBefore,'Pencil touches on controls must not draw');
    // 5. Palette is pastel: ink first, then soft tones.
    await dialog.getByRole('button',{name:'Ink color and size'}).click();
    const colours=await dialog.locator('.kd-swatches button').evaluateAll(b=>b.map(x=>x.dataset.color));
