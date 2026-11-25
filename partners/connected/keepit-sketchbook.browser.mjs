@@ -56,6 +56,21 @@ try{
      const box=await control.boundingBox();
      assert.ok(box&&box.width>=44&&box.height>=44,name+' is a 44px touch target');
     }
+    // Resolution: new drawings default to 300 dpi (A4 = 2480 x 3508 px);
+    // changing it keeps strokes the same size on paper.
+    assert.deepEqual(await dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>[c.width,c.height]),[2480,3508]);
+    await dialog.getByRole('button',{name:'Paper',exact:true}).click();
+    await dialog.getByLabel('Resolution',{exact:true}).selectOption('Custom');
+    await dialog.getByLabel('Resolution in dots per inch').fill('200');
+    await dialog.getByLabel('Resolution in dots per inch').press('Enter');
+    await dialog.getByLabel('Resolution in dots per inch').blur();
+    assert.equal(await dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>c.width),Math.round(210*200/25.4));
+    await dialog.getByLabel('Resolution',{exact:true}).selectOption('Print · 300 dpi');
+    assert.equal(await dialog.getByLabel('Resolution in dots per inch').isHidden(),true);
+    await dialog.getByLabel('Paper size').selectOption('A3');
+    assert.match(await dialog.getByText(/px/).textContent(),/kept to \d+ dpi/);
+    await dialog.getByLabel('Paper size').selectOption('A4');
+    await page.keyboard.press('Escape');
     // Per-tool settings: highlighter opacity does not leak into the pen.
     await dialog.getByRole('radio',{name:'Highlighter',exact:true}).click();
     await dialog.getByRole('button',{name:'Ink color and size'}).click();
@@ -92,12 +107,13 @@ try{
     await dialog.waitFor({state:'detached'});
     const first=await page.evaluate(async()=>{
      const page=await window.sketch.readPage(window.commits[0]);
-     return {layers:page.layers,strokes:page.strokes.map(s=>({layer:s.layer,color:s.color,opacity:s.opacity,tool:s.tool,points:s.points.length})),mm:page.mm,size:page.size};
+     return {dpi:page.dpi,layers:page.layers,strokes:page.strokes.map(s=>({layer:s.layer,color:s.color,opacity:s.opacity,tool:s.tool,points:s.points.length})),mm:page.mm,size:page.size};
     });
     assert.deepEqual(first.layers,[{id:1,name:'Layer 2',visible:false},{id:0,name:'Layer 1',visible:true}]);
     assert.equal(first.strokes.length,2);
     assert.deepEqual(first.strokes.map(s=>[s.layer,s.color,s.opacity,s.tool]),[[0,'#2e7bd6',1,'Pen'],[1,'#2e7bd6',1,'Pen']]);
     assert.deepEqual([first.mm,first.size],[[210,297],'A4']);
+    assert.equal(Math.round(first.dpi),300,'effective resolution is saved with the page');
     // Revision: reopen, change nothing, update: payload is identical.
     await page.evaluate(()=>window.openSketch(window.commits[0]));
     await dialog.waitFor();
@@ -120,6 +136,18 @@ try{
     await page.getByRole('alertdialog',{name:'Unsaved drawing'}).getByRole('button',{name:'Discard changes'}).click();
     await dialog.waitFor({state:'detached'});
     assert.equal(await page.evaluate(()=>window.commits.length),2);
+    // A page saved before the resolution setting (no dpi) reopens on its
+    // original pixel grid, so its strokes stay where they were drawn.
+    await page.evaluate(async()=>{
+     const old=await window.sketch.readPage(window.commits[0]);delete old.dpi;
+     const c=document.createElement('canvas');c.width=1260;c.height=1782;
+     const png=await new Promise(r=>c.toBlob(r,'image/png'));
+     window.openSketch(window.sketch.packPage(png,old));
+    });
+    await dialog.waitFor();
+    assert.deepEqual(await dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>[c.width,c.height]),[1260,1782]);
+    await dialog.getByRole('button',{name:'Cancel'}).click();
+    await dialog.waitFor({state:'detached'});
     // Legacy raster PNG (no editable chunk) still opens as a background.
     await page.evaluate(async()=>window.openSketch(await (await fetch('/fixtures/synthetic-source.png')).blob()));
     await dialog.waitFor();

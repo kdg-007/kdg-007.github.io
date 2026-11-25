@@ -60,8 +60,8 @@ const ICONS = {
   Pen: svg('<path d="M12 2.6 17 9.6l-2.2 7.6H9.2L7 9.6z"/><path d="M12 2.6v6.6"/><circle cx="12" cy="11.2" r="1.3"/><rect x="8.6" y="17.2" width="6.8" height="4.3" rx="1"/><path class="ink" d="M12 2.6 13.6 4.9h-3.2z" fill="currentColor" stroke="currentColor" stroke-width="1"/>'),
   Pencil: svg('<path d="M15.5 3.5a1.4 1.4 0 0 1 2 0l3 3a1.4 1.4 0 0 1 0 2L9.5 19.5 3.6 20.4l.9-5.9z"/><path d="m4.5 14.5 5 5M13.5 5.5l5 5"/><path class="ink" d="m4.1 17.4-.5 3 3-.5z" fill="currentColor" stroke="none"/>'),
   Marker: svg('<path d="M14.2 3.3a1.5 1.5 0 0 1 2.1 0l4.4 4.4a1.5 1.5 0 0 1 0 2.1l-8 8-6.5-6.5z"/><path d="m6.2 11.3 6.5 6.5-2.4 1.6-5.7-5.7z"/><path class="ink" d="m4.6 13.7 5.7 5.7-2.2 1.5H4.6a1.5 1.5 0 0 1-1.5-1.5v-3.5z" fill="currentColor" stroke="none"/>'),
-  Highlighter: svg('<path d="M15.6 2.9a1.4 1.4 0 0 1 2 0l3.5 3.5a1.4 1.4 0 0 1 0 2l-6.6 6.6-5.5-5.5z"/><path d="m9 9.5 5.5 5.5-2.2 2.2-5.5-5.5z"/><path d="m6.8 11.7 5.5 5.5-2 1.1-4.6-4.6z"/><path class="ink-stroke" d="M3.5 21.2h12" stroke-width="3.2" opacity=".55"/>'),
-  'Straight line': svg('<path class="ink-stroke" d="M5.5 18.5 18.5 5.5"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/>'),
+  Highlighter: svg('<path d="M15.6 2.9a1.4 1.4 0 0 1 2 0l3.5 3.5a1.4 1.4 0 0 1 0 2l-6.6 6.6-5.5-5.5z"/><path d="m9 9.5 5.5 5.5-2.2 2.2-5.5-5.5z"/><path d="m6.8 11.7 5.5 5.5-2 1.1-4.6-4.6z"/><rect class="ink" x="3.2" y="19.6" width="12.6" height="2.8" rx="1.2"/>'),
+  'Straight line': svg('<path d="M6.4 17.6 17.6 6.4"/><circle class="ink" cx="5" cy="19" r="2.2"/><circle class="ink" cx="19" cy="5" r="2.2"/>'),
   Eraser: svg('<path d="M9 20.5 3.6 15.1a1.6 1.6 0 0 1 0-2.2L12.9 3.6a1.6 1.6 0 0 1 2.2 0l5.3 5.3a1.6 1.6 0 0 1 0 2.2L11 20.5z"/><path d="m8.2 8.2 7.6 7.6M11 20.5h9.5"/>'),
 };
 const TOOLS = ['Pen','Pencil','Marker','Highlighter','Straight line','Eraser'];
@@ -74,6 +74,7 @@ const STYLE = `
  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .kd::backdrop{background:var(--kd-desk)}
 .kd *{box-sizing:border-box}
+.kd [hidden]{display:none!important}
 .kd button,.kd select,.kd input{font:inherit;color:inherit}
 .kd-sheet{position:absolute;inset:0;overflow:auto;overscroll-behavior:contain;touch-action:none;
  padding:calc(env(safe-area-inset-top) + 68px) 12px calc(env(safe-area-inset-bottom) + 92px)}
@@ -93,7 +94,7 @@ const STYLE = `
 .kd-title small{font-weight:400;color:var(--kd-muted);font-size:12px;max-width:32ch;overflow:hidden;text-overflow:ellipsis}
 .kd-btn{flex:none;display:inline-grid;place-items:center;width:44px;height:44px;border:0;border-radius:12px;background:transparent;cursor:pointer;color:var(--kd-text);padding:0;transition:background .15s,color .15s,translate .15s}
 .kd-btn:hover{background:color-mix(in srgb,var(--kd-text) 7%,transparent)}
-.kd-btn:disabled{opacity:.32;cursor:default;background:transparent}
+.kd-btn:disabled{opacity:.45;cursor:default;background:transparent}
 .kd-btn[aria-pressed="true"],.kd-btn[aria-expanded="true"]{background:var(--kd-soft);color:var(--kd-accent)}
 .kd-btn:focus-visible,.kd-done:focus-visible,.kd-pop :focus-visible{outline:2px solid var(--kd-focus);outline-offset:1px}
 .kd .kd-done{pointer-events:auto;flex:none;height:44px;padding:0 18px;border:0;border-radius:14px;background:var(--kd-accent);color:var(--kd-accent-on);font-weight:600;cursor:pointer;box-shadow:0 6px 18px #0000002a}
@@ -104,9 +105,10 @@ const STYLE = `
 .kd-tool[aria-checked="true"]{background:var(--kd-soft);color:var(--kd-accent);translate:0 -3px}
 .kd-tool[aria-checked="true"]::after{content:"";position:absolute;bottom:4px;width:5px;height:5px;border-radius:50%;background:currentColor}
 .kd-tool{position:relative}
-.kd svg .ink{color:var(--kd-ink)} .kd svg .ink-stroke{stroke:var(--kd-ink)}
+/* Ink-coloured parts are filled with the ink and outlined in the icon colour, so they stay visible whatever the ink and scheme. */
+.kd svg .ink{fill:var(--kd-ink);stroke:currentColor;stroke-width:1.1}
 .kd-swatch-btn{position:relative}
-.kd-swatch-btn i{display:block;width:26px;height:26px;border-radius:50%;background:var(--kd-ink);box-shadow:inset 0 0 0 1px #0003,0 0 0 2px var(--kd-chrome),0 0 0 3.5px var(--kd-line)}
+.kd-swatch-btn i{display:block;width:26px;height:26px;border-radius:50%;background:var(--kd-ink);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--kd-text) 45%,transparent),0 0 0 2px var(--kd-chrome),0 0 0 3.5px color-mix(in srgb,var(--kd-text) 60%,transparent)}
 .kd-pop{position:fixed;z-index:5;min-width:240px;max-width:min(340px,calc(100vw - 16px));overflow:auto;padding:12px;border-radius:18px;
  background:var(--kd-chrome);color:var(--kd-text);border:1px solid var(--kd-line);box-shadow:0 18px 50px #0000002e;display:flex;flex-direction:column;gap:12px}
 .kd-pop[hidden]{display:none}
@@ -119,7 +121,7 @@ const STYLE = `
 .kd-row{display:flex;gap:8px;align-items:center}
 .kd-row>.kd-field{flex:1;min-width:0}.kd-row>.kd-field input{width:100%}
 .kd-swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
-.kd-swatches button{aspect-ratio:1;border-radius:50%;border:0;cursor:pointer;box-shadow:inset 0 0 0 1px #0002;min-width:32px}
+.kd-swatches button{aspect-ratio:1;border-radius:50%;border:0;cursor:pointer;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--kd-text) 40%,transparent);min-width:32px}
 .kd-swatches button[aria-pressed="true"]{box-shadow:inset 0 0 0 1px #0002,0 0 0 2px var(--kd-chrome),0 0 0 4px var(--kd-accent)}
 .kd-wheel{width:112px;height:112px;flex:none;touch-action:none;border-radius:50%;cursor:crosshair;
  background:radial-gradient(circle,white,transparent 70%),conic-gradient(from 90deg,red,yellow,lime,cyan,blue,magenta,red)}
@@ -129,13 +131,15 @@ const STYLE = `
 .kd-layer{display:flex;align-items:center;gap:4px;border-radius:12px;padding-left:4px}
 .kd-layer[aria-current="true"]{background:var(--kd-soft)}
 .kd-layer .kd-name{flex:1;text-align:left;min-height:44px;border:0;background:none;cursor:pointer;padding:0 8px;border-radius:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.kd-layer[aria-current="true"] .kd-name{font-weight:600;color:var(--kd-accent)}
+.kd-layer[aria-current="true"]{box-shadow:inset 3px 0 0 var(--kd-accent)}
+.kd-layer[aria-current="true"] .kd-name{font-weight:650;color:var(--kd-text)}
 .kd-layer.kd-hidden .kd-name{color:var(--kd-muted);text-decoration:line-through}
 .kd-menu{display:flex;flex-direction:column;gap:2px;min-width:200px}
 .kd-menu button{display:flex;align-items:center;gap:12px;min-height:44px;border:0;background:none;border-radius:10px;padding:0 10px;cursor:pointer;text-align:left}
 .kd-menu button:hover,.kd-layer .kd-name:hover{background:color-mix(in srgb,var(--kd-text) 7%,transparent)}
 .kd-status{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 66px);translate:-50% 0;z-index:3;padding:8px 14px;border-radius:12px;background:var(--kd-text);color:var(--kd-chrome);font-size:13px;box-shadow:0 6px 22px #0003;pointer-events:none;max-width:calc(100% - 24px)}
 .kd-status:empty{display:none}
+.kd-hint{margin:-4px 0 0;font-size:12px;color:var(--kd-muted);font-variant-numeric:tabular-nums}
 .kd-confirm{position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:#0005;padding:16px}
 .kd-confirm[hidden]{display:none}
 .kd-confirm>div{background:var(--kd-chrome);border-radius:20px;padding:20px;max-width:360px;width:100%;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px #0004}
@@ -148,7 +152,7 @@ const STYLE = `
  border-top:2px solid #1d5d78;border-radius:0 0 10px 10px;box-shadow:0 6px 18px #1a2f3a33;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .kd-edge[hidden]{display:none}
 .kd-edge button{position:absolute;right:0;top:0;width:44px;height:38px;border:0;background:none;color:#1d5d78;display:grid;place-items:center;touch-action:none;cursor:grab}
-.kd.kd-inking .kd-pill,.kd.kd-inking .kd-done{opacity:.28}
+.kd.kd-inking .kd-pill,.kd.kd-inking .kd-done{opacity:.6}
 .kd.kd-narrow .kd-title small{display:none}
 .kd.kd-narrow .kd-dock{flex-direction:column-reverse;align-items:center;gap:6px}
 .kd.kd-narrow .kd-sheet{padding-bottom:calc(env(safe-area-inset-bottom) + 150px)}
@@ -293,6 +297,27 @@ export async function drawNote(original, commit) {
     return input;
   }
   const paperWidth = millimetres('Width', 210), paperHeight = millimetres('Height', 297);
+  // Resolution: canvas pixels per inch of paper. Strokes are stored in canvas
+  // pixels, so the effective value is saved with the page (`dpi`) and reused on
+  // reopen. Pages saved before this setting used min(6 px/mm, 3072 px long edge).
+  const RESOLUTIONS = {'Standard · 150 dpi': 150, 'High · 220 dpi': 220, 'Print · 300 dpi': 300, 'Ultra · 400 dpi': 400};
+  const MAX_PIXELS = 16e6, MAX_SIDE = 8192; // stays inside iPhone/iPad Safari canvas limits
+  const resolution = select('Resolution', [...Object.keys(RESOLUTIONS), 'Custom']);
+  const dpiInput = document.createElement('input');
+  dpiInput.type = 'number'; dpiInput.min = '72'; dpiInput.max = '600'; dpiInput.step = '1'; dpiInput.inputMode = 'numeric';
+  dpiInput.setAttribute('aria-label', 'Resolution in dots per inch');
+  const dpiField = document.createElement('label');
+  dpiField.className = 'kd-field';
+  dpiField.append('Dots per inch (72–600)', dpiInput);
+  const pixelInfo = document.createElement('p');
+  pixelInfo.className = 'kd-hint';
+  let dpi = 300, pxPerMm = 300 / 25.4;
+  function setResolutionControls(value) {
+    const preset = Object.keys(RESOLUTIONS).find(k => Math.abs(RESOLUTIONS[k] - value) < .01);
+    resolution.value = preset || 'Custom';
+    dpiInput.value = String(Math.round(value));
+    dpiField.hidden = !!preset;
+  }
   const customRow = document.createElement('div');
   customRow.className = 'kd-row';
   customRow.append(paperWidth.parentElement, paperHeight.parentElement);
@@ -351,8 +376,13 @@ export async function drawNote(original, commit) {
     const dims = custom ? [paperWidth.valueAsNumber, paperHeight.valueAsNumber] : sizes[size.value];
     if (!dims.every(v => Number.isFinite(v) && v >= 1)) { say('Enter positive paper dimensions in mm.', true); return false; }
     mm = dims;
-    const scale = Math.min(6, 3072 / Math.max(...dims));
-    canvas.width = Math.max(1, Math.round(mm[0] * scale)); canvas.height = Math.max(1, Math.round(mm[1] * scale));
+    // Cap by total pixels and longest side so large paper never exceeds what
+    // mobile Safari can allocate; the page keeps its size, only detail drops.
+    const cap = Math.min(Math.sqrt(MAX_PIXELS / (mm[0] * mm[1])), MAX_SIDE / Math.max(...mm));
+    pxPerMm = Math.min(dpi / 25.4, cap);
+    canvas.width = Math.max(1, Math.round(mm[0] * pxPerMm)); canvas.height = Math.max(1, Math.round(mm[1] * pxPerMm));
+    const effective = Math.round(pxPerMm * 25.4);
+    pixelInfo.textContent = canvas.width + ' × ' + canvas.height + ' px' + (pxPerMm * 25.4 < dpi - .5 ? ' · kept to ' + effective + ' dpi at this paper size so it opens on iPhone and iPad' : '');
     layoutPlane();
     return true;
   }
@@ -409,7 +439,7 @@ export async function drawNote(original, commit) {
     const local = localPoint(event);
     const pressure = event.pointerType === 'pen' ? event.pressure : 0.5;
     const weight = active.tool === 'Eraser' ? 32 : active.tool === 'Marker' ? 12 + Math.hypot(event.tiltX || 0, event.tiltY || 0) / 4 : active.tool === 'Highlighter' ? 24 : 2 + 8 * pressure;
-    const next = {x: local.x * canvas.width / plane.clientWidth, y: local.y * canvas.height / plane.clientHeight, width: weight * Number(width.value)};
+    const next = {x: local.x * canvas.width / plane.clientWidth, y: local.y * canvas.height / plane.clientHeight, width: weight * Number(width.value) * pxPerMm / 6};
     if (rulerOn) {
       const rad = edgeAngle * Math.PI / 180, ux = Math.cos(rad), uy = Math.sin(rad);
       const ox = edgeX * canvas.width, oy = edgeY * canvas.height;
@@ -489,7 +519,11 @@ export async function drawNote(original, commit) {
     placePop(pop);
   }
   function closePops() {
-    for (const pop of pops) { pop.hidden = true; pop.anchor.setAttribute('aria-expanded', 'false'); }
+    for (const pop of pops) {
+      // Return keyboard focus to the button that opened the panel.
+      if (!pop.hidden && pop.contains(document.activeElement)) pop.anchor.focus({preventScroll: true});
+      pop.hidden = true; pop.anchor.setAttribute('aria-expanded', 'false');
+    }
   }
   dialog.addEventListener('pointerdown', e => {
     if (pops.some(p => !p.hidden && (p.contains(e.target) || p.anchor.contains(e.target)))) return;
@@ -591,7 +625,8 @@ export async function drawNote(original, commit) {
   const paperPop = popover('Paper', paperButton);
   const sizeField = document.createElement('label'); sizeField.className = 'kd-field'; sizeField.append('Size', size);
   const guideField = document.createElement('label'); guideField.className = 'kd-field'; guideField.append('Guides', guide);
-  paperPop.append(sizeField, guideField, customRow);
+  const resolutionField = document.createElement('label'); resolutionField.className = 'kd-field'; resolutionField.append('Resolution', resolution);
+  paperPop.append(sizeField, guideField, customRow, resolutionField, dpiField, pixelInfo);
 
   let rulerOn = false, edgeX = .5, edgeY = .5, edgeAngle = 0, drag = null, lastTap = null;
   const edge = document.createElement('div'), handle = document.createElement('button');
@@ -686,7 +721,7 @@ export async function drawNote(original, commit) {
       repaint();
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       if (!blob) throw Error('Could not encode the drawing.');
-      const result = packPage(blob, {version: 1, basePNG, mm, size: size.value, guide: guide.value, strokes, layers: layers.map(({id, name, visible}) => ({id, name, visible})), activeLayer: current.id});
+      const result = packPage(blob, {version: 1, basePNG, mm, size: size.value, guide: guide.value, dpi: pxPerMm * 25.4, strokes, layers: layers.map(({id, name, visible}) => ({id, name, visible})), activeLayer: current.id});
       await commit(new File([result], 'KeepIt drawing.png', {type: 'image/png'}));
       dialog.returnValue = 'inserted';
       dialog.close('inserted');
@@ -735,15 +770,21 @@ export async function drawNote(original, commit) {
   // Shortcuts apply only to the sketchbook and never while typing in a field.
   // Captured at document level so Escape works even when focus has left the
   // dialog's subtree (e.g. after a layer row re-renders).
-  const onEscape = e => { if (e.key === 'Escape' && dialog.open) { e.preventDefault(); e.stopPropagation(); escapeStep(); } };
+  // Shortcuts are also captured at document level, so they keep working if
+  // focus falls back to the page body.
+  const onEscape = e => {
+    if (!dialog.open) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); escapeStep(); return; }
+    onShortcut(e);
+  };
   document.addEventListener('keydown', onEscape, true);
-  dialog.addEventListener('keydown', e => {
-    if (e.target.closest('input,select,textarea')) return;
+  function onShortcut(e) {
+    if (e.target.closest?.('input,select,textarea') || !confirmBox.hidden) return;
     const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
     if (mod && key === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
     else if (mod && key === 'y') { e.preventDefault(); doRedo(); }
     else if (mod && key === 'enter') { e.preventDefault(); insert.click(); }
-  });
+  }
 
   // ---- Assemble --------------------------------------------------------------
   const title = document.createElement('div');
@@ -808,22 +849,30 @@ export async function drawNote(original, commit) {
 
   if (saved) { size.value = saved.size in sizes ? saved.size : 'Custom'; guide.value = saved.guide; paperWidth.value = saved.mm[0]; paperHeight.value = saved.mm[1]; }
   if (raster && !saved) { size.value = 'Custom'; paperWidth.value = String(background.width / 6); paperHeight.value = String(background.height / 6); }
-  for (const el of [size, paperWidth, paperHeight, guide]) el.onchange = () => {
-    if (saving) return;
-    const oldWidth = canvas.width, oldHeight = canvas.height;
+  // Existing drawings keep the resolution their strokes were recorded at.
+  if (saved) dpi = Number.isFinite(saved.dpi) && saved.dpi > 0 ? saved.dpi : Math.min(6, 3072 / Math.max(...saved.mm)) * 25.4;
+  else if (raster) dpi = 6 * 25.4;
+  setResolutionControls(dpi);
+  function describe() {
+    titleSmall.textContent = (size.value === 'Custom' ? Math.round(mm[0]) + '×' + Math.round(mm[1]) + ' mm' : size.value) + (guide.value === 'Plain' ? '' : ' · ' + guide.value) + ' · ' + Math.round(pxPerMm * 25.4) + ' dpi';
+  }
+  resolution.addEventListener('change', () => { dpiField.hidden = resolution.value !== 'Custom'; if (resolution.value !== 'Custom') dpi = RESOLUTIONS[resolution.value]; else dpiInput.focus(); });
+  dpiInput.addEventListener('change', () => { const v = dpiInput.valueAsNumber; if (Number.isFinite(v)) dpi = Math.max(72, Math.min(600, v)); dpiInput.value = String(Math.round(dpi)); });
+  for (const el of [size, paperWidth, paperHeight, guide, resolution, dpiInput]) el.addEventListener('change', () => {
+    if (saving || (el === resolution && resolution.value === 'Custom')) return;
+    const oldWidth = canvas.width, oldHeight = canvas.height, oldPx = pxPerMm;
     if (!paper()) { insert.disabled = true; return; }
-    for (const stroke of [...strokes, ...redoStack]) for (const p of stroke.points) { p.x *= canvas.width / oldWidth; p.y *= canvas.height / oldHeight; }
-    layers.forEach(l => l.dirty = true); changed = true; insert.disabled = false; say(''); repaint();
-    titleSmall.textContent = (size.value === 'Custom' ? Math.round(mm[0]) + '×' + Math.round(mm[1]) + ' mm' : size.value) + (guide.value === 'Plain' ? '' : ' · ' + guide.value);
-  };
+    // Re-express every stroke at the new pixel grid; widths keep their size on paper.
+    for (const stroke of [...strokes, ...redoStack]) for (const p of stroke.points) { p.x *= canvas.width / oldWidth; p.y *= canvas.height / oldHeight; p.width *= pxPerMm / oldPx; }
+    layers.forEach(l => l.dirty = true); changed = true; insert.disabled = false; say(''); repaint(); describe();
+  });
   plane.append(canvas, edge); sheet.append(plane);
   dialog.append(style, sheet, bar, dock, status, ...pops, confirmBox);
   document.body.append(dialog);
   selectTool('Pen');
   setColor(color.value);
   refreshHistory();
-  paper(); repaint();
-  titleSmall.textContent = (size.value === 'Custom' ? Math.round(mm[0]) + '×' + Math.round(mm[1]) + ' mm' : size.value) + (guide.value === 'Plain' ? '' : ' · ' + guide.value);
+  paper(); repaint(); describe();
   dialog.showModal();
   resize.observe(dialog);
   adapt();
