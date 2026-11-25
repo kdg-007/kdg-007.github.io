@@ -221,6 +221,8 @@ jobs:
         run: node partners/connected/keepit-sketchbook.browser.mjs
       - name: Verify Apple Pencil capture, pressure and pastel palette
         run: node partners/connected/keepit-sketchbook-pen.browser.mjs
+      - name: Keep the Microsoft sign-in readable after the app is closed
+        run: node partners/connected/keepit-auth-key.browser.mjs
       - name: Exercise canonical KeepIt native-note create, save and reopen
         shell: bash
         timeout-minutes: 9
