@@ -54,6 +54,17 @@ const ICONS = {
   up: svg('<path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"/>'),
   down: svg('<path d="M12 5v14M6.5 13.5 12 19l5.5-5.5"/>'),
   rename: svg('<path d="M4 20h4.2L19 9.2 14.8 5 4 15.8z"/><path d="m13 6.8 4.2 4.2"/>'),
+  duplicate: svg('<rect x="8" y="8" width="12.5" height="12.5" rx="2"/><path d="M16 8V5.5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2H8"/><path d="M14.25 11.5v5.5M11.5 14.25H17"/>'),
+  copy: svg('<rect x="8" y="8" width="12.5" height="12.5" rx="2"/><path d="M16 8V5.5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2H8"/>'),
+  paste: svg('<rect x="8.5" y="2.5" width="7" height="4" rx="1"/><path d="M8.5 4.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2h-1.5"/><path d="M9 13.5h6M9 17h4"/>'),
+  merge: svg('<path d="M6 3.5v4.5l6 6 6-6V3.5"/><path d="M12 14v6.5M8.5 17l3.5 3.5 3.5-3.5"/>'),
+  toTop: svg('<path d="M5 3.5h14M12 21V8M6.5 13.5 12 8l5.5 5.5"/>'),
+  toBottom: svg('<path d="M5 20.5h14M12 3v13M6.5 10.5 12 16l5.5-5.5"/>'),
+  trash: svg('<path d="M4 6.5h16M9.5 6.5V4h5v2.5M6 6.5l1 13a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5l1-13M10 10.5v6.5M14 10.5v6.5"/>'),
+  select: svg('<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="m8 12.5 2.8 2.8L16.5 9.5"/>'),
+  boxOff: svg('<rect x="4" y="4" width="16" height="16" rx="3.5"/>'),
+  boxOn: svg('<rect x="4" y="4" width="16" height="16" rx="3.5" fill="currentColor"/><path d="m8 12.3 2.8 2.8L16.3 9.6" stroke="var(--kd-chrome)" stroke-width="2.2"/>'),
+  grip: svg('<g fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></g>'),
   fitWidth: svg('<path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/>'),
   fitPage: svg('<path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/><rect x="8.5" y="7" width="7" height="10" rx="1"/>'),
   // Tool glyphs. The `ink` paths take the current ink color, like a real nib.
@@ -64,6 +75,14 @@ const ICONS = {
   'Straight line': svg('<path d="M6.4 17.6 17.6 6.4"/><circle class="ink" cx="5" cy="19" r="2.2"/><circle class="ink" cx="19" cy="5" r="2.2"/>'),
   Eraser: svg('<path d="M9 20.5 3.6 15.1a1.6 1.6 0 0 1 0-2.2L12.9 3.6a1.6 1.6 0 0 1 2.2 0l5.3 5.3a1.6 1.6 0 0 1 0 2.2L11 20.5z"/><path d="m8.2 8.2 7.6 7.6M11 20.5h9.5"/>'),
 };
+// Blend modes map to canvas composite operations (all supported by Safari/WebKit).
+const BLENDS = [['source-over','Normal'],['multiply','Multiply'],['screen','Screen'],['overlay','Overlay'],['darken','Darken'],['lighten','Lighten'],
+  ['color-dodge','Colour dodge'],['color-burn','Colour burn'],['hard-light','Hard light'],['soft-light','Soft light'],['difference','Difference'],
+  ['exclusion','Exclusion'],['hue','Hue'],['saturation','Saturation'],['color','Colour'],['luminosity','Luminosity']];
+const blendName = value => (BLENDS.find(b => b[0] === value) || BLENDS[0])[1];
+// Copied layers stay available for this app session, so a layer can be pasted
+// into another drawing or another note.
+let layerClipboard = null;
 const TOOLS = ['Pen','Pencil','Marker','Highlighter','Straight line','Eraser'];
 const SWATCHES = ['#173449','#000000','#5b6770','#ffffff','#c0392b','#e8731a','#f2c230','#2e9a57','#14968a','#2e7bd6','#7d4cb8','#d43f8d'];
 const STYLE = `
@@ -80,7 +99,7 @@ const STYLE = `
  padding:calc(env(safe-area-inset-top) + 68px) 12px calc(env(safe-area-inset-bottom) + 92px)}
 .kd.kd-immersive .kd-sheet{padding-top:calc(env(safe-area-inset-top) + 12px)}
 .kd-plane{position:relative;margin:0 auto;transform-origin:center;touch-action:none}
-.kd-plane canvas{display:block;width:100%;height:auto;background:#fff;touch-action:none;border-radius:2px;
+.kd-plane canvas{display:block;width:100%;height:auto;background:repeating-conic-gradient(#d9dee1 0 25%,#fff 0 50%) 0 0/16px 16px;touch-action:none;border-radius:2px;
  box-shadow:0 1px 2px #1b2a3329,0 8px 28px #1b2a331f;cursor:crosshair}
 .kd-bar{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 10px);padding:0 10px;display:flex;align-items:center;gap:8px;pointer-events:none;z-index:2}
 .kd-dock{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 12px);translate:-50% 0;max-width:calc(100% - 20px);display:flex;align-items:flex-end;gap:8px;pointer-events:none;z-index:2}
@@ -94,7 +113,7 @@ const STYLE = `
 .kd-title small{font-weight:400;color:var(--kd-muted);font-size:12px;max-width:32ch;overflow:hidden;text-overflow:ellipsis}
 .kd-btn{flex:none;display:inline-grid;place-items:center;width:44px;height:44px;border:0;border-radius:12px;background:transparent;cursor:pointer;color:var(--kd-text);padding:0;transition:background .15s,color .15s,translate .15s}
 .kd-btn:hover{background:color-mix(in srgb,var(--kd-text) 7%,transparent)}
-.kd-btn:disabled{opacity:.45;cursor:default;background:transparent}
+.kd-btn:disabled{opacity:.5;cursor:default;background:transparent}
 .kd-btn[aria-pressed="true"],.kd-btn[aria-expanded="true"]{background:var(--kd-soft);color:var(--kd-accent)}
 .kd-btn:focus-visible,.kd-done:focus-visible,.kd-pop :focus-visible{outline:2px solid var(--kd-focus);outline-offset:1px}
 .kd .kd-done{pointer-events:auto;flex:none;height:44px;padding:0 18px;border:0;border-radius:14px;background:var(--kd-accent);color:var(--kd-accent-on);font-weight:600;cursor:pointer;box-shadow:0 6px 18px #0000002a}
@@ -127,8 +146,26 @@ const STYLE = `
  background:radial-gradient(circle,white,transparent 70%),conic-gradient(from 90deg,red,yellow,lime,cyan,blue,magenta,red)}
 .kd-native{width:44px;height:40px;padding:0;border:1px solid var(--kd-line);border-radius:10px;background:none}
 .kd-preview{height:44px;border-radius:12px;background:#fff;border:1px solid var(--kd-line)}
-.kd-layers{display:flex;flex-direction:column;gap:2px;max-height:min(42vh,320px);overflow:auto}
-.kd-layer{display:flex;align-items:center;gap:4px;border-radius:12px;padding-left:4px}
+.kd-pop.kd-layers-pop{width:min(340px,calc(100vw - 16px));gap:10px}
+.kd-layers{display:flex;flex-direction:column;gap:2px;max-height:min(34vh,300px);overflow:auto;overscroll-behavior:contain}
+.kd-layer{display:flex;align-items:center;gap:2px;border-radius:12px;padding-left:2px;position:relative;background:var(--kd-chrome)}
+.kd-layer.kd-dragging{z-index:2;box-shadow:0 10px 26px #0003;opacity:.95}
+.kd-layer.kd-drop-before{box-shadow:inset 0 3px 0 var(--kd-accent)}.kd-layer.kd-drop-after{box-shadow:inset 0 -3px 0 var(--kd-accent)}
+.kd-grip{width:28px;cursor:grab;touch-action:none;color:var(--kd-muted)}
+.kd-thumb{flex:none;width:30px;height:40px;border-radius:4px;border:1px solid var(--kd-line);
+ background:repeating-conic-gradient(#d9dee1 0 25%,#fff 0 50%) 0 0/8px 8px}
+.kd-meta{display:block;font-size:11.5px;font-weight:400;color:var(--kd-muted)}
+.kd-layer-paper{border-top:1px solid var(--kd-line);border-radius:0 0 12px 12px;padding-top:4px;margin-top:2px}
+.kd-props{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--kd-line);padding-top:10px}
+.kd-actions{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px}
+.kd-actions .kd-btn{width:auto;height:54px;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;font-size:11px;line-height:1.1;text-align:center}
+.kd-actions .kd-btn svg{width:22px;height:22px}
+.kd-order{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:13px;color:var(--kd-muted)}
+.kd-order>div{display:flex;gap:2px}
+.kd-selectbar{display:flex;align-items:center;gap:8px;justify-content:space-between;font-size:13px;color:var(--kd-muted)}
+.kd-text-btn{min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--kd-line);background:none;font-weight:600;cursor:pointer;color:var(--kd-text)}
+.kd .kd-text-btn.kd-primary{background:var(--kd-accent);color:var(--kd-accent-on);border-color:transparent}
+.kd-text-btn:disabled{opacity:.45;cursor:default}
 .kd-layer[aria-current="true"]{background:var(--kd-soft)}
 .kd-layer .kd-name{flex:1;text-align:left;min-height:44px;border:0;background:none;cursor:pointer;padding:0 8px;border-radius:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kd-layer[aria-current="true"]{box-shadow:inset 3px 0 0 var(--kd-accent)}
@@ -386,7 +423,26 @@ export async function drawNote(original, commit) {
     layoutPlane();
     return true;
   }
+  // Paper (white, guides and any legacy raster background) has its own opacity,
+  // so a drawing can be exported with a see-through page.
+  let paperOpacity = Number.isFinite(saved?.paperOpacity) ? Math.max(0, Math.min(1, saved.paperOpacity)) : 1;
+  function renderLayer(layer) {
+    const surface = layer.surface;
+    if (surface.width !== canvas.width || surface.height !== canvas.height) { surface.width = canvas.width; surface.height = canvas.height; layer.dirty = true; }
+    if (!layer.dirty) return surface;
+    const ink = surface.getContext('2d'); ink.clearRect(0, 0, surface.width, surface.height);
+    if (layer.rasterImg) ink.drawImage(layer.rasterImg, 0, 0, surface.width, surface.height);
+    for (const stroke of strokes) {
+      if ((stroke.layer ?? 0) !== layer.id || !stroke.points.length) continue;
+      if (stroke.tool === 'Straight line') mark(ink, stroke, stroke.points[0], stroke.points.at(-1));
+      else stroke.points.forEach((p, i) => mark(ink, stroke, stroke.points[i - 1], p));
+    }
+    layer.dirty = false;
+    return surface;
+  }
   function repaint() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = paperOpacity;
     ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     const spacing = (guide.value === 'Grid' ? 5 : 8) * canvas.height / mm[1];
     if (guide.value !== 'Plain' && spacing >= 2) {
@@ -396,24 +452,29 @@ export async function drawNote(original, commit) {
       ctx.stroke();
     }
     if (raster) ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
     for (const layer of layers) {
       if (!layer.visible) continue;
-      const surface = layer.surface;
-      if (surface.width !== canvas.width || surface.height !== canvas.height) { surface.width = canvas.width; surface.height = canvas.height; layer.dirty = true; }
-      if (layer.dirty) {
-        const ink = surface.getContext('2d'); ink.clearRect(0, 0, surface.width, surface.height);
-        for (const stroke of strokes) {
-          if ((stroke.layer ?? 0) !== layer.id || !stroke.points.length) continue;
-          if (stroke.tool === 'Straight line') mark(ink, stroke, stroke.points[0], stroke.points.at(-1));
-          else stroke.points.forEach((p, i) => mark(ink, stroke, stroke.points[i - 1], p));
-        }
-        layer.dirty = false;
-      }
+      const surface = renderLayer(layer);
+      ctx.globalAlpha = layer.opacity; ctx.globalCompositeOperation = layer.blend;
       ctx.drawImage(surface, 0, 0);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     }
   }
   const strokes = saved?.strokes || [];
-  const layers = (saved?.layers?.length ? saved.layers : [{id: 0, name: 'Layer 1', visible: true}]).map(l => ({...l, surface: document.createElement('canvas'), dirty: true}));
+  const blendOk = value => BLENDS.some(b => b[0] === value);
+  const layers = (saved?.layers?.length ? saved.layers : [{id: 0, name: 'Layer 1', visible: true}]).map(l => ({
+    id: l.id, name: String(l.name ?? 'Layer'), visible: l.visible !== false,
+    opacity: Number.isFinite(l.opacity) ? Math.max(0, Math.min(1, l.opacity)) : 1,
+    blend: blendOk(l.blend) ? l.blend : 'source-over',
+    raster: typeof l.raster === 'string' && l.raster.startsWith('data:image/png;base64,') ? l.raster : null,
+    rasterImg: null, surface: document.createElement('canvas'), dirty: true,
+  }));
+  // Merged layers keep their pixels as a PNG; decode them before first paint.
+  await Promise.all(layers.filter(l => l.raster).map(async l => {
+    const image = new Image(); image.src = l.raster;
+    try { await image.decode(); l.rasterImg = image; } catch { l.raster = null; }
+  }));
   // Reopen on the saved layer, unless it is hidden: then the top visible layer.
   const savedLayer = layers.find(l => l.id === saved?.activeLayer);
   let current = savedLayer?.visible ? savedLayer : [...layers].reverse().find(l => l.visible) || savedLayer || layers[0];
@@ -459,7 +520,7 @@ export async function drawNote(original, commit) {
     closePops();
     canvas.setPointerCapture(event.pointerId);
     active = {id: event.pointerId, layer: current.id, opacity: Number(opacity.value), tool: tool.value, color: tool.value === 'Eraser' ? '#ffffff' : color.value, points: []};
-    redoStack.length = 0; strokes.push(active); changed = true;
+    redoStack.length = 0; strokes.push(active); history.push({stroke: active}); changed = true;
     dialog.classList.add('kd-inking');
     point(event);
     refreshHistory();
@@ -474,22 +535,55 @@ export async function drawNote(original, commit) {
   };
 
   // ---- History -------------------------------------------------------------
+  // One history for strokes and layer changes. Strokes already in a reopened
+  // drawing stay undoable, as before. Layer changes store before/after states.
+  const history = strokes.map(stroke => ({stroke}));
   const redoStack = [];
+  function snapshot() {
+    return {layers: layers.map(l => ({...l})), strokes: strokes.slice(), current: current.id, paperOpacity};
+  }
+  function restore(state) {
+    layers.splice(0, layers.length, ...state.layers.map(l => ({...l, dirty: true})));
+    strokes.splice(0, strokes.length, ...state.strokes);
+    paperOpacity = state.paperOpacity;
+    current = layers.find(l => l.id === state.current) || layers.at(-1);
+    selecting = false; selected.clear();
+  }
+  function commitState(before) {
+    history.push({before, after: snapshot()}); redoStack.length = 0; changed = true;
+    refreshHistory(); refreshLayers(); repaint();
+  }
+  function knownStrokes() {
+    const all = new Set(strokes);
+    for (const entry of [...history, ...redoStack]) {
+      if (entry.stroke) all.add(entry.stroke);
+      else for (const s of [...entry.before.strokes, ...entry.after.strokes]) all.add(s);
+    }
+    return all;
+  }
   function doUndo() {
-    if (saving || active) return;
-    const removed = strokes.pop(); if (!removed) return;
-    (layers.find(l => l.id === (removed.layer ?? 0)) || current).dirty = true; redoStack.push(removed); changed = true;
-    repaint(); refreshHistory();
+    if (saving || active || !history.length) return;
+    const entry = history.pop();
+    if (entry.stroke) {
+      const at = strokes.lastIndexOf(entry.stroke); if (at >= 0) strokes.splice(at, 1);
+      (layers.find(l => l.id === (entry.stroke.layer ?? 0)) || current).dirty = true;
+    } else restore(entry.before);
+    redoStack.push(entry); changed = true;
+    repaint(); refreshHistory(); refreshLayers();
   }
   function doRedo() {
     if (active || saving || !redoStack.length) return;
-    const restored = redoStack.pop();
-    (layers.find(l => l.id === (restored.layer ?? 0)) || current).dirty = true; strokes.push(restored); changed = true;
-    repaint(); refreshHistory();
+    const entry = redoStack.pop();
+    if (entry.stroke) {
+      strokes.push(entry.stroke);
+      (layers.find(l => l.id === (entry.stroke.layer ?? 0)) || current).dirty = true;
+    } else restore(entry.after);
+    history.push(entry); changed = true;
+    repaint(); refreshHistory(); refreshLayers();
   }
   const undo = iconButton('Undo', 'undo', doUndo, {title: 'Undo (⌘Z)'});
   const redo = iconButton('Redo', 'redo', doRedo, {title: 'Redo (⇧⌘Z)'});
-  function refreshHistory() { undo.disabled = !strokes.length; redo.disabled = !redoStack.length; }
+  function refreshHistory() { undo.disabled = !history.length; redo.disabled = !redoStack.length; }
 
   // ---- Popovers ------------------------------------------------------------
   const pops = [];
@@ -565,60 +659,282 @@ export async function drawNote(original, commit) {
   wheelRow.append(wheel, wheelSide);
   inkPop.append(swatchList, wheelRow, preview, widthField.field, opacityField.field);
 
-  // ---- Top bar: layers, paper, ruler, view ---------------------------------
+  // ---- Layers ----------------------------------------------------------------
+  // List (top layer first) with drag-to-reorder, thumbnails, visibility and a
+  // paper row; properties for the current layer (name, opacity, blend); actions
+  // (duplicate, copy, paste, merge down, top/bottom, delete); and a select mode
+  // for merging or deleting several layers at once. Structural and property
+  // changes are undoable.
   const layersButton = iconButton('Layers', 'layers');
   const layersPop = popover('Layers', layersButton);
+  layersPop.classList.add('kd-layers-pop');
   const layerList = document.createElement('div');
   layerList.className = 'kd-layers';
-  const addLayer = iconButton('Add layer', 'plus', () => {
-    const id = Math.max(...layers.map(l => l.id)) + 1;
-    current = {id, name: 'Layer ' + (id + 1), visible: true, surface: document.createElement('canvas'), dirty: true};
-    layers.push(current); changed = true; refreshLayers(); repaint();
-  });
-  layersPop.querySelector('h3').append(addLayer);
-  const renameLayer = iconButton('Rename layer', 'rename', () => {
-    const name = prompt('Layer name', current.name)?.trim();
-    if (name) { current.name = name; changed = true; refreshLayers(); }
-  });
-  function reorder(step) {
-    const index = layers.indexOf(current), target = index + step;
-    if (target < 0 || target >= layers.length) return;
-    layers.splice(index, 1); layers.splice(target, 0, current); refreshLayers(); changed = true; repaint();
+  layerList.setAttribute('role', 'list');
+  let selecting = false, paperSelected = false;
+  const selected = new Set();
+  const nextId = () => Math.max(-1, ...layers.map(l => l.id)) + 1;
+  const newLayer = (props = {}) => ({id: nextId(), name: 'Layer', visible: true, opacity: 1, blend: 'source-over', raster: null, rasterImg: null,
+    ...props, surface: document.createElement('canvas'), dirty: true});
+  const cloneStroke = (stroke, layerId, sx = 1, sy = 1, sw = 1) => ({...stroke, id: undefined, layer: layerId,
+    points: stroke.points.map(p => ({...p, x: p.x * sx, y: p.y * sy, width: p.width * sw}))});
+  function layerRecord(l) {
+    if (l.rasterImg && !l.raster) {
+      // Merged pixels are encoded once, when first needed.
+      const c = document.createElement('canvas'); c.width = l.rasterImg.width; c.height = l.rasterImg.height;
+      c.getContext('2d').drawImage(l.rasterImg, 0, 0); l.raster = c.toDataURL('image/png');
+    }
+    return {id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, ...(l.raster ? {raster: l.raster} : {})};
   }
-  const raiseLayer = iconButton('Raise layer', 'up', () => reorder(1));
-  const lowerLayer = iconButton('Lower layer', 'down', () => reorder(-1));
-  const visibility = iconButton('Hide layer', 'eye', () => toggleLayer(current));
-  const layerTools = document.createElement('div');
-  layerTools.className = 'kd-row'; layerTools.style.justifyContent = 'space-between';
-  layerTools.append(visibility, renameLayer, raiseLayer, lowerLayer);
-  layersPop.append(layerList, layerTools);
+  function insertAbove(target, layer) { layers.splice(layers.indexOf(target) + 1, 0, layer); }
+
+  const addLayer = iconButton('Add layer', 'plus', () => {
+    const before = snapshot(), id = nextId();
+    const layer = newLayer({name: 'Layer ' + (id + 1)});
+    insertAbove(current, layer); current = layer; paperSelected = false; commitState(before);
+  });
+  const selectToggle = iconButton('Select layers', 'select', () => { selecting = !selecting; selected.clear(); refreshLayers(); });
+  layersPop.querySelector('h3').append(Object.assign(document.createElement('span'), {style: 'display:flex;gap:2px'}));
+  layersPop.querySelector('h3 span').append(selectToggle, addLayer);
+
+  function duplicateLayer(layer) {
+    const before = snapshot();
+    const copy = newLayer({name: layer.name + ' copy', visible: layer.visible, opacity: layer.opacity, blend: layer.blend, raster: layer.raster, rasterImg: layer.rasterImg});
+    insertAbove(layer, copy);
+    for (const stroke of strokes.filter(s => (s.layer ?? 0) === layer.id)) strokes.push(cloneStroke(stroke, copy.id));
+    current = copy; commitState(before); say('Duplicated “' + layer.name + '”');
+  }
+  function copyLayer(layer) {
+    layerClipboard = {name: layer.name, opacity: layer.opacity, blend: layer.blend, raster: layer.raster, rasterImg: layer.rasterImg,
+      width: canvas.width, height: canvas.height, pxPerMm,
+      strokes: strokes.filter(s => (s.layer ?? 0) === layer.id).map(s => cloneStroke(s, null))};
+    // Also offer the layer's pixels to other apps, where the browser allows it.
+    try {
+      const surface = renderLayer(layer);
+      navigator.clipboard?.write?.([new ClipboardItem({'image/png': new Promise(resolve => surface.toBlob(resolve, 'image/png'))})]).catch(() => {});
+    } catch {}
+    refreshLayers(); say('Copied “' + layer.name + '”. Paste it here or in another drawing.');
+  }
+  function pasteLayer() {
+    const clip = layerClipboard; if (!clip) return;
+    const before = snapshot();
+    const layer = newLayer({name: clip.name + ' (pasted)', opacity: clip.opacity, blend: clip.blend, raster: clip.raster, rasterImg: clip.rasterImg});
+    insertAbove(current, layer);
+    const sx = canvas.width / clip.width, sy = canvas.height / clip.height, sw = pxPerMm / clip.pxPerMm;
+    for (const stroke of clip.strokes) strokes.push(cloneStroke(stroke, layer.id, sx, sy, sw));
+    current = layer; commitState(before);
+  }
+  function deleteLayers(ids) {
+    if (ids.size >= layers.length) { say('A drawing needs at least one layer.'); return; }
+    const before = snapshot(), index = layers.indexOf(current);
+    for (let i = layers.length - 1; i >= 0; i--) if (ids.has(layers[i].id)) layers.splice(i, 1);
+    for (let i = strokes.length - 1; i >= 0; i--) if (ids.has(strokes[i].layer ?? 0)) strokes.splice(i, 1);
+    current = layers[Math.min(Math.max(0, index - 1), layers.length - 1)];
+    selecting = false; selected.clear(); commitState(before);
+  }
+  // Merging composites the chosen layers (bottom to top, with their own opacity
+  // and blend modes) into one layer of pixels, so the result looks exactly as it
+  // did. The merged layer keeps the bottom layer's name and blend mode; new ink
+  // can still be added on top of it. Undo restores the separate layers.
+  function mergeLayers(ids) {
+    const chosen = layers.filter(l => ids.has(l.id));
+    if (chosen.length < 2) { say('Select two or more layers to merge.'); return; }
+    if (chosen.some(l => !l.visible)) { say('Show hidden layers before merging them.'); return; }
+    const before = snapshot(), bottom = chosen[0];
+    const pixels = document.createElement('canvas'); pixels.width = canvas.width; pixels.height = canvas.height;
+    const g = pixels.getContext('2d');
+    chosen.forEach((layer, i) => {
+      g.globalAlpha = layer.opacity; g.globalCompositeOperation = i === 0 ? 'source-over' : layer.blend;
+      g.drawImage(renderLayer(layer), 0, 0);
+    });
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    const merged = newLayer({name: bottom.name, opacity: 1, blend: bottom.blend, rasterImg: pixels});
+    merged.id = bottom.id;
+    for (let i = strokes.length - 1; i >= 0; i--) if (ids.has(strokes[i].layer ?? 0)) strokes.splice(i, 1);
+    const at = layers.indexOf(bottom);
+    for (let i = layers.length - 1; i >= 0; i--) if (ids.has(layers[i].id)) layers.splice(i, 1);
+    layers.splice(Math.min(at, layers.length), 0, merged);
+    current = merged; selecting = false; selected.clear(); commitState(before);
+    say('Merged ' + chosen.length + ' layers into “' + merged.name + '”');
+  }
+  function moveLayer(layer, toIndex) {
+    const from = layers.indexOf(layer); toIndex = Math.max(0, Math.min(layers.length - 1, toIndex));
+    if (from === toIndex) return;
+    const before = snapshot();
+    layers.splice(from, 1); layers.splice(toIndex, 0, layer); commitState(before);
+  }
   function toggleLayer(layer) {
     const hadFocus = layerList.contains(document.activeElement);
-    layer.visible = !layer.visible; changed = true; refreshLayers(); repaint();
-    if (hadFocus) layerList.querySelector('[data-layer="' + layer.id + '"] .kd-btn')?.focus();
+    const before = snapshot();
+    layer.visible = !layer.visible; commitState(before);
+    if (hadFocus) layerList.querySelector('[data-layer="' + layer.id + '"] .kd-eye')?.focus();
+  }
+
+  // Properties of the current layer (or of the paper when its row is chosen).
+  const props = document.createElement('div'); props.className = 'kd-props';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text'; nameInput.maxLength = 60; nameInput.setAttribute('aria-label', 'Layer name');
+  const nameField = document.createElement('label'); nameField.className = 'kd-field'; nameField.append('Name', nameInput);
+  const layerOpacity = rangeField('Layer opacity', 0, 1, 1, .01, v => Math.round(v * 100) + '%');
+  const blend = select('Blend mode', []);
+  for (const [value, label] of BLENDS) blend.add(new Option(label, value));
+  const blendField = document.createElement('label'); blendField.className = 'kd-field'; blendField.append('Blend mode', blend);
+  const paperOpacityField = rangeField('Background opacity', 0, 1, 1, .01, v => Math.round(v * 100) + '%');
+  let pendingBefore = null;
+  const beginEdit = () => { pendingBefore ??= snapshot(); };
+  const endEdit = () => { if (pendingBefore) { const before = pendingBefore; pendingBefore = null; commitState(before); } };
+  nameInput.addEventListener('focus', beginEdit);
+  nameInput.addEventListener('input', () => { beginEdit(); current.name = nameInput.value || 'Layer'; refreshRowsOnly(); });
+  nameInput.addEventListener('change', endEdit);
+  nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') nameInput.blur(); });
+  layerOpacity.input.addEventListener('input', () => { beginEdit(); current.opacity = Number(layerOpacity.input.value); repaint(); refreshRowsOnly(); });
+  layerOpacity.input.addEventListener('change', endEdit);
+  blend.addEventListener('change', () => { beginEdit(); current.blend = blend.value; repaint(); endEdit(); });
+  paperOpacityField.input.addEventListener('input', () => { beginEdit(); paperOpacity = Number(paperOpacityField.input.value); repaint(); refreshRowsOnly(); });
+  paperOpacityField.input.addEventListener('change', endEdit);
+  const paperHint = document.createElement('p'); paperHint.className = 'kd-hint';
+  paperHint.textContent = 'Lower it to draw on a see-through page; the inserted image keeps the transparency.';
+
+  const act = (label, icon, fn, caption) => {
+    const b = iconButton(label, icon, () => fn());
+    if (caption) b.append(caption);
+    return b;
+  };
+  const duplicateButton = act('Duplicate layer', 'duplicate', () => duplicateLayer(current), 'Duplicate');
+  const copyButton = act('Copy layer', 'copy', () => copyLayer(current), 'Copy');
+  const pasteButton = act('Paste layer', 'paste', pasteLayer, 'Paste');
+  const mergeDownButton = act('Merge down', 'merge', () => { const below = layers[layers.indexOf(current) - 1]; if (below) mergeLayers(new Set([below.id, current.id])); }, 'Merge down');
+  const raiseLayer = act('Raise layer', 'up', () => moveLayer(current, layers.indexOf(current) + 1));
+  const lowerLayer = act('Lower layer', 'down', () => moveLayer(current, layers.indexOf(current) - 1));
+  const topButton = act('Move layer to top', 'toTop', () => moveLayer(current, layers.length - 1));
+  const bottomButton = act('Move layer to bottom', 'toBottom', () => moveLayer(current, 0));
+  const deleteButton = act('Delete layer', 'trash', () => deleteLayers(new Set([current.id])), 'Delete');
+  const actions = document.createElement('div'); actions.className = 'kd-actions';
+  actions.append(duplicateButton, copyButton, pasteButton, mergeDownButton, deleteButton);
+  const order = document.createElement('div'); order.className = 'kd-order';
+  const orderButtons = document.createElement('div');
+  orderButtons.append(topButton, raiseLayer, lowerLayer, bottomButton);
+  order.append('Stacking order', orderButtons);
+
+  const selectBar = document.createElement('div'); selectBar.className = 'kd-selectbar';
+  const selectCount = document.createElement('span');
+  const mergeSelected = Object.assign(document.createElement('button'), {type: 'button', className: 'kd-text-btn kd-primary', textContent: 'Merge'});
+  mergeSelected.onclick = () => mergeLayers(new Set(selected));
+  const deleteSelected = Object.assign(document.createElement('button'), {type: 'button', className: 'kd-text-btn', textContent: 'Delete'});
+  deleteSelected.onclick = () => deleteLayers(new Set(selected));
+  const doneSelecting = Object.assign(document.createElement('button'), {type: 'button', className: 'kd-text-btn', textContent: 'Done'});
+  doneSelecting.onclick = () => { selecting = false; selected.clear(); refreshLayers(); };
+  mergeSelected.setAttribute('aria-label', 'Merge selected layers');
+  deleteSelected.setAttribute('aria-label', 'Delete selected layers');
+  selectBar.append(selectCount, Object.assign(document.createElement('span'), {style: 'flex:1'}), deleteSelected, mergeSelected, doneSelecting);
+  layersPop.append(layerList, props);
+
+  function thumbnail(source, opacity = 1) {
+    const t = document.createElement('canvas'); t.className = 'kd-thumb';
+    const h = 40, w = Math.max(16, Math.min(40, Math.round(h * canvas.width / canvas.height)));
+    t.width = w * 2; t.height = h * 2; t.style.width = w + 'px';
+    const g = t.getContext('2d'); g.globalAlpha = opacity;
+    if (source === 'paper') { g.fillStyle = '#fff'; g.fillRect(0, 0, t.width, t.height); }
+    else g.drawImage(source, 0, 0, t.width, t.height);
+    return t;
+  }
+  function layerRow(layer) {
+    const row = document.createElement('div');
+    row.className = 'kd-layer' + (layer.visible ? '' : ' kd-hidden');
+    row.setAttribute('role', 'listitem');
+    row.setAttribute('aria-current', String(!paperSelected && layer === current));
+    row.dataset.layer = String(layer.id);
+    const grip = iconButton('Reorder ' + layer.name, 'grip', null, {className: 'kd-grip', title: 'Drag to reorder'});
+    grip.addEventListener('pointerdown', e => startDrag(e, row, layer));
+    grip.addEventListener('keydown', e => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); moveLayer(layer, layers.indexOf(layer) + (e.key === 'ArrowUp' ? 1 : -1)); layerList.querySelector('[data-layer="' + layer.id + '"] .kd-grip')?.focus(); }
+    });
+    const name = document.createElement('button');
+    name.type = 'button'; name.className = 'kd-name';
+    const meta = [layer.blend !== 'source-over' ? blendName(layer.blend) : '', layer.opacity < 1 ? Math.round(layer.opacity * 100) + '%' : '', layer.rasterImg ? 'merged' : ''].filter(Boolean).join(' · ');
+    name.append(layer.name, Object.assign(document.createElement('span'), {className: 'kd-meta', textContent: meta}));
+    name.setAttribute('aria-label', (selecting ? 'Toggle selection of ' : 'Select ') + layer.name + (layer.visible ? '' : ' (hidden)'));
+    name.onclick = () => {
+      if (selecting) { selected.has(layer.id) ? selected.delete(layer.id) : selected.add(layer.id); refreshLayers(); return; }
+      current = layer; paperSelected = false; refreshLayers();
+    };
+    const eye = iconButton((layer.visible ? 'Hide ' : 'Show ') + layer.name, layer.visible ? 'eye' : 'eyeOff', () => toggleLayer(layer), {className: 'kd-eye'});
+    row.append(grip);
+    if (selecting) {
+      const box = iconButton('Selected: ' + layer.name, selected.has(layer.id) ? 'boxOn' : 'boxOff', () => name.onclick());
+      box.setAttribute('role', 'checkbox'); box.setAttribute('aria-checked', String(selected.has(layer.id)));
+      row.append(box);
+    }
+    row.append(thumbnail(renderLayer(layer), layer.opacity), name, eye);
+    return row;
+  }
+  function paperRow() {
+    const row = document.createElement('div');
+    row.className = 'kd-layer kd-layer-paper';
+    row.setAttribute('role', 'listitem');
+    row.setAttribute('aria-current', String(paperSelected));
+    const name = document.createElement('button');
+    name.type = 'button'; name.className = 'kd-name';
+    name.append('Background', Object.assign(document.createElement('span'), {className: 'kd-meta', textContent: 'Paper · ' + Math.round(paperOpacity * 100) + '%'}));
+    name.setAttribute('aria-label', 'Select background');
+    name.onclick = () => { if (!selecting) { paperSelected = true; refreshLayers(); } };
+    row.append(Object.assign(document.createElement('span'), {style: 'width:28px;flex:none'}), thumbnail('paper', paperOpacity), name);
+    return row;
+  }
+  function refreshRowsOnly() {
+    layerList.replaceChildren(...[...layers].reverse().map(layerRow), paperRow());
   }
   function refreshLayers() {
-    // Topmost layer first, as in most drawing apps.
-    layerList.replaceChildren(...[...layers].reverse().map(layer => {
-      const row = document.createElement('div');
-      row.className = 'kd-layer' + (layer.visible ? '' : ' kd-hidden');
-      row.setAttribute('aria-current', String(layer === current));
-      row.dataset.layer = String(layer.id);
-      const name = document.createElement('button');
-      name.type = 'button'; name.className = 'kd-name'; name.textContent = layer.name;
-      name.setAttribute('aria-label', 'Select ' + layer.name + (layer.visible ? '' : ' (hidden)'));
-      name.onclick = () => { current = layer; refreshLayers(); };
-      const eye = iconButton((layer.visible ? 'Hide ' : 'Show ') + layer.name, layer.visible ? 'eye' : 'eyeOff', () => toggleLayer(layer));
-      row.append(name, eye);
-      return row;
-    }));
-    visibility.innerHTML = ICONS[current.visible ? 'eye' : 'eyeOff'];
-    visibility.setAttribute('aria-label', current.visible ? 'Hide layer' : 'Show layer');
-    visibility.title = visibility.getAttribute('aria-label');
+    if (!layers.includes(current)) current = layers.at(-1);
+    refreshRowsOnly();
+    // Properties: background, select mode, or the current layer.
+    if (selecting) {
+      selectCount.textContent = selected.size + ' selected';
+      mergeSelected.disabled = selected.size < 2; deleteSelected.disabled = !selected.size || selected.size >= layers.length;
+      props.replaceChildren(selectBar);
+    } else if (paperSelected) {
+      paperOpacityField.input.value = paperOpacity; paperOpacityField.show();
+      props.replaceChildren(paperOpacityField.field, paperHint);
+    } else {
+      if (document.activeElement !== nameInput) nameInput.value = current.name;
+      layerOpacity.input.value = current.opacity; layerOpacity.show(); blend.value = current.blend;
+      props.replaceChildren(nameField, layerOpacity.field, blendField, actions, order);
+    }
+    selectToggle.setAttribute('aria-pressed', String(selecting));
     const index = layers.indexOf(current);
-    raiseLayer.disabled = index === layers.length - 1; lowerLayer.disabled = index === 0;
+    raiseLayer.disabled = topButton.disabled = index === layers.length - 1;
+    lowerLayer.disabled = bottomButton.disabled = mergeDownButton.disabled = index === 0;
+    deleteButton.disabled = layers.length < 2;
+    pasteButton.disabled = !layerClipboard;
+    pasteButton.title = layerClipboard ? 'Paste “' + layerClipboard.name + '” as a new layer' : 'Paste layer (copy a layer first)';
     layersButton.title = 'Layers — drawing on “' + current.name + '”' + (current.visible ? '' : ' (hidden)');
+    if (!layersPop.hidden) placePop(layersPop);
   }
+  // Drag a row by its grip to change the stacking order (top of list = on top).
+  function startDrag(e, row, layer) {
+    if (selecting) return;
+    e.preventDefault();
+    const grip = e.currentTarget; grip.setPointerCapture(e.pointerId);
+    const rows = [...layerList.querySelectorAll('.kd-layer:not(.kd-layer-paper)')];
+    const startY = e.clientY, from = rows.indexOf(row);
+    let target = from;
+    row.classList.add('kd-dragging');
+    const move = ev => {
+      row.style.transform = 'translateY(' + (ev.clientY - startY) + 'px)';
+      target = rows.length - 1;
+      for (let i = 0; i < rows.length; i++) { const r = rows[i].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) { target = i; break; } }
+      rows.forEach((r, i) => { r.classList.toggle('kd-drop-before', i === target && target < from); r.classList.toggle('kd-drop-after', i === target && target > from); });
+    };
+    const end = () => {
+      grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', end); grip.removeEventListener('pointercancel', end);
+      row.style.transform = ''; row.classList.remove('kd-dragging');
+      rows.forEach(r => r.classList.remove('kd-drop-before', 'kd-drop-after'));
+      // Display order is top-first; the layers array is bottom-first.
+      if (target !== from) moveLayer(layer, layers.length - 1 - target); else refreshLayers();
+    };
+    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+  }
+  layersButton.addEventListener('click', () => refreshLayers());
   refreshLayers();
 
   const paperButton = iconButton('Paper', 'paper');
@@ -721,7 +1037,7 @@ export async function drawNote(original, commit) {
       repaint();
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       if (!blob) throw Error('Could not encode the drawing.');
-      const result = packPage(blob, {version: 1, basePNG, mm, size: size.value, guide: guide.value, dpi: pxPerMm * 25.4, strokes, layers: layers.map(({id, name, visible}) => ({id, name, visible})), activeLayer: current.id});
+      const result = packPage(blob, {version: 1, basePNG, mm, size: size.value, guide: guide.value, dpi: pxPerMm * 25.4, paperOpacity, strokes, layers: layers.map(layerRecord), activeLayer: current.id});
       await commit(new File([result], 'KeepIt drawing.png', {type: 'image/png'}));
       dialog.returnValue = 'inserted';
       dialog.close('inserted');
@@ -863,8 +1179,8 @@ export async function drawNote(original, commit) {
     const oldWidth = canvas.width, oldHeight = canvas.height, oldPx = pxPerMm;
     if (!paper()) { insert.disabled = true; return; }
     // Re-express every stroke at the new pixel grid; widths keep their size on paper.
-    for (const stroke of [...strokes, ...redoStack]) for (const p of stroke.points) { p.x *= canvas.width / oldWidth; p.y *= canvas.height / oldHeight; p.width *= pxPerMm / oldPx; }
-    layers.forEach(l => l.dirty = true); changed = true; insert.disabled = false; say(''); repaint(); describe();
+    for (const stroke of knownStrokes()) for (const p of stroke.points) { p.x *= canvas.width / oldWidth; p.y *= canvas.height / oldHeight; p.width *= pxPerMm / oldPx; }
+    layers.forEach(l => l.dirty = true); changed = true; insert.disabled = false; say(''); repaint(); describe(); refreshLayers();
   });
   plane.append(canvas, edge); sheet.append(plane);
   dialog.append(style, sheet, bar, dock, status, ...pops, confirmBox);

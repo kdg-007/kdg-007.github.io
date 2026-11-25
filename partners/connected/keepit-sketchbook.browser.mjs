@@ -74,9 +74,9 @@ try{
     // Per-tool settings: highlighter opacity does not leak into the pen.
     await dialog.getByRole('radio',{name:'Highlighter',exact:true}).click();
     await dialog.getByRole('button',{name:'Ink color and size'}).click();
-    assert.equal(await dialog.getByLabel('Opacity').inputValue(),'0.22');
+    assert.equal(await dialog.getByLabel('Opacity',{exact:true}).inputValue(),'0.22');
     await dialog.getByRole('radio',{name:'Pen',exact:true}).click({force:true});
-    assert.equal(await dialog.getByLabel('Opacity').inputValue(),'1');
+    assert.equal(await dialog.getByLabel('Opacity',{exact:true}).inputValue(),'1');
     await dialog.getByRole('button',{name:'Ink color and size'}).click();
     await dialog.getByLabel('Hex ink color').fill('#2e7bd6');
     await page.keyboard.press('Escape');
@@ -109,7 +109,7 @@ try{
      const page=await window.sketch.readPage(window.commits[0]);
      return {dpi:page.dpi,layers:page.layers,strokes:page.strokes.map(s=>({layer:s.layer,color:s.color,opacity:s.opacity,tool:s.tool,points:s.points.length})),mm:page.mm,size:page.size};
     });
-    assert.deepEqual(first.layers,[{id:1,name:'Layer 2',visible:false},{id:0,name:'Layer 1',visible:true}]);
+    assert.deepEqual(first.layers,[{id:1,name:'Layer 2',visible:false,opacity:1,blend:'source-over'},{id:0,name:'Layer 1',visible:true,opacity:1,blend:'source-over'}]);
     assert.equal(first.strokes.length,2);
     assert.deepEqual(first.strokes.map(s=>[s.layer,s.color,s.opacity,s.tool]),[[0,'#2e7bd6',1,'Pen'],[1,'#2e7bd6',1,'Pen']]);
     assert.deepEqual([first.mm,first.size],[[210,297],'A4']);
@@ -146,6 +146,81 @@ try{
     });
     await dialog.waitFor();
     assert.deepEqual(await dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>[c.width,c.height]),[1260,1782]);
+    await dialog.getByRole('button',{name:'Cancel'}).click();
+    await dialog.waitFor({state:'detached'});
+    // Layer features: opacity, blend, background opacity, duplicate, copy/paste,
+    // multi-select merge (pixel-identical), drag reorder, delete, undo.
+    await page.evaluate(()=>window.openSketch(null));
+    await dialog.waitFor();
+    const surfacePixels=()=>dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>{
+     const s=document.createElement('canvas');s.width=124;s.height=175;const g=s.getContext('2d');g.drawImage(c,0,0,124,175);
+     return Array.from(g.getImageData(0,0,124,175).data);
+    });
+    const openLayers=async()=>{if(await dialog.getByRole('dialog',{name:'Layers'}).isHidden())await dialog.getByRole('button',{name:'Layers',exact:true}).click();};
+    await stroke(page,dialog,[.1,.05],[.8,.15]);
+    await openLayers();
+    await dialog.getByRole('button',{name:'Add layer'}).click();
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button',{name:'Ink color and size'}).click();
+    await dialog.getByLabel('Hex ink color').fill('#c0392b');
+    await page.keyboard.press('Escape');
+    await stroke(page,dialog,[.1,.15],[.8,.05]);
+    await openLayers();
+    await dialog.getByLabel('Blend mode').selectOption('multiply');
+    await dialog.getByLabel('Layer opacity').fill('0.5');
+    await dialog.getByRole('button',{name:'Duplicate layer'}).click();
+    assert.equal(await dialog.getByRole('button',{name:'Select Layer 2 copy'}).isVisible(),true);
+    // Multi-select: merge the three layers; the picture must not change.
+    const beforeMerge=await surfacePixels();
+    await dialog.getByRole('button',{name:'Select layers'}).click();
+    for(const name of ['Layer 1','Layer 2','Layer 2 copy'])await dialog.getByRole('button',{name:'Toggle selection of '+name,exact:true}).click();
+    assert.equal(await dialog.getByText('3 selected').isVisible(),true);
+    await dialog.getByRole('button',{name:'Merge selected layers'}).click();
+    const afterMerge=await surfacePixels();
+    const diff=beforeMerge.reduce((sum,v,i)=>sum+Math.abs(v-afterMerge[i]),0)/beforeMerge.length;
+    assert.ok(diff<1.5,'merged layers look the same (mean difference '+diff.toFixed(2)+')');
+    assert.equal(await dialog.locator('.kd-layer:not(.kd-layer-paper)').count(),1);
+    // Undo brings the separate layers back; redo merges again.
+    await dialog.getByRole('button',{name:'Undo',exact:true}).click();
+    assert.equal(await dialog.locator('.kd-layer:not(.kd-layer-paper)').count(),3);
+    await dialog.getByRole('button',{name:'Redo',exact:true}).click();
+    assert.equal(await dialog.locator('.kd-layer:not(.kd-layer-paper)').count(),1);
+    // Copy the merged layer, add a layer, paste, then drag the pasted layer to the bottom.
+    await openLayers();
+    await dialog.getByRole('button',{name:'Copy layer'}).click();
+    await dialog.getByRole('button',{name:'Add layer'}).click();
+    await dialog.getByRole('button',{name:'Paste layer'}).click();
+    const grip=await dialog.getByRole('button',{name:'Reorder Layer 1 (pasted)'}).boundingBox();
+    const bottomRow=await dialog.locator('.kd-layer:not(.kd-layer-paper)').last().boundingBox();
+    await page.mouse.move(grip.x+grip.width/2,grip.y+grip.height/2);await page.mouse.down();
+    await page.mouse.move(grip.x+grip.width/2,bottomRow.y+bottomRow.height-4,{steps:8});await page.mouse.up();
+    assert.deepEqual(await dialog.locator('.kd-layer:not(.kd-layer-paper) .kd-name').evaluateAll(n=>n.map(e=>e.firstChild.textContent)),['Layer 2','Layer 1','Layer 1 (pasted)']);
+    // Delete the empty layer via select mode; background opacity to 40%.
+    await dialog.getByRole('button',{name:'Select layers'}).click();
+    await dialog.getByRole('button',{name:'Toggle selection of Layer 1',exact:true}).click();
+    await dialog.getByRole('button',{name:'Toggle selection of Layer 2',exact:true}).click();
+    await dialog.getByRole('button',{name:'Delete selected layers'}).click();
+    await dialog.getByRole('button',{name:'Select background'}).click();
+    await dialog.getByLabel('Background opacity').fill('0.4');
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button',{name:'Insert drawing'}).click();
+    await dialog.waitFor({state:'detached'});
+    const layered=await page.evaluate(async()=>{
+     const file=window.commits.at(-1),page=await window.sketch.readPage(file);
+     const img=await createImageBitmap(file),c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+     const g=c.getContext('2d');g.drawImage(img,0,0);
+     return {paperOpacity:page.paperOpacity,layers:page.layers.map(l=>({name:l.name,raster:!!l.raster,blend:l.blend,opacity:l.opacity})),corner:g.getImageData(2,2,1,1).data[3]};
+    });
+    assert.equal(layered.paperOpacity,.4);
+    assert.equal(layered.corner,Math.round(.4*255),'see-through page is kept in the inserted PNG');
+    assert.deepEqual(layered.layers,[{name:'Layer 1 (pasted)',raster:true,blend:'source-over',opacity:1}]);
+    // Reopen: merged pixels, paper opacity and layer settings come back.
+    await page.evaluate(()=>window.openSketch(window.commits.at(-1)));
+    await dialog.waitFor();
+    await openLayers();
+    assert.match(await dialog.getByRole('button',{name:'Select Layer 1 (pasted)'}).textContent(),/merged/);
+    assert.match(await dialog.getByRole('button',{name:'Select background'}).textContent(),/40%/);
+    await page.keyboard.press('Escape');
     await dialog.getByRole('button',{name:'Cancel'}).click();
     await dialog.waitFor({state:'detached'});
     // Legacy raster PNG (no editable chunk) still opens as a background.
