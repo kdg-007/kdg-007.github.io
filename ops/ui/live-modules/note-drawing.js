@@ -802,6 +802,8 @@ export async function drawNote(original, commit) {
     for (const t of e.changedTouches) {
       if (t.touchType !== 'stylus') continue;
       pen.rawStylus++; showBadge(); endedTouches.delete(t.identifier);
+      // Only the paper can start a stroke: a Pencil touch on a panel, button or the ruler must not draw.
+      if (t.target !== canvas) continue;
       const started = e.timeStamp, queue = [sampleOfTouch(t, e)], id = t.identifier; waiting.set(id, queue);
       setTimeout(() => {
         waiting.delete(id);
