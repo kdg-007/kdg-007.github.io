@@ -3,15 +3,15 @@
   "baseline": "a87af0c10621aa233ca0ea8c30f52421f17e98bc",
   "esbuild": "0.28.2",
   "paths": {
-    "auth": "assets/keepit-auth-live-5b14504bb2da.js",
+    "auth": "assets/keepit-auth-live-c0342431b349.js",
     "transfer": "assets/keepit-transfer-hosts-6e9b7483e8b2.js",
     "provider": "assets/keepit-graph-provider-a6dfefa333bb.js",
-    "connection": "assets/keepit-onedrive-connect-372cbc7f560b.js",
+    "connection": "assets/keepit-onedrive-connect-11dec60718e5.js",
     "drawing": "assets/keepit-note-drawing-578cb5b943ec.js",
     "editor": "assets/keepit-note-editor-0087b4d300fe.js",
     "ui": "assets/keepit-note-ui-c661ce0d611b.js",
     "link": "assets/keepit-note-link-7eb71539cc1e.js",
     "noteWorkspace": "assets/keepit-note-workspace-5ed1d98a3c40.js",
-    "entry": "assets/library-app-3ca861171615.js"
+    "entry": "assets/library-app-6c3cab0dda0c.js"
   }
 }

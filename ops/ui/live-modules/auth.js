@@ -3,6 +3,42 @@
 import {a as bounded,b as MicrosoftAuth,c,d} from './chunk-ZJ27NWFH.js';
 export {bounded as a,c,d};
 export class ResilientMicrosoftAuth extends MicrosoftAuth {
+  // MSAL encrypts its saved sign-in with a key held in a session cookie
+  // (msal.cache.encryption). An installed iPad/iPhone app starts a new browser
+  // session whenever it is closed, so the key was lost and the saved sign-in could
+  // no longer be read: KeepIt then asked to connect again. The key is kept with an
+  // expiry date and a local backup, restored before MSAL starts.
+  static keyCookie='msal.cache.encryption';
+  static keyBackup='keepit-msal-cache-key-1';
+  readKeyCookie(){
+    const name=encodeURIComponent(ResilientMicrosoftAuth.keyCookie)+'=';
+    const found=(globalThis.document?.cookie||'').split(';').map(part=>part.trim()).find(part=>part.startsWith(name));
+    if(!found)return '';
+    try{return decodeURIComponent(found.slice(name.length));}catch{return '';}
+  }
+  writeKeyCookie(value){
+    // 400 days is the longest browsers accept; it is renewed on every launch.
+    globalThis.document.cookie=encodeURIComponent(ResilientMicrosoftAuth.keyCookie)+'='+encodeURIComponent(value)+';path=/;max-age=34560000;SameSite=None;Secure';
+  }
+  validKey(value){try{const key=JSON.parse(value);return !!(key&&key.id&&key.key);}catch{return false;}}
+  async initialize(){
+    if(!this.pca){
+      try{
+        const saved=globalThis.localStorage?.getItem(ResilientMicrosoftAuth.keyBackup);
+        if(saved&&this.validKey(saved)&&!this.validKey(this.readKeyCookie()))this.writeKeyCookie(saved);
+      }catch{}
+    }
+    const account=await super.initialize();
+    try{
+      const value=this.readKeyCookie();
+      if(this.validKey(value)){this.writeKeyCookie(value);globalThis.localStorage?.setItem(ResilientMicrosoftAuth.keyBackup,value);}
+    }catch{}
+    return account;
+  }
+  async signOut(){
+    await super.signOut();
+    try{globalThis.localStorage?.removeItem(ResilientMicrosoftAuth.keyBackup);}catch{}
+  }
   invalidateToken(){this.forceNext=true;this.authInterrupted=true;this.publish(this.reconnectRequired?'signin':'renewing');}
   publish(phase){
     globalThis.window?.dispatchEvent(new CustomEvent('keepit-auth-state',{detail:{phase,homeId:this.account()?.homeAccountId}}));
