@@ -84,7 +84,14 @@ const blendName = value => (BLENDS.find(b => b[0] === value) || BLENDS[0])[1];
 // into another drawing or another note.
 let layerClipboard = null;
 const TOOLS = ['Pen','Pencil','Marker','Highlighter','Straight line','Eraser'];
-const SWATCHES = ['#173449','#000000','#5b6770','#ffffff','#c0392b','#e8731a','#f2c230','#2e9a57','#14968a','#2e7bd6','#7d4cb8','#d43f8d'];
+// Ink and graphite first, then soft architect's-marker tones (Copic / Prismacolor
+// style): muted, chalky, easy to layer. Any colour is still one tap away on the wheel.
+const SWATCHES = ['#173449','#000000','#9aa3ab','#f5b8c4','#f8c8a0','#f6e08c','#b9e0a8','#9fd8cb','#a8d3f0','#c5b5e8','#e8a6bf','#e9d6b4'];
+// How strongly Apple Pencil pressure changes line weight (and pencil softness).
+const PRESSURE_DEPTH = {Off: 0, Light: .4, Normal: .75, Strong: 1};
+let pressureMode = 'Normal';
+// Recent range of Pencil pressure, so a light or a heavy hand both get the full range.
+const pressureRange = {lo: .04, hi: .6};
 const STYLE = `
 .kd{--kd-text:var(--app-text,#1d2d36);--kd-muted:var(--app-muted,#5d6c74);--kd-chrome:var(--app-raised,#ffffff);--kd-line:var(--app-line,#cfd6da);
  --kd-accent:var(--app-accent,#1f6f8b);--kd-accent-on:var(--app-accent-on,#ffffff);--kd-soft:var(--app-soft,#e2ecf0);--kd-desk:var(--app-ground,#e6e9eb);--kd-focus:var(--app-focus,#2a86a8);
@@ -104,7 +111,7 @@ const STYLE = `
 .kd-bar{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 10px);padding:0 10px;display:flex;align-items:center;gap:8px;pointer-events:none;z-index:2}
 .kd-dock{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 12px);translate:-50% 0;max-width:calc(100% - 20px);display:flex;align-items:flex-end;gap:8px;pointer-events:none;z-index:2}
 .kd-pill{pointer-events:auto;display:flex;align-items:center;gap:2px;padding:4px;border-radius:16px;
- background:color-mix(in srgb,var(--kd-chrome) 90%,transparent);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);
+ background:color-mix(in srgb,var(--kd-chrome) 97%,transparent);
  border:1px solid color-mix(in srgb,var(--kd-line) 70%,transparent);box-shadow:0 1px 2px #0000000f,0 6px 22px #0000001a;transition:opacity .25s}
 .kd-dock .kd-pill{overflow-x:auto;scrollbar-width:none;flex-shrink:1;min-width:0}
 .kd-dock .kd-pill::-webkit-scrollbar{display:none}
@@ -171,6 +178,9 @@ const STYLE = `
 .kd-layer[aria-current="true"]{box-shadow:inset 3px 0 0 var(--kd-accent)}
 .kd-layer[aria-current="true"] .kd-name{font-weight:650;color:var(--kd-text)}
 .kd-layer.kd-hidden .kd-name{color:var(--kd-muted);text-decoration:line-through}
+.kd-seg{display:flex;gap:4px;margin-top:6px}
+.kd-seg button{flex:1;min-height:44px;border:1px solid var(--kd-line);border-radius:10px;background:none;color:var(--kd-text);font-weight:600;cursor:pointer}
+.kd-seg button[aria-checked="true"]{background:var(--kd-accent);color:var(--kd-accent-on);border-color:var(--kd-accent)}
 .kd-menu{display:flex;flex-direction:column;gap:2px;min-width:200px}
 .kd-menu button{display:flex;align-items:center;gap:12px;min-height:44px;border:0;background:none;border-radius:10px;padding:0 10px;cursor:pointer;text-align:left}
 .kd-menu button:hover,.kd-layer .kd-name:hover{background:color-mix(in srgb,var(--kd-text) 7%,transparent)}
@@ -186,10 +196,9 @@ const STYLE = `
 .kd-confirm .kd-danger{color:#c0392b}
 .kd-edge{position:absolute;width:80%;height:40px;transform-origin:50% 0;touch-action:none;text-align:center;color:#142c36;font:12px/40px system-ui,sans-serif;
  background:repeating-linear-gradient(90deg,#3d5a6a99 0 1px,transparent 1px 8px) top/100% 9px no-repeat,repeating-linear-gradient(90deg,#3d5a6acc 0 1px,transparent 1px 40px) top/100% 14px no-repeat,#dbe8efd9;
- border-top:2px solid #1d5d78;border-radius:0 0 10px 10px;box-shadow:0 6px 18px #1a2f3a33;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+ border-top:2px solid #1d5d78;border-radius:0 0 10px 10px;box-shadow:0 6px 18px #1a2f3a33}
 .kd-edge[hidden]{display:none}
 .kd-edge button{position:absolute;right:0;top:0;width:44px;height:38px;border:0;background:none;color:#1d5d78;display:grid;place-items:center;touch-action:none;cursor:grab}
-.kd.kd-inking .kd-pill,.kd.kd-inking .kd-done{opacity:.6}
 .kd.kd-narrow .kd-title small{display:none}
 .kd.kd-narrow .kd-dock{flex-direction:column-reverse;align-items:center;gap:6px}
 .kd.kd-narrow .kd-sheet{padding-bottom:calc(env(safe-area-inset-bottom) + 150px)}
@@ -225,7 +234,7 @@ export async function drawNote(original, commit) {
   // highlighter back to the pen does not leave the pen translucent.
   const toolState = Object.fromEntries(TOOLS.map(name => [name, {
     width: 1,
-    opacity: name === 'Highlighter' ? .22 : name === 'Pencil' ? .7 : 1,
+    opacity: name === 'Highlighter' ? .45 : 1,
   }]));
   const tool = {value: 'Pen'};
   const color = document.createElement('input');
@@ -434,21 +443,30 @@ export async function drawNote(original, commit) {
     if (layer.rasterImg) ink.drawImage(layer.rasterImg, 0, 0, surface.width, surface.height);
     for (const stroke of strokes) {
       if ((stroke.layer ?? 0) !== layer.id || !stroke.points.length) continue;
-      if (stroke.tool === 'Straight line') mark(ink, stroke, stroke.points[0], stroke.points.at(-1));
-      else stroke.points.forEach((p, i) => mark(ink, stroke, stroke.points[i - 1], p));
+      if (!stroke.soft && stroke.tool === 'Straight line') mark(ink, stroke, stroke.points[0], stroke.points.at(-1));
+      else paintWhole(ink, stroke);
     }
     layer.dirty = false;
     return surface;
   }
-  function repaint() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  function repaint(box) {
+    for (const layer of layers) if (layer.visible && (layer.dirty || layer.surface.width !== canvas.width || layer.surface.height !== canvas.height)) { box = null; break; }
+    let X = 0, Y = 0, W = canvas.width, H = canvas.height;
+    if (box) {
+      X = Math.max(0, Math.floor(box.x0)); Y = Math.max(0, Math.floor(box.y0));
+      W = Math.min(canvas.width, Math.ceil(box.x1)) - X; H = Math.min(canvas.height, Math.ceil(box.y1)) - Y;
+      if (W <= 0 || H <= 0) return;
+    }
+    ctx.save();
+    if (box) { ctx.beginPath(); ctx.rect(X, Y, W, H); ctx.clip(); }
+    ctx.clearRect(X, Y, W, H);
     ctx.globalAlpha = paperOpacity;
-    ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'white'; ctx.fillRect(X, Y, W, H);
     const spacing = (guide.value === 'Grid' ? 5 : 8) * canvas.height / mm[1];
     if (guide.value !== 'Plain' && spacing >= 2) {
       ctx.beginPath(); ctx.strokeStyle = '#c5d9e5'; ctx.lineWidth = 1;
-      for (let y = spacing; y < canvas.height; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
-      if (guide.value === 'Grid') for (let x = spacing; x < canvas.width; x += spacing) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+      for (let y = spacing * Math.max(1, Math.ceil(Y / spacing - 1)); y < canvas.height && y <= Y + H + spacing; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+      if (guide.value === 'Grid') for (let x = spacing * Math.max(1, Math.ceil(X / spacing - 1)); x < canvas.width && x <= X + W + spacing; x += spacing) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
       ctx.stroke();
     }
     if (raster) ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
@@ -457,9 +475,13 @@ export async function drawNote(original, commit) {
       if (!layer.visible) continue;
       const surface = renderLayer(layer);
       ctx.globalAlpha = layer.opacity; ctx.globalCompositeOperation = layer.blend;
-      ctx.drawImage(surface, 0, 0);
+      ctx.drawImage(surface, X, Y, W, H, X, Y, W, H);
+      if (live?.buffered && scratch && active.layer === layer.id) { ctx.globalAlpha = layer.opacity * strokeAlpha(active); ctx.drawImage(scratch, X, Y, W, H, X, Y, W, H); }
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     }
+    // A straight line being dragged is previewed here and written to its layer on release.
+    if (active?.tool === 'Straight line' && active.points.length) paintLine(ctx, active);
+    ctx.restore();
   }
   const strokes = saved?.strokes || [];
   const blendOk = value => BLENDS.some(b => b[0] === value);
@@ -496,43 +518,321 @@ export async function drawNote(original, commit) {
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
-  function point(event) {
-    const local = localPoint(event);
-    const pressure = event.pointerType === 'pen' ? event.pressure : 0.5;
-    const weight = active.tool === 'Eraser' ? 32 : active.tool === 'Marker' ? 12 + Math.hypot(event.tiltX || 0, event.tiltY || 0) / 4 : active.tool === 'Highlighter' ? 24 : 2 + 8 * pressure;
-    const next = {x: local.x * canvas.width / plane.clientWidth, y: local.y * canvas.height / plane.clientHeight, width: weight * Number(width.value) * pxPerMm / 6};
+  // ---- Stroke renderer (KI-012) -------------------------------------------
+  // New strokes are smoothed (curves through the midpoints of the pen samples)
+  // and filled as one shape per batch, so a translucent pen, pencil or marker
+  // has the same opacity along its whole length, with no beads at the samples.
+  // Translucent strokes are drawn opaque into a scratch layer and laid onto the
+  // page layer once, at the stroke's opacity.
+  const TAU = 2 * Math.PI;
+  // Marker and highlighter have a flat chisel tip (thick one way, thin the other,
+  // like an architect's marker); the pencil has paper grain; the pen is round.
+  const CHISEL = {Marker: .42, Highlighter: .36}, CHISEL_ANGLE = -.6;
+  // Pencil model: graphite only catches the raised "tooth" of the paper, so light
+  // pressure leaves a sparse, broken, grainy line and heavy pressure fills the
+  // tooth in. Tilting the pencil lays the side of the lead down: a wide, soft
+  // shading stroke. Pressure picks one of PENCIL_LEVELS tooth thresholds.
+  const PENCIL_LEVELS = 8, TOOTH = 256;
+  let tooth = null; const levelMasks = [], patternCache = new Map();
+  function buildTooth() {
+    let seed = 0x9e3779b9;                           // fixed seed: a reopened drawing has the same grain
+    const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    const n = TOOTH, white = new Float32Array(n * n); for (let i = 0; i < white.length; i++) white[i] = rand();
+    let coarse = white;
+    for (let pass = 0; pass < 2; pass++) {            // wrap-around box blur: soft paper fibres
+      const next = new Float32Array(n * n);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        let sum = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += coarse[((y + dy + n) % n) * n + (x + dx + n) % n];
+        next[y * n + x] = sum / 9;
+      }
+      coarse = next;
+    }
+    const mixed = Array.from(coarse, (v, i) => .72 * v + .28 * white[i]);
+    const order = mixed.map((v, i) => i).sort((a, b) => mixed[a] - mixed[b]);
+    tooth = new Float32Array(n * n); order.forEach((index, rank) => { tooth[index] = rank / (n * n); });   // uniform 0..1
+  }
+  function pencilPattern(ctx, color, level) {
+    const key = color + level; let pattern = patternCache.get(key);
+    if (pattern) return pattern;
+    if (!tooth) buildTooth();
+    if (!levelMasks[level]) {
+      const mask = document.createElement('canvas'); mask.width = mask.height = TOOTH;
+      const g = mask.getContext('2d'), image = g.createImageData(TOOTH, TOOTH);
+      const threshold = 1 - (.08 + .84 * level / (PENCIL_LEVELS - 1));
+      for (let i = 0; i < tooth.length; i++) image.data[i * 4 + 3] = Math.round(255 * .92 * Math.max(0, Math.min(1, (tooth[i] - threshold) / .32 + .3)));   // soft grains, like graphite
+      g.putImageData(image, 0, 0); levelMasks[level] = mask;
+    }
+    const tile = document.createElement('canvas'); tile.width = tile.height = TOOTH;
+    const g = tile.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, TOOTH, TOOTH);
+    g.globalCompositeOperation = 'destination-in'; g.drawImage(levelMasks[level], 0, 0);
+    pattern = ctx.createPattern(tile, 'repeat'); patternCache.set(key, pattern);
+    return pattern;
+  }
+  const strokeAlpha = stroke => stroke.opacity ?? (stroke.tool === 'Highlighter' ? .22 : stroke.tool === 'Pencil' ? .7 : 1);
+  const isBuffered = stroke => stroke.soft && stroke.tool !== 'Eraser' && stroke.tool !== 'Straight line' && strokeAlpha(stroke) < .999;
+  let scratch = null;
+  function scratchLayer() {
+    if (!scratch || scratch.width !== canvas.width || scratch.height !== canvas.height) { scratch = document.createElement('canvas'); scratch.width = canvas.width; scratch.height = canvas.height; }
+    return scratch;
+  }
+  // Draws points [from, to) of a stroke (and, when final, the closing segment).
+  // Returns the area touched, or null.
+  function paintStroke(ctx, stroke, from, to, final) {
+    const P = stroke.points; let box = null;
+    const pencil = stroke.tool === 'Pencil', flat = CHISEL[stroke.tool];
+    ctx.save();
+    ctx.globalCompositeOperation = stroke.tool === 'Eraser' ? 'destination-out' : 'source-over';
+    ctx.globalAlpha = 1;
+    const plain = new Path2D(), levels = new Map();
+    const stamp = (x, y, r, q, tl, az) => {
+      let path = plain, reach = r;
+      if (pencil) {
+        const level = Math.max(0, Math.min(PENCIL_LEVELS - 1, Math.round(q ?? 4)));
+        path = levels.get(level); if (!path) levels.set(level, path = new Path2D());
+      }
+      if (pencil && tl > .04) {                       // side of the lead: long axis along the lean
+        reach = r * (1 + 4.5 * Math.pow(tl, 1.3));
+        path.moveTo(x + reach * Math.cos(az), y + reach * Math.sin(az)); path.ellipse(x, y, reach, r, az, 0, TAU);
+      } else if (flat) {
+        path.moveTo(x + r * Math.cos(CHISEL_ANGLE), y + r * Math.sin(CHISEL_ANGLE)); path.ellipse(x, y, r, r * flat, CHISEL_ANGLE, 0, TAU);
+      } else { path.moveTo(x + r, y); path.arc(x, y, r, 0, TAU); }
+      box = union(box, {x0: x - reach - 1, y0: y - reach - 1, x1: x + reach + 1, y1: y + reach + 1});
+    };
+    const curve = (S, C, E, wS, wE, aS, aE) => {
+      const len = Math.hypot(C.x - S.x, C.y - S.y) + Math.hypot(E.x - C.x, E.y - C.y);
+      const steps = Math.max(1, Math.ceil(len / Math.max(.7, Math.min(wS, wE) * (flat || 1) * .16)));
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps, u = 1 - t, near = t < .5 ? aS : aE;
+        stamp(u * u * S.x + 2 * u * t * C.x + t * t * E.x, u * u * S.y + 2 * u * t * C.y + t * t * E.y, Math.max(.4, (wS + (wE - wS) * t) / 2),
+          (aS.q ?? 4) + ((aE.q ?? 4) - (aS.q ?? 4)) * t, (aS.tl ?? 0) + ((aE.tl ?? 0) - (aS.tl ?? 0)) * t, near.az ?? 0);
+      }
+    };
+    const mid = (p, q) => ({x: (p.x + q.x) / 2, y: (p.y + q.y) / 2});
+    for (let i = from; i < to; i++) {
+      if (i === 0) { stamp(P[0].x, P[0].y, Math.max(.4, P[0].width / 2), P[0].q, P[0].tl, P[0].az); continue; }
+      const S = i === 1 ? P[0] : mid(P[i - 2], P[i - 1]), E = mid(P[i - 1], P[i]);
+      curve(S, P[i - 1], E, i === 1 ? P[0].width : (P[i - 2].width + P[i - 1].width) / 2, (P[i - 1].width + P[i].width) / 2, P[i - 1], P[i]);
+    }
+    if (final && P.length > 1) {
+      const n = P.length, S = mid(P[n - 2], P[n - 1]);
+      curve(S, S, P[n - 1], (P[n - 2].width + P[n - 1].width) / 2, P[n - 1].width, P[n - 1], P[n - 1]);
+    }
+    if (pencil) for (const [level, path] of levels) { ctx.fillStyle = pencilPattern(ctx, stroke.color, level); ctx.fill(path); }
+    else { ctx.fillStyle = stroke.color; ctx.fill(plain); }
+    ctx.restore();
+    return box;
+  }
+  function paintLine(ctx, stroke) {
+    const a = stroke.points[0], b = stroke.points.at(-1);
+    ctx.save(); ctx.strokeStyle = stroke.color; ctx.globalAlpha = strokeAlpha(stroke); ctx.lineWidth = b.width; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.restore();
+  }
+  // Whole stroke onto a layer surface (reopen, undo, merge).
+  function paintWhole(ink, stroke) {
+    if (!stroke.soft) { stroke.points.forEach((p, i) => mark(ink, stroke, stroke.points[i - 1], p)); return; }
+    if (stroke.tool === 'Straight line') { paintLine(ink, stroke); return; }
+    if (!isBuffered(stroke)) { paintStroke(ink, stroke, 0, stroke.points.length, true); return; }
+    const sc = scratchLayer(), sctx = sc.getContext('2d');
+    const box = paintStroke(sctx, stroke, 0, stroke.points.length, true);
+    if (!box) return;
+    layBuffer(ink, box, strokeAlpha(stroke));
+  }
+  function layBuffer(ink, box, alpha) {
+    const x = Math.max(0, Math.floor(box.x0)), y = Math.max(0, Math.floor(box.y0)), w = Math.min(canvas.width, Math.ceil(box.x1)) - x, h = Math.min(canvas.height, Math.ceil(box.y1)) - y;
+    if (w <= 0 || h <= 0) return;
+    ink.save(); ink.globalAlpha = alpha; ink.drawImage(scratch, x, y, w, h, x, y, w, h); ink.restore();
+    scratch.getContext('2d').clearRect(x, y, w, h);
+  }
+  // Apple Pencil pressure -> 0..1 (light writing is ~0.05-0.3, so the usable range is stretched).
+  function pressureShape(p) {
+    if (p > 0) {
+      pressureRange.hi = Math.max(p, pressureRange.hi * .998 + p * .002); pressureRange.lo = Math.min(p, pressureRange.lo * .998 + p * .002);
+      if (pressureRange.hi - pressureRange.lo < .3) { const mid = (pressureRange.hi + pressureRange.lo) / 2; pressureRange.lo = Math.max(0, mid - .15); pressureRange.hi = pressureRange.lo + .3; }
+    }
+    return Math.max(0, Math.min(1, (p - pressureRange.lo) / (pressureRange.hi - pressureRange.lo)));
+  }
+  const pen = {down: 0, up: 0, cancel: 0, replaced: 0, lost: 0, samples: 0, errors: 0, lastError: '', pMin: 1, pMax: 0, maxGap: 0, rawPen: 0, rawStylus: 0, viaTouch: 0, rawTouch: 0, rawMouse: 0, ignored: {}};
+  const ignore = why => { pen.ignored[why] = (pen.ignored[why] || 0) + 1; };
+  const union = (a, b) => !a ? b : !b ? a : {x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1)};
+  const guarded = (name, fn) => (...args) => { try { return fn(...args); } catch (error) { pen.errors++; pen.lastError = name + ': ' + (error?.message || error); } };
+  // The pointer handlers only record what the pen did; nothing slow runs in
+  // them, so a busy frame can never make the page miss the next stroke. Drawing
+  // happens once per frame from the recorded samples. `live` is the working
+  // state of the stroke being drawn and is never saved.
+  let live = null;
+  const sampleOf = e => ({clientX: e.clientX, clientY: e.clientY, pressure: e.pressure, tiltX: e.tiltX || 0, tiltY: e.tiltY || 0, pointerType: e.pointerType, t: e.timeStamp});
+  function addSample(sample, rect) {
+    const local = localPoint(sample, rect);
+    const depth = PRESSURE_DEPTH[pressureMode] ?? .75;
+    let shaped = null;
+    if (sample.pointerType === 'pen') {
+      pen.samples++;
+      let p = sample.pressure;
+      if (p > 0) { pen.pMin = Math.min(pen.pMin, p); pen.pMax = Math.max(pen.pMax, p); }
+      else p = live.p ?? .3;                        // some contact samples report 0
+      live.p = live.p == null ? p : live.p * .55 + p * .45;   // smooth jitter
+      shaped = pressureShape(live.p);
+    }
+    const f = shaped == null || depth === 0 ? 1 : (1 - .8 * depth) + 1.6 * depth * shaped;
+    // Pen speed also shapes the line (slow = fuller, fast = finer, like ink), and
+    // a stroke eases in, so writing looks hand-drawn even if the pen reports flat pressure.
+    if (live.prev && sample.t > live.prev.t) {
+      const v = Math.hypot(sample.clientX - live.prev.clientX, sample.clientY - live.prev.clientY) / Math.max(1, sample.t - live.prev.t);
+      live.v = live.v == null ? v : live.v * .7 + v * .3;
+    }
+    live.prev = sample; live.n = (live.n || 0) + 1;
+    const dynamic = (live.v == null ? 1 : 1.2 - .5 * Math.min(1, live.v / 2.2)) * Math.min(1, .5 + .17 * live.n);
+    const toolName = active.tool;
+    const weight = toolName === 'Eraser' ? 32
+      : toolName === 'Marker' ? (14 + Math.hypot(sample.tiltX, sample.tiltY) / 4) * (1 + (f - 1) * .5)
+      : toolName === 'Highlighter' ? 26
+      : toolName === 'Pencil' ? 4.6 * (1 + (f - 1) * .55) * (1 + (dynamic - 1) * .5)
+      : 6 * f * dynamic;
+    const next = {x: local.x * canvas.width / plane.clientWidth, y: local.y * canvas.height / plane.clientHeight, width: Math.round(weight * Number(width.value) * pxPerMm / 6 * 100) / 100};
     if (rulerOn) {
       const rad = edgeAngle * Math.PI / 180, ux = Math.cos(rad), uy = Math.sin(rad);
       const ox = edgeX * canvas.width, oy = edgeY * canvas.height;
       const dot = (next.x - ox) * ux + (next.y - oy) * uy;
       next.x = ox + dot * ux; next.y = oy + dot * uy;
     }
-    if (active.tool !== 'Straight line') mark(current.surface.getContext('2d'), active, active.points.at(-1), next);
+    if (toolName === 'Pencil') {
+      // Pressure sets how much of the paper's tooth the graphite fills; lean sets the shading width.
+      next.q = Math.round(Math.max(0, Math.min(PENCIL_LEVELS - 1, shaped == null || depth === 0 ? 4 : 4 + (shaped - .5) * 14 * depth)) * 10) / 10;
+      const lean = Math.min(1, Math.hypot(sample.tiltX, sample.tiltY) / 75), azimuth = Math.atan2(sample.tiltY, sample.tiltX);
+      live.lean = live.lean == null ? lean : live.lean * .6 + lean * .4;
+      if (live.lean > .04) { next.tl = Math.round(live.lean * 100) / 100; next.az = Math.round(azimuth * 100) / 100; }
+    }
     active.points.push(next);
-    if (active.tool === 'Straight line') current.dirty = true;
-    schedulePaint();
   }
-  let frame = 0;
-  function schedulePaint() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; repaint(); }); }
-  canvas.onpointerdown = event => {
-    if (saving || active || event.pointerType === 'touch' || event.button !== 0) return;
+  // Turns the recorded samples into ink. Returns the page area changed.
+  function flush(final) {
+    if (!active || !live) return null;
+    const rect = plane.getBoundingClientRect();
+    for (const sample of live.queue.splice(0)) addSample(sample, rect);
+    if (active.tool === 'Straight line') {
+      const a = active.points[0], b = active.points.at(-1);
+      if (!a || !b) return null;
+      const pad = b.width / 2 + 3, now = {x0: Math.min(a.x, b.x) - pad, y0: Math.min(a.y, b.y) - pad, x1: Math.max(a.x, b.x) + pad, y1: Math.max(a.y, b.y) + pad};
+      const box = union(live.line, now); live.line = now; return box;
+    }
+    const target = live.buffered ? scratchLayer().getContext('2d') : current.surface.getContext('2d');
+    const box = paintStroke(target, active, live.painted, active.points.length, final);
+    live.painted = active.points.length;
+    live.area = union(live.area, box);
+    return box;
+  }
+  let frame = 0, pendingBox = null, pendingFull = false, lastFrame = 0;
+  function requestFrame() {
+    if (frame) return;
+    frame = requestAnimationFrame(now => {
+      frame = 0;
+      if (active && lastFrame) pen.maxGap = Math.max(pen.maxGap, Math.round(now - lastFrame));
+      lastFrame = active ? now : 0;
+      const full = pendingFull; let box = pendingBox; pendingBox = null; pendingFull = false;
+      if (active) box = union(box, guarded('draw', flush)(false) ?? null);
+      repaint(full ? null : box);
+    });
+  }
+  // A box repaints just that part of the page; no box repaints it all.
+  function schedulePaint(box) {
+    if (!box) pendingFull = true; else pendingBox = union(pendingBox, box);
+    requestFrame();
+  }
+  // A stroke ends on lift, cancel or when a new pen contact starts, and the
+  // pen is followed anywhere on the dialog, so a missed lift can never swallow
+  // the next stroke.
+  function endStroke() {
+    if (!active) return;
+    const stroke = active, state = live;
+    guarded('finish', flush)(true);
+    active = null; live = null; dialog.classList.remove('kd-inking');
+    const layer = layers.find(l => l.id === stroke.layer);
+    if (layer?.surface) {
+      if (stroke.tool === 'Straight line') paintLine(layer.surface.getContext('2d'), stroke);
+      else if (state?.buffered && state.area) layBuffer(layer.surface.getContext('2d'), state.area, strokeAlpha(stroke));
+    }
+    schedulePaint(stroke.tool === 'Straight line' ? state?.line : state?.area);
+  }
+  function beginStroke(sample, id, t0, touchId) {
+    if (saving) return ignore('saving');
     if (!current.visible) { say('“' + current.name + '” is hidden. Show it in Layers to draw on it.'); return; }
+    if (active) { pen.replaced++; endStroke(); }
     closePops();
-    canvas.setPointerCapture(event.pointerId);
-    active = {id: event.pointerId, layer: current.id, opacity: Number(opacity.value), tool: tool.value, color: tool.value === 'Eraser' ? '#ffffff' : color.value, points: []};
+    pen.down++;
+    active = {id, layer: current.id, opacity: Number(opacity.value), tool: tool.value, color: tool.value === 'Eraser' ? '#ffffff' : color.value, soft: 1, points: []};
+    // Working fields stay out of the saved drawing (not enumerable).
+    Object.defineProperties(active, {t0: {value: t0, writable: true}, touchId: {value: touchId, writable: true}});
+    live = {queue: [sample], painted: 0, area: null, line: null, p: null, buffered: isBuffered(active)};
     redoStack.length = 0; strokes.push(active); history.push({stroke: active}); changed = true;
     dialog.classList.add('kd-inking');
-    point(event);
     refreshHistory();
-  };
-  canvas.onpointermove = event => {
-    if (active?.id !== event.pointerId) return;
+    requestFrame();
+  }
+  canvas.onpointerdown = guarded('down', event => {
+    if (event.pointerType === 'touch') return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return ignore('button');
+    if (active?.touchId != null && event.timeStamp - active.t0 < 400) return;    // this contact is already being drawn from touch events
+    event.preventDefault();
+    beginStroke(sampleOf(event), event.pointerId, event.timeStamp);
+    showBadge();
+  });
+  dialog.addEventListener('pointermove', guarded('move', event => {
+    if (!live || active?.id !== event.pointerId || event.timeStamp < active.t0) return;
     const samples = event.getCoalescedEvents?.();
-    for (const sample of samples?.length ? samples : [event]) point(sample);
+    for (const sample of samples?.length ? samples : [event]) live.queue.push(sampleOf(sample));
+    requestFrame();
+  }), true);
+  const lift = guarded('lift', event => { if (active?.id === event.pointerId && event.timeStamp >= active.t0) { if (event.type === 'pointercancel') pen.cancel++; else pen.up++; endStroke(); } });
+  dialog.addEventListener('pointerup', lift, true);
+  dialog.addEventListener('pointercancel', lift, true);
+  // Independent count of every contact the page was given, to compare with strokes drawn.
+  dialog.addEventListener('pointerdown', e => { if (e.pointerType === 'pen') pen.rawPen++; else if (e.pointerType === 'touch') pen.rawTouch++; else pen.rawMouse++; showBadge(); }, true);
+  // Compact record of the last contacts, for More > Pen check.
+  const trace = [];
+  const note = (type, e) => { trace.push(Math.round(e.timeStamp) % 100000 + ' ' + type + ' #' + e.pointerId + ' p' + (e.pressure ?? 0).toFixed(2)); if (trace.length > 40) trace.shift(); };
+  for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'gotpointercapture']) dialog.addEventListener(type, e => { if (e.pointerType !== 'touch') note(type.replace('pointer', ''), e); }, true);
+  // Second route for the Pencil: if the pointer events do not start a stroke for a
+  // stylus touch, the stroke is drawn from the touch events instead.
+  const sampleOfTouch = (t, e) => {
+    const lean = (Math.PI / 2 - (t.altitudeAngle ?? Math.PI / 2)) * 180 / Math.PI, az = t.azimuthAngle ?? 0;
+    return {clientX: t.clientX, clientY: t.clientY, pressure: t.force || 0, tiltX: lean * Math.cos(az), tiltY: lean * Math.sin(az), pointerType: 'pen', t: e.timeStamp};
   };
-  canvas.onlostpointercapture = canvas.onpointercancel = canvas.onpointerup = event => {
-    if (active?.id === event.pointerId) { active = null; dialog.classList.remove('kd-inking'); }
-  };
+  const waiting = new Map(), endedTouches = new Set();
+  dialog.addEventListener('touchstart', e => {
+    for (const t of e.changedTouches) {
+      if (t.touchType !== 'stylus') continue;
+      pen.rawStylus++; showBadge(); endedTouches.delete(t.identifier);
+      const started = e.timeStamp, queue = [sampleOfTouch(t, e)], id = t.identifier; waiting.set(id, queue);
+      setTimeout(() => {
+        waiting.delete(id);
+        if (active && active.t0 >= started - 60) return;       // the pointer events already started it
+        if (endedTouches.has(id) && queue.length < 2) return;
+        pen.viaTouch++;
+        beginStroke(queue[0], 'touch' + id, started, id);
+        for (const extra of queue.slice(1)) live.queue.push(extra);
+        if (endedTouches.has(id)) endStroke();
+        showBadge();
+      }, 35);
+    }
+  }, {capture: true, passive: true});
+  dialog.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.touchType !== 'stylus') continue;
+      if (waiting.has(t.identifier)) waiting.get(t.identifier).push(sampleOfTouch(t, e));
+      else if (live && active?.touchId === t.identifier) { live.queue.push(sampleOfTouch(t, e)); requestFrame(); }
+    }
+  }, {capture: true, passive: true});
+  const touchEnd = e => { for (const t of e.changedTouches) { if (t.touchType !== 'stylus') continue; endedTouches.add(t.identifier); if (active?.touchId === t.identifier) endStroke(); } };
+  dialog.addEventListener('touchend', touchEnd, {capture: true, passive: true});
+  dialog.addEventListener('touchcancel', touchEnd, {capture: true, passive: true});
+  // Small live readout beside the paper size: pointer contacts / touch contacts / strokes drawn.
+  let description = '';
+  function showBadge() { titleSmall.textContent = description + (pen.rawPen || pen.rawStylus ? ' · ✎ ' + pen.rawPen + '/' + pen.rawStylus + '/' + pen.down : ''); }
+  function penReport() {
+    const p = pen.pMax ? pen.pMin.toFixed(2) + '–' + pen.pMax.toFixed(2) : 'none';
+    const skipped = Object.entries(pen.ignored).map(([k, v]) => k + ' ' + v).join(', ') || 'none';
+    return 'Pencil contacts ' + pen.rawPen + ' (touch events ' + pen.rawStylus + ', drawn from touch ' + pen.viaTouch + ')' + ' · strokes ' + pen.down + ' · lifted ' + pen.up + ' · cancelled ' + pen.cancel + ' · replaced ' + pen.replaced + ' · finger touches ' + pen.rawTouch + ' · pressure ' + p + ' · slowest frame ' + pen.maxGap + ' ms · errors ' + pen.errors + (pen.lastError ? ' (' + pen.lastError + ')' : '') + ' · skipped ' + skipped + ' · last: ' + trace.slice(-14).join(' | ');
+  }
 
   // ---- History -------------------------------------------------------------
   // One history for strokes and layer changes. Strokes already in a reopened
@@ -657,7 +957,17 @@ export async function drawNote(original, commit) {
   hexRow.append(color, hex);
   wheelSide.append(hexRow, brightnessField.field);
   wheelRow.append(wheel, wheelSide);
-  inkPop.append(swatchList, wheelRow, preview, widthField.field, opacityField.field);
+  const pressureField = document.createElement('div'); pressureField.className = 'kd-field';
+  const pressureHead = document.createElement('span'); pressureHead.textContent = 'Pencil pressure';
+  const pressureSeg = document.createElement('div'); pressureSeg.className = 'kd-seg'; pressureSeg.setAttribute('role', 'radiogroup'); pressureSeg.setAttribute('aria-label', 'Pencil pressure');
+  for (const name of Object.keys(PRESSURE_DEPTH)) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(name === pressureMode));
+    b.onclick = () => { pressureMode = name; for (const o of pressureSeg.children) o.setAttribute('aria-checked', String(o === b)); };
+    pressureSeg.append(b);
+  }
+  pressureField.append(pressureHead, pressureSeg);
+  inkPop.append(swatchList, wheelRow, preview, widthField.field, opacityField.field, pressureField);
 
   // ---- Layers ----------------------------------------------------------------
   // List (top layer first) with drag-to-reorder, thumbnails, visibility and a
@@ -978,8 +1288,8 @@ export async function drawNote(original, commit) {
   // ---- View: zoom, rotate, pan, fit and full screen -----------------------
   let zoom = 1, angle = 0, panX = 0, panY = 0;
   function transform() { plane.style.transform = 'translate(' + panX + 'px,' + panY + 'px) rotate(' + angle + 'rad) scale(' + zoom + ')'; }
-  function localPoint(e) {
-    const rect = plane.getBoundingClientRect(), dx = e.clientX - rect.left - rect.width / 2, dy = e.clientY - rect.top - rect.height / 2;
+  function localPoint(e, rect = plane.getBoundingClientRect()) {
+    const dx = e.clientX - rect.left - rect.width / 2, dy = e.clientY - rect.top - rect.height / 2;
     return {x: plane.clientWidth / 2 + (dx * Math.cos(angle) + dy * Math.sin(angle)) / zoom, y: plane.clientHeight / 2 + (-dx * Math.sin(angle) + dy * Math.cos(angle)) / zoom};
   }
   function setFit(mode) { fit = mode; zoom = 1; angle = panX = panY = 0; transform(); layoutPlane(); sheet.scrollTop = 0; closePops(); }
@@ -991,6 +1301,7 @@ export async function drawNote(original, commit) {
   }
   menuItem('Fit width', 'fitWidth', () => setFit('width'));
   menuItem('Fit whole page', 'fitPage', () => setFit('page'));
+  menuItem('Pen check', 'select', () => { closePops(); say(penReport()); });
   menuItem('Export PNG', 'export', () => {
     closePops();
     canvas.toBlob(blob => {
@@ -1170,7 +1481,8 @@ export async function drawNote(original, commit) {
   else if (raster) dpi = 6 * 25.4;
   setResolutionControls(dpi);
   function describe() {
-    titleSmall.textContent = (size.value === 'Custom' ? Math.round(mm[0]) + '×' + Math.round(mm[1]) + ' mm' : size.value) + (guide.value === 'Plain' ? '' : ' · ' + guide.value) + ' · ' + Math.round(pxPerMm * 25.4) + ' dpi';
+    description = (size.value === 'Custom' ? Math.round(mm[0]) + '×' + Math.round(mm[1]) + ' mm' : size.value) + (guide.value === 'Plain' ? '' : ' · ' + guide.value) + ' · ' + Math.round(pxPerMm * 25.4) + ' dpi';
+    showBadge();
   }
   resolution.addEventListener('change', () => { dpiField.hidden = resolution.value !== 'Custom'; if (resolution.value !== 'Custom') dpi = RESOLUTIONS[resolution.value]; else dpiInput.focus(); });
   dpiInput.addEventListener('change', () => { const v = dpiInput.valueAsNumber; if (Number.isFinite(v)) dpi = Math.max(72, Math.min(600, v)); dpiInput.value = String(Math.round(dpi)); });

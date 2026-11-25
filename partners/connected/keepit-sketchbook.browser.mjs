@@ -74,7 +74,7 @@ try{
     // Per-tool settings: highlighter opacity does not leak into the pen.
     await dialog.getByRole('radio',{name:'Highlighter',exact:true}).click();
     await dialog.getByRole('button',{name:'Ink color and size'}).click();
-    assert.equal(await dialog.getByLabel('Opacity',{exact:true}).inputValue(),'0.22');
+    assert.equal(await dialog.getByLabel('Opacity',{exact:true}).inputValue(),'0.45');
     await dialog.getByRole('radio',{name:'Pen',exact:true}).click({force:true});
     assert.equal(await dialog.getByLabel('Opacity',{exact:true}).inputValue(),'1');
     await dialog.getByRole('button',{name:'Ink color and size'}).click();
