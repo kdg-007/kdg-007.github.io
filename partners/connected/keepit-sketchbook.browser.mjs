@@ -1,0 +1,240 @@
+// KI-010/KI-011 sketchbook regression: full-screen layout, icon controls and
+// lossless round trip of the editable stroke payload (layers, visibility,
+// order, paper) through insert and revision. Synthetic data only.
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {createRequire} from 'node:module';
+import {readFileSync} from 'node:fs';
+import {resolve,sep,extname} from 'node:path';
+
+const {chromium,webkit}=createRequire(resolve('package.json'))('playwright');
+const root=resolve('.');
+const modules=JSON.parse(readFileSync(resolve(root,'ops/ui/LIVE_STABILITY_MODULES.json')));
+const drawingPath=modules.paths.drawing;
+const server=createServer((req,res)=>{
+ const pathname=new URL(req.url,'http://127.0.0.1').pathname;
+ if(pathname==='/sketchbook.html'){res.writeHead(200,{'Content-Type':'text/html'}).end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body><p>Note</p></body>');return;}
+ const path=resolve(root,'.'+pathname);
+ if(!path.startsWith(root+sep)){res.writeHead(403).end();return;}
+ try{
+  const mime={'.js':'text/javascript','.png':'image/png'};
+  res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream'}).end(readFileSync(path));
+ }catch{res.writeHead(404).end();}
+});
+await new Promise(done=>server.listen(0,'127.0.0.1',done));
+const origin='http://127.0.0.1:'+server.address().port;
+async function stroke(page,dialog,from,to){
+ const box=await dialog.locator('canvas[aria-label^="Drawing surface"]').boundingBox();
+ await page.mouse.move(box.x+box.width*from[0],box.y+box.height*from[1]);
+ await page.mouse.down();
+ await page.mouse.move(box.x+box.width*to[0],box.y+box.height*to[1],{steps:5});
+ await page.mouse.up();
+}
+try{
+ for(const engine of process.env.KEEPIT_BROWSER_ENGINE==='chromium'?[chromium]:[chromium,webkit]){
+  const browser=await engine.launch({headless:true});
+  try{
+   for(const viewport of [{width:1180,height:820},{width:390,height:844}]){
+    const page=await browser.newPage({viewport});
+    const errors=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(origin+'/sketchbook.html');
+    await page.evaluate(async path=>{
+     window.sketch=await import('/'+path);
+     window.commits=[];
+     window.openSketch=blob=>window.sketch.drawNote(blob,async file=>{window.commits.push(file);});
+    },drawingPath);
+    // New drawing: the canvas uses the full viewport behind floating controls.
+    await page.evaluate(()=>window.openSketch(null));
+    const dialog=page.getByRole('dialog',{name:'Note drawing'});
+    await dialog.waitFor();
+    const geometry=await dialog.evaluate(d=>{const r=d.getBoundingClientRect(),c=d.querySelector('canvas').getBoundingClientRect();return {w:r.width,h:r.height,canvas:c.width,vw:innerWidth,vh:innerHeight};});
+    assert.equal(Math.round(geometry.w),geometry.vw);assert.equal(Math.round(geometry.h),geometry.vh);
+    assert.ok(geometry.canvas>=geometry.vw-40,'page uses the available width');
+    // Every control is an accessible, labelled button of touch size.
+    for(const name of ['Cancel','Undo','Redo','Layers','Paper','Ruler','Full screen','More','Insert drawing','Pen','Pencil','Marker','Highlighter','Straight line','Eraser','Ink color and size']){
+     const control=dialog.getByRole(['Pen','Pencil','Marker','Highlighter','Straight line','Eraser'].includes(name)?'radio':'button',{name,exact:true});
+     const box=await control.boundingBox();
+     assert.ok(box&&box.width>=44&&box.height>=44,name+' is a 44px touch target');
+    }
+    // Resolution: new drawings default to 300 dpi (A4 = 2480 x 3508 px);
+    // changing it keeps strokes the same size on paper.
+    assert.deepEqual(await dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>[c.width,c.height]),[2480,3508]);
+    await dialog.getByRole('button',{name:'Paper',exact:true}).click();
+    await dialog.getByLabel('Resolution',{exact:true}).selectOption('Custom');
+    await dialog.getByLabel('Resolution in dots per inch').fill('200');
+    await dialog.getByLabel('Resolution in dots per inch').press('Enter');
+    await dialog.getByLabel('Resolution in dots per inch').blur();
+    assert.equal(await dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>c.width),Math.round(210*200/25.4));
+    await dialog.getByLabel('Resolution',{exact:true}).selectOption('Print · 300 dpi');
+    assert.equal(await dialog.getByLabel('Resolution in dots per inch').isHidden(),true);
+    await dialog.getByLabel('Paper size').selectOption('A3');
+    assert.match(await dialog.getByText(/px/).textContent(),/kept to \d+ dpi/);
+    await dialog.getByLabel('Paper size').selectOption('A4');
+    await page.keyboard.press('Escape');
+    // Per-tool settings: highlighter opacity does not leak into the pen.
+    await dialog.getByRole('radio',{name:'Highlighter',exact:true}).click();
+    await dialog.getByRole('button',{name:'Ink color and size'}).click();
+    assert.equal(await dialog.getByLabel('Opacity',{exact:true}).inputValue(),'0.45');
+    await dialog.getByRole('radio',{name:'Pen',exact:true}).click({force:true});
+    assert.equal(await dialog.getByLabel('Opacity',{exact:true}).inputValue(),'1');
+    await dialog.getByRole('button',{name:'Ink color and size'}).click();
+    await dialog.getByLabel('Hex ink color').fill('#2e7bd6');
+    await page.keyboard.press('Escape');
+    assert.equal(await dialog.getByRole('dialog',{name:'Ink'}).isHidden(),true,'Escape closes the popover first');
+    await stroke(page,dialog,[.2,.05],[.6,.08]);
+    // Second layer, drawn on, then hidden and moved below layer 1.
+    await dialog.getByRole('button',{name:'Layers',exact:true}).click();
+    await dialog.getByRole('button',{name:'Add layer'}).click();
+    await page.keyboard.press('Escape');
+    await stroke(page,dialog,[.3,.1],[.7,.12]);
+    await dialog.getByRole('button',{name:'Layers',exact:true}).click();
+    await dialog.getByRole('button',{name:'Lower layer'}).click();
+    await dialog.getByRole('button',{name:'Hide Layer 2'}).click();
+    await page.keyboard.press('Escape');
+    // Keyboard undo/redo scoped to the sketchbook.
+    await page.keyboard.press('Control+z');
+    assert.equal(await dialog.getByRole('button',{name:'Redo'}).isEnabled(),true);
+    await page.keyboard.press('Control+Shift+z');
+    // Full screen toggles the immersive layout (native fullscreen where allowed).
+    await dialog.getByRole('button',{name:'Full screen'}).click();
+    assert.equal(await dialog.evaluate(d=>d.classList.contains('kd-immersive')),true);
+    await dialog.getByRole('button',{name:'Exit full screen'}).click();
+    assert.equal(await dialog.evaluate(d=>d.classList.contains('kd-immersive')),false);
+    // Cancel with changes asks; "Keep drawing" returns without losing ink.
+    await dialog.getByRole('button',{name:'Cancel'}).click();
+    await page.getByRole('alertdialog',{name:'Unsaved drawing'}).getByRole('button',{name:'Keep drawing'}).click();
+    await dialog.getByRole('button',{name:'Insert drawing'}).click();
+    await dialog.waitFor({state:'detached'});
+    const first=await page.evaluate(async()=>{
+     const page=await window.sketch.readPage(window.commits[0]);
+     return {dpi:page.dpi,layers:page.layers,strokes:page.strokes.map(s=>({layer:s.layer,color:s.color,opacity:s.opacity,tool:s.tool,points:s.points.length})),mm:page.mm,size:page.size};
+    });
+    assert.deepEqual(first.layers,[{id:1,name:'Layer 2',visible:false,opacity:1,blend:'source-over'},{id:0,name:'Layer 1',visible:true,opacity:1,blend:'source-over'}]);
+    assert.equal(first.strokes.length,2);
+    assert.deepEqual(first.strokes.map(s=>[s.layer,s.color,s.opacity,s.tool]),[[0,'#2e7bd6',1,'Pen'],[1,'#2e7bd6',1,'Pen']]);
+    assert.deepEqual([first.mm,first.size],[[210,297],'A4']);
+    assert.equal(Math.round(first.dpi),300,'effective resolution is saved with the page');
+    // Revision: reopen, change nothing, update: payload is identical.
+    await page.evaluate(()=>window.openSketch(window.commits[0]));
+    await dialog.waitFor();
+    assert.equal(await dialog.getByRole('button',{name:'Update drawing'}).isVisible(),true);
+    await dialog.getByRole('button',{name:'Cancel'}).click();
+    await dialog.waitFor({state:'detached'});
+    assert.equal(await page.evaluate(()=>window.commits.length),1,'unchanged revision closes without asking or saving');
+    await page.evaluate(()=>window.openSketch(window.commits[0]));
+    await dialog.getByRole('button',{name:'Update drawing'}).click();
+    await dialog.waitFor({state:'detached'});
+    const same=await page.evaluate(async()=>{
+     const [a,b]=await Promise.all(window.commits.map(f=>window.sketch.readPage(f)));
+     return JSON.stringify({l:a.layers,s:a.strokes,m:a.mm})===JSON.stringify({l:b.layers,s:b.strokes,m:b.mm});
+    });
+    assert.equal(same,true,'editable stroke payload survives revision unchanged');
+    // Discarding a revision keeps the original untouched.
+    await page.evaluate(()=>window.openSketch(window.commits[0]));
+    await stroke(page,dialog,[.2,.2],[.4,.25]);
+    await dialog.getByRole('button',{name:'Cancel'}).click();
+    await page.getByRole('alertdialog',{name:'Unsaved drawing'}).getByRole('button',{name:'Discard changes'}).click();
+    await dialog.waitFor({state:'detached'});
+    assert.equal(await page.evaluate(()=>window.commits.length),2);
+    // A page saved before the resolution setting (no dpi) reopens on its
+    // original pixel grid, so its strokes stay where they were drawn.
+    await page.evaluate(async()=>{
+     const old=await window.sketch.readPage(window.commits[0]);delete old.dpi;
+     const c=document.createElement('canvas');c.width=1260;c.height=1782;
+     const png=await new Promise(r=>c.toBlob(r,'image/png'));
+     window.openSketch(window.sketch.packPage(png,old));
+    });
+    await dialog.waitFor();
+    assert.deepEqual(await dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>[c.width,c.height]),[1260,1782]);
+    await dialog.getByRole('button',{name:'Cancel'}).click();
+    await dialog.waitFor({state:'detached'});
+    // Layer features: opacity, blend, background opacity, duplicate, copy/paste,
+    // multi-select merge (pixel-identical), drag reorder, delete, undo.
+    await page.evaluate(()=>window.openSketch(null));
+    await dialog.waitFor();
+    const surfacePixels=()=>dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>{
+     const s=document.createElement('canvas');s.width=124;s.height=175;const g=s.getContext('2d');g.drawImage(c,0,0,124,175);
+     return Array.from(g.getImageData(0,0,124,175).data);
+    });
+    const openLayers=async()=>{if(await dialog.getByRole('dialog',{name:'Layers'}).isHidden())await dialog.getByRole('button',{name:'Layers',exact:true}).click();};
+    await stroke(page,dialog,[.1,.05],[.8,.15]);
+    await openLayers();
+    await dialog.getByRole('button',{name:'Add layer'}).click();
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button',{name:'Ink color and size'}).click();
+    await dialog.getByLabel('Hex ink color').fill('#c0392b');
+    await page.keyboard.press('Escape');
+    await stroke(page,dialog,[.1,.15],[.8,.05]);
+    await openLayers();
+    await dialog.getByLabel('Blend mode').selectOption('multiply');
+    await dialog.getByLabel('Layer opacity').fill('0.5');
+    await dialog.getByRole('button',{name:'Duplicate layer'}).click();
+    assert.equal(await dialog.getByRole('button',{name:'Select Layer 2 copy'}).isVisible(),true);
+    // Multi-select: merge the three layers; the picture must not change.
+    const beforeMerge=await surfacePixels();
+    await dialog.getByRole('button',{name:'Select layers'}).click();
+    for(const name of ['Layer 1','Layer 2','Layer 2 copy'])await dialog.getByRole('button',{name:'Toggle selection of '+name,exact:true}).click();
+    assert.equal(await dialog.getByText('3 selected').isVisible(),true);
+    await dialog.getByRole('button',{name:'Merge selected layers'}).click();
+    const afterMerge=await surfacePixels();
+    const diff=beforeMerge.reduce((sum,v,i)=>sum+Math.abs(v-afterMerge[i]),0)/beforeMerge.length;
+    assert.ok(diff<1.5,'merged layers look the same (mean difference '+diff.toFixed(2)+')');
+    assert.equal(await dialog.locator('.kd-layer:not(.kd-layer-paper)').count(),1);
+    // Undo brings the separate layers back; redo merges again.
+    await dialog.getByRole('button',{name:'Undo',exact:true}).click();
+    assert.equal(await dialog.locator('.kd-layer:not(.kd-layer-paper)').count(),3);
+    await dialog.getByRole('button',{name:'Redo',exact:true}).click();
+    assert.equal(await dialog.locator('.kd-layer:not(.kd-layer-paper)').count(),1);
+    // Copy the merged layer, add a layer, paste, then drag the pasted layer to the bottom.
+    await openLayers();
+    await dialog.getByRole('button',{name:'Copy layer'}).click();
+    await dialog.getByRole('button',{name:'Add layer'}).click();
+    await dialog.getByRole('button',{name:'Paste layer'}).click();
+    const grip=await dialog.getByRole('button',{name:'Reorder Layer 1 (pasted)'}).boundingBox();
+    const bottomRow=await dialog.locator('.kd-layer:not(.kd-layer-paper)').last().boundingBox();
+    await page.mouse.move(grip.x+grip.width/2,grip.y+grip.height/2);await page.mouse.down();
+    await page.mouse.move(grip.x+grip.width/2,bottomRow.y+bottomRow.height-4,{steps:8});await page.mouse.up();
+    assert.deepEqual(await dialog.locator('.kd-layer:not(.kd-layer-paper) .kd-name').evaluateAll(n=>n.map(e=>e.firstChild.textContent)),['Layer 2','Layer 1','Layer 1 (pasted)']);
+    // Delete the empty layer via select mode; background opacity to 40%.
+    await dialog.getByRole('button',{name:'Select layers'}).click();
+    await dialog.getByRole('button',{name:'Toggle selection of Layer 1',exact:true}).click();
+    await dialog.getByRole('button',{name:'Toggle selection of Layer 2',exact:true}).click();
+    await dialog.getByRole('button',{name:'Delete selected layers'}).click();
+    await dialog.getByRole('button',{name:'Select background'}).click();
+    await dialog.getByLabel('Background opacity').fill('0.4');
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button',{name:'Insert drawing'}).click();
+    await dialog.waitFor({state:'detached'});
+    const layered=await page.evaluate(async()=>{
+     const file=window.commits.at(-1),page=await window.sketch.readPage(file);
+     const img=await createImageBitmap(file),c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+     const g=c.getContext('2d');g.drawImage(img,0,0);
+     return {paperOpacity:page.paperOpacity,layers:page.layers.map(l=>({name:l.name,raster:!!l.raster,blend:l.blend,opacity:l.opacity})),corner:g.getImageData(2,2,1,1).data[3]};
+    });
+    assert.equal(layered.paperOpacity,.4);
+    assert.equal(layered.corner,Math.round(.4*255),'see-through page is kept in the inserted PNG');
+    assert.deepEqual(layered.layers,[{name:'Layer 1 (pasted)',raster:true,blend:'source-over',opacity:1}]);
+    // Reopen: merged pixels, paper opacity and layer settings come back.
+    await page.evaluate(()=>window.openSketch(window.commits.at(-1)));
+    await dialog.waitFor();
+    await openLayers();
+    assert.match(await dialog.getByRole('button',{name:'Select Layer 1 (pasted)'}).textContent(),/merged/);
+    assert.match(await dialog.getByRole('button',{name:'Select background'}).textContent(),/40%/);
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button',{name:'Cancel'}).click();
+    await dialog.waitFor({state:'detached'});
+    // Legacy raster PNG (no editable chunk) still opens as a background.
+    await page.evaluate(async()=>window.openSketch(await (await fetch('/fixtures/synthetic-source.png')).blob()));
+    await dialog.waitFor();
+    await dialog.getByRole('button',{name:'Paper',exact:true}).click();
+    assert.equal(await dialog.getByLabel('Paper size').inputValue(),'Custom');
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button',{name:'Cancel'}).click();
+    await dialog.waitFor({state:'detached'});
+    assert.deepEqual(errors,[]);
+    console.log('KEEPIT_SKETCHBOOK_'+viewport.width+'_'+engine.name().toUpperCase()+'_PASS');
+    await page.close();
+   }
+  }finally{await browser.close();}
+ }
+}finally{server.close();}

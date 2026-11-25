@@ -105,10 +105,15 @@ try{
    await dialog.getByRole('button',{name:'Draw',exact:true}).click();
    const drawing=page.getByRole('dialog',{name:'Note drawing'});
    assert.equal(await drawing.getByLabel('Paper size').inputValue(),'A4');
+   // Sketchbook controls live in compact popovers (paper, layers, ink).
+   await drawing.getByRole('button',{name:'Paper',exact:true}).click();
    await drawing.getByLabel('Paper guides').selectOption('Grid');
    await drawing.getByLabel('Paper size').selectOption('A3');
+   await drawing.getByRole('button',{name:'Layers',exact:true}).click();
    await drawing.getByRole('button',{name:'Add layer',exact:true}).click();
+   await drawing.getByRole('button',{name:'Ink color and size',exact:true}).click();
    await drawing.getByLabel('Hex ink color').fill('#aa3344');
+   await drawing.getByRole('button',{name:'Ink color and size',exact:true}).click();
    await drawing.getByRole('button',{name:'Ruler',exact:true}).click();
    const ruler=drawing.locator('[data-ruler]');
    await ruler.dblclick();
