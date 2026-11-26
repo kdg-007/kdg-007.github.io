@@ -36,7 +36,12 @@ const openDevice=async(browser,fixture)=>{
  return {context,page,note:page.locator('dialog.note-dialog[open]')};
 };
 const save=async({note},subject)=>{
- if(await note.getAttribute('data-mode')==='preview')await note.getByRole('button',{name:'Edit',exact:true}).click();
+ // An open editor that just received another device's edit briefly shows the reader
+ // while it reopens on the newer version; act on whichever control is there.
+ const box=note.getByRole('textbox',{name:'Subject'}),edit=note.getByRole('button',{name:'Edit',exact:true});
+ await box.or(edit).first().waitFor();
+ if(!await box.isVisible())await edit.click({timeout:5000}).catch(()=>{});
+ await box.waitFor();
  await note.getByRole('textbox',{name:'Subject'}).fill(subject);
  await note.getByRole('button',{name:'Save',exact:true}).click();
  await note.locator('.note-status').filter({hasText:/Verified synced to OneDrive|Synced to OneDrive/}).waitFor({timeout:40000});
@@ -49,6 +54,7 @@ const arrives=async({page},subject,label)=>{
   return heading?.textContent.trim()===subject||box?.value===subject;
  },subject,{timeout:ARRIVAL_MS}).catch(()=>{throw Error(label+' did not arrive within '+ARRIVAL_MS/1000+' s');});
  console.log('  '+label+' arrived after '+((Date.now()-started)/1000).toFixed(1)+' s');
+ await page.waitForTimeout(1500);   // let a reopening editor settle before the next edit
 };
 try{
  for(const engine of process.env.KEEPIT_BROWSER_ENGINE==='chromium'||process.env.STABILITY_CHROMIUM_ONLY?[chromium]:[chromium,webkit]){
