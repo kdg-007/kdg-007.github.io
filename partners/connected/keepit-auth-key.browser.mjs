@@ -3,7 +3,11 @@
 // otherwise the saved sign-in cannot be decrypted and KeepIt asks to connect again.
 // Uses the real bundled MSAL; no Microsoft network access.
 import assert from 'node:assert/strict';
-import {createServer} from 'node:http';
+import {createServer} from 'node:https';
+import {execFileSync} from 'node:child_process';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {resolve,sep} from 'node:path';
@@ -11,7 +15,10 @@ import {resolve,sep} from 'node:path';
 const {chromium,webkit}=createRequire(resolve('package.json'))('playwright');
 const root=resolve('.');
 const authPath=JSON.parse(readFileSync(resolve(root,'ops/ui/LIVE_STABILITY_MODULES.json'))).paths.auth;
-const server=createServer((req,res)=>{
+// HTTPS like the real site: WebKit refuses Secure cookies on plain http, and MSAL's are Secure.
+const temp=mkdtempSync(join(tmpdir(),'auth-key-'));
+execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(temp,'key'),'-out',join(temp,'cert'),'-days','1','-subj','/CN=localhost'],{stdio:'ignore'});
+const server=createServer({key:readFileSync(join(temp,'key')),cert:readFileSync(join(temp,'cert'))},(req,res)=>{
  const pathname=new URL(req.url,'http://localhost').pathname;
  if(pathname==='/auth.html'){res.writeHead(200,{'Content-Type':'text/html'}).end('<!doctype html><p>auth');return;}
  const path=resolve(root,'.'+pathname);
@@ -19,12 +26,12 @@ const server=createServer((req,res)=>{
  try{res.writeHead(200,{'Content-Type':'text/javascript'}).end(readFileSync(path));}catch{res.writeHead(404).end();}
 });
 await new Promise(done=>server.listen(0,'127.0.0.1',done));
-const origin='http://localhost:'+server.address().port;
+const origin='https://localhost:'+server.address().port;
 try{
  for(const engine of process.env.KEEPIT_BROWSER_ENGINE==='chromium'?[chromium]:[chromium,webkit]){
   const browser=await engine.launch({headless:true});
   try{
-   const context=await browser.newContext();
+   const context=await browser.newContext({ignoreHTTPSErrors:true});
    const launch=async()=>{
     const page=await context.newPage();await page.goto(origin+'/auth.html');
     const id=await page.evaluate(async path=>{
@@ -44,4 +51,4 @@ try{
   }finally{await browser.close();}
  }
  console.log('keepit-auth-key passed');
-}finally{await new Promise(done=>server.close(done));}
+}finally{await new Promise(done=>server.close(done));rmSync(temp,{recursive:true,force:true});}
