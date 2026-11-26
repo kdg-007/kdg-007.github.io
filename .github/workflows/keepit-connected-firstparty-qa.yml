@@ -217,6 +217,8 @@ jobs:
         run: node partners/connected/save-connection-layout.browser.mjs
       - name: Verify single-tab draft saves and copy recovery
         run: node partners/connected/keepit-single-tab-draft.browser.mjs
+      - name: Repeated edits between two devices reach the open note both ways
+        run: node partners/connected/keepit-sync-roundtrip.browser.mjs
       - name: Verify full-screen sketchbook controls and editable drawing round trip
         run: node partners/connected/keepit-sketchbook.browser.mjs
       - name: Verify Apple Pencil capture, pressure and pastel palette
