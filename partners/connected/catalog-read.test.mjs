@@ -87,22 +87,26 @@ test('failed timing operations retain the original error while recording no erro
 
 const appSource=readFileSync(new URL('../../ops/ui/live-modules/library-app.js',import.meta.url),'utf8');
 const refreshSource=appSource.slice(appSource.indexOf('async function refreshRemoteLibrary()'),appSource.indexOf('setInterval(() => { void refreshRemoteLibrary();'));
-test('remote revisions refresh an open note reader and keep local editors untouched',async()=>{
- let revision=1, reads=0,refreshes=0;
+test('remote revisions refresh an open note reader, and an open editor through its own unsaved-change check',async()=>{
+ let revision=1, reads=0,refreshes=0,editorChecks=0;
  const dialog={},library={isCloud:true,state:{revision:0},fs:{auth:{}},readHead:async()=>{reads++;return {revision};}};
- const editor={dialog,mode:'preview',refreshSavedPreview:async lib=>{assert.equal(lib,library);refreshes++;}};
+ const editor={dialog,mode:'preview',refreshSavedPreview:async lib=>{assert.equal(lib,library);refreshes++;},refreshOpenEditor:async lib=>{assert.equal(lib,library);editorChecks++;}};
  const env={u:library,Z:editor,ei:false,$:false,document:{hidden:false,querySelectorAll:()=>[dialog]},navigator:{onLine:true},M:async()=>{},E:assert.fail,j:e=>e};
  const refresh=vm.runInNewContext('('+refreshSource+')',env);
  await refresh();assert.equal(refreshes,1);revision=2;await refresh();assert.equal(refreshes,2);
- editor.mode='edit';revision=3;await refresh();assert.equal(reads,2);assert.equal(library.state.revision,2);
- editor.mode='preview';editor.pending={};await refresh();assert.equal(reads,2);
- editor.pending=null;editor.historical=true;await refresh();assert.equal(reads,2);
+ // KI-004: a note left open in the editor follows other devices; the editor decides whether it is safe.
+ editor.mode='edit';revision=3;await refresh();assert.equal(reads,3);assert.equal(library.state.revision,3);assert.equal(editorChecks,1);assert.equal(refreshes,2);
+ // A reader still showing this device's own save finishes it, then refreshes.
+ editor.mode='preview';editor.pending={};await refresh();assert.equal(reads,4);assert.equal(refreshes,3);
+ // An older revision being viewed is never replaced.
+ editor.pending=null;editor.historical=true;await refresh();assert.equal(reads,4);assert.equal(refreshes,3);
 });
-test('an edit begun during a remote catalog request prevents the response from replacing the editor',async()=>{
+test('an edit begun during a remote catalog request leaves the editor to its own unsaved-change check',async()=>{
  const gate=(()=>{let release;return {wait:new Promise(r=>release=r),release:()=>release()};})();
  const dialog={},library={isCloud:true,state:{revision:0},fs:{auth:{}},readHead:async()=>{await gate.wait;return {revision:1};}};
- const editor={dialog,mode:'preview',refreshSavedPreview:assert.fail};
- const env={u:library,Z:editor,ei:false,$:false,document:{hidden:false,querySelectorAll:()=>[dialog]},navigator:{onLine:true},M:assert.fail,E:assert.fail,j:e=>e};
+ let checked=0;
+ const editor={dialog,mode:'preview',refreshSavedPreview:assert.fail,refreshOpenEditor:async lib=>{assert.equal(lib,library);checked++;}};
+ const env={u:library,Z:editor,ei:false,$:false,document:{hidden:false,querySelectorAll:()=>[dialog]},navigator:{onLine:true},M:async()=>{},E:assert.fail,j:e=>e};
  const refresh=vm.runInNewContext('('+refreshSource+')',env),pending=refresh();
- editor.mode='edit';gate.release();await pending;assert.equal(library.state.revision,0);
+ editor.mode='edit';gate.release();await pending;assert.equal(checked,1);
 });
