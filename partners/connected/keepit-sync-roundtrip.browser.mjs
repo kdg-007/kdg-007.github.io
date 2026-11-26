@@ -63,7 +63,14 @@ try{
    await mac.note.locator('.note-status').filter({hasText:/Verified synced to OneDrive|Synced to OneDrive/}).waitFor({timeout:40000});
    const ipad=await openDevice(browser,fixture);
    const entry=ipad.page.locator('main').getByText('Round trip v1',{exact:true}).filter({visible:true}).first();
-   await entry.waitFor({timeout:60000});await entry.click();await ipad.note.locator('.note-reader').waitFor();
+   // The second device may open before the first save is listed; the app catches up
+   // on its regular refresh, which a focus event triggers immediately.
+   for(let attempt=0;;attempt++){
+    if(await entry.waitFor({timeout:10000}).then(()=>true,()=>false))break;
+    if(attempt===8)throw Error('the first note never appeared on the second device; it shows: '+(await ipad.page.locator('main').innerText()).replace(/\s+/g,' ').slice(0,400));
+    await ipad.page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+   }
+   await entry.click();await ipad.note.locator('.note-reader').waitFor();
    for(const [who,subject] of [['mac','Mac edit 1'],['ipad','iPad edit 1'],['mac','Mac edit 2'],['ipad','iPad edit 2'],['mac','Mac edit 3']]){
     const [from,to]=who==='mac'?[mac,ipad]:[ipad,mac];
     await save(from,subject);
