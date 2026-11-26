@@ -44,6 +44,10 @@ try{
    const darkest=(y)=>surface.evaluate((c,y)=>{const r=c.getContext('2d').getImageData(Math.round(c.width*.375),Math.round(c.height*y)-30,1,60).data;let m=255;for(let i=0;i<r.length;i+=4)m=Math.min(m,r[i]);return Math.round((255-m)/(255-23)*255);},y);
    const thickness=(y)=>surface.evaluate((c,y)=>{const x=Math.round(c.width*.35),cy=Math.round(c.height*y),d=c.getContext('2d').getImageData(x,cy-60,1,120).data;let n=0;for(let i=0;i<120;i++)if(d[i*4]<200)n++;return n;},y);
 
+   // Measure with a 1 mm nib: at the 0.4 mm default a line is only a few pixels wide.
+   await dialog.getByRole('button',{name:'Ink color and size'}).click();
+   await dialog.getByRole('radiogroup',{name:'Nib size'}).getByRole('radio',{name:'1 mm',exact:true}).click();
+   await page.keyboard.press('Escape');
    // 1. Pressure: harder presses draw a thicker line, and Off ignores pressure.
    await line(.2,.05);await line(.3,.3);await line(.4,.8);
    const [light,mid,hard]=[await thickness(.2),await thickness(.3),await thickness(.4)];
