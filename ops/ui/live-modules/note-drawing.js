@@ -2057,7 +2057,8 @@ export async function drawNote(original, commit) {
     lassoPath.setAttribute('d', '');
     const move = e => {
       if (e.pointerId !== lasso?.id) return;
-      for (const s of e.getCoalescedEvents?.() || [e]) lasso.points.push(toCanvas(s));
+      const samples = e.getCoalescedEvents?.();
+      for (const s of samples?.length ? samples : [e]) lasso.points.push(toCanvas(s));
       lassoPath.setAttribute('d', 'M' + lasso.points.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('L') + 'Z');
     };
     const end = e => {
@@ -2073,7 +2074,7 @@ export async function drawNote(original, commit) {
   selBox.addEventListener('pointerdown', e => {
     if (!floating) return;
     e.preventDefault(); e.stopPropagation();
-    selBox.setPointerCapture(e.pointerId);
+    try { selBox.setPointerCapture(e.pointerId); } catch {}
     const f = floating, kind = e.target.dataset?.handle || 'move', p0 = toCanvas(e);
     const cx = (f.box.x0 + f.box.x1) / 2 + f.dx, cy = (f.box.y0 + f.box.y1) / 2 + f.dy;
     const start = {dx: f.dx, dy: f.dy, s: f.s, r: f.r, d: Math.hypot(p0.x - cx, p0.y - cy) || 1, a: Math.atan2(p0.y - cy, p0.x - cx)};

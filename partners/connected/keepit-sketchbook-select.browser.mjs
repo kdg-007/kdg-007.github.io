@@ -44,11 +44,16 @@ try{
    // Ink in a page region (fractions of the page): dark pixels, and their bounding box.
    const ink=(x0,y0,x1,y1)=>surface.evaluate((c,[x0,y0,x1,y1])=>{const X=Math.round(c.width*x0),Y=Math.round(c.height*y0),W=Math.round(c.width*(x1-x0)),H=Math.round(c.height*(y1-y0));const d=c.getContext('2d').getImageData(X,Y,W,H).data;let n=0,minX=1e9,maxX=-1,minY=1e9,maxY=-1;for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4;if(d[i]<120&&d[i+1]<120){n++;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}}return {n,w:maxX-minX+1,h:maxY-minY+1};},[x0,y0,x1,y1]);
    const red=(x0,y0,x1,y1)=>surface.evaluate((c,[x0,y0,x1,y1])=>{const d=c.getContext('2d').getImageData(Math.round(c.width*x0),Math.round(c.height*y0),Math.round(c.width*(x1-x0)),Math.round(c.height*(y1-y0))).data;let n=0;for(let i=0;i<d.length;i+=4)if(d[i]>180&&d[i+1]<80&&d[i+2]<80)n++;return n;},[x0,y0,x1,y1]);
-   const drawLine=async(fx0,fy0,fx1,fy1)=>{const a=at(fx0,fy0),b=at(fx1,fy1);await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:12});await page.mouse.up();};
-   const lassoAround=async(fx0,fy0,fx1,fy1)=>{const pts=[[fx0,fy0],[fx1,fy0],[fx1,fy1],[fx0,fy1],[fx0,fy0+.001]].map(([x,y])=>at(x,y));await page.mouse.move(pts[0].x,pts[0].y);await page.mouse.down();for(const p of pts.slice(1))await page.mouse.move(p.x,p.y,{steps:6});await page.mouse.up();};
+   // Pencil-style pointer events, dispatched where a real contact would land.
+   // Like pointer capture: a drag's events go to the element where it started.
+   const send=(type,x,y,target='canvas')=>page.evaluate(([type,x,y,target])=>{if(type==='pointerdown')window.__dragTarget=target==='canvas'?document.querySelector('canvas[aria-label^="Drawing surface"]'):document.elementFromPoint(x,y);const el=window.__dragTarget;
+    el.dispatchEvent(new PointerEvent(type,{pointerId:9,pointerType:'pen',isPrimary:true,bubbles:true,cancelable:true,clientX:x,clientY:y,pressure:.5,buttons:type==='pointerup'?0:1}));},[type,x,y,target]);
+   const path=async(points,target)=>{await send('pointerdown',points[0].x,points[0].y,target);for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];for(let k=1;k<=6;k++)await send('pointermove',a.x+(b.x-a.x)*k/6,a.y+(b.y-a.y)*k/6,target);}const z=points.at(-1);await send('pointerup',z.x,z.y,target);await page.waitForTimeout(80);};
+   const drawLine=(fx0,fy0,fx1,fy1)=>path([at(fx0,fy0),at(fx1,fy1)],'canvas');
+   const lassoAround=(fx0,fy0,fx1,fy1)=>path([[fx0,fy0],[fx1,fy0],[fx1,fy1],[fx0,fy1],[fx0,fy0+.001]].map(([x,y])=>at(x,y)),'canvas');
    const selection=dialog.getByRole('group',{name:'Selection'});
    const done=()=>dialog.getByRole('button',{name:'Done',exact:true}).click();
-   const dragBy=async(locator,dx,dy)=>{const b=await locator.boundingBox(),x=b.x+b.width/2,y=b.y+b.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y+dy,{steps:10});await page.mouse.up();};
+   const dragBy=async(locator,dx,dy)=>{const b=await locator.boundingBox(),x=b.x+b.width/2,y=b.y+b.height/2;await path([{x,y},{x:x+dx,y:y+dy}],'point');};
 
    await drawLine(.15,.2,.35,.2);
    await drawLine(.6,.6,.8,.6);
@@ -84,8 +89,7 @@ try{
    await lassoAround(.05,.3,.6,.55);await selection.waitFor();
    const sb=await selection.boundingBox(),knob=selection.getByRole('button',{name:'Rotate selection'});
    const kb=await knob.boundingBox(),cx=sb.x+sb.width/2,cy=sb.y+sb.height/2;
-   await page.mouse.move(kb.x+kb.width/2,kb.y+kb.height/2);await page.mouse.down();
-   await page.mouse.move(cx+(cy-(kb.y+kb.height/2)),cy,{steps:12});await page.mouse.up();
+   await path([{x:kb.x+kb.width/2,y:kb.y+kb.height/2},{x:cx+(cy-(kb.y+kb.height/2)),y:cy}],'point');
    await done();
    const upright=await ink(0,.05,.55,.57);
    assert.ok(upright.h>upright.w*2,'rotated upright: '+upright.w+'×'+upright.h);
