@@ -408,6 +408,12 @@ var r = (u, t, i) => {
     await this.openSaved(t, { expectedLibrary: i, expectedTarget: e });
   }
   async refreshSavedPreview(library) {
+    // A view still showing this device's own save (pending) moves to the saved
+    // copy once that save completes; otherwise it never followed later edits.
+    if (this.mode === 'preview' && this.pending && !this.historical && this.dialog.open && this.library === library && this.getLibrary() === library) {
+      await this.pump();
+      if (this.pending) return;
+    }
     if (this.mode !== 'preview' || this.pending || this.historical || !this.dialog.open || this.library !== library || this.getLibrary() !== library) return;
     const item = this.item, serial = this.loadSerial;
     const current = () => this.loadSerial === serial && this.mode === 'preview' && !this.pending &&
@@ -421,7 +427,16 @@ var r = (u, t, i) => {
     if (latest.version === item.version && latest.digest === item.digest) return;
     const drafts = await this.workspace.drafts(this.target);
     if (!current()) return;
-    if (drafts.some(draft => draft.itemId === item.id && (!draft.baseItem ||
+    // A draft kept after this device's own save, identical to the saved note on
+    // screen, is not unsaved work. Left in place it blocked every later refresh.
+    for (const draft of drafts.filter(row => row.itemId === item.id && row.baseItem)) {
+      if (JSON.stringify(W(draft.document)) === JSON.stringify(W(this.note.document)) &&
+        JSON.stringify(x(draft.values)) === JSON.stringify(x(item))) {
+        try { await this.workspace.discard(draft.id, draft.revision); } catch { return; }
+        if (!current()) return;
+      }
+    }
+    if ((await this.workspace.drafts(this.target)).some(draft => draft.itemId === item.id && (!draft.baseItem ||
       JSON.stringify(W(draft.document)) !== JSON.stringify(W(draft.baseDocument)) ||
       JSON.stringify(x(draft.values)) !== JSON.stringify(x(draft.baseItem))))) {
       this.status.textContent = 'A newer version is available in OneDrive. Your working draft is retained on this device.';
@@ -430,6 +445,59 @@ var r = (u, t, i) => {
     const jobs = await this.workspace.jobs(this.target);
     if (!current() || jobs.some(job => job.itemId === item.id && job.state !== 'saved')) return;
     await this.openSaved(item.id, {expectedLibrary:library, expectedTarget:this.target, isCurrent:current});
+  }
+  // A note left open in the editor must follow edits saved on another device.
+  // Without this, the editor kept writing on its old version: the next save on
+  // this device conflicted, and from then on neither device received the other's
+  // edits (KI-004). Unsaved typing is never replaced.
+  async refreshOpenEditor(library) {
+    const session = this.session, token = this.editToken, base = session?.draft?.baseItem;
+    if (this.mode !== 'edit' || this.preparing || !this.dialog.open || !session || session.error || this.autosavePending || !base?.id ||
+      this.library !== library || this.getLibrary() !== library) return;
+    const same = () => this.mode === 'edit' && this.session === session && this.editToken === token &&
+      this.dialog.open && this.getLibrary() === library;
+    const current = () => same() && !this.preparing;
+    const latest = await library.getItem(base.id);
+    if (!current()) return;
+    if (!latest || latest.trashedAt) {
+      this.status.textContent = 'This note was moved or removed on another device. Your open copy is kept here.';
+      return;
+    }
+    if (latest.version <= base.version) return;
+    if (this.editor) await session.update(await this.editor.read());
+    await this.flush?.();
+    await session.chain;
+    if (!current() || session.error || this.autosavePending) return;
+    const draft = session.draft;
+    const unsaved = JSON.stringify(W(draft.document)) !== JSON.stringify(W(draft.baseDocument)) ||
+      JSON.stringify(x(draft.values)) !== JSON.stringify(x(draft.baseItem));
+    const jobs = await this.workspace.jobs(this.target);
+    if (!current() || jobs.some(job => job.itemId === base.id && job.state !== 'saved')) return;
+    if (unsaved) {
+      this.status.textContent = 'A newer version was saved on another device. Your changes here are kept on this device.';
+      return;
+    }
+    // Nothing typed since the last save: continue editing the newer version.
+    this.preparing = true;
+    const focused = this.dialog.contains(document.activeElement);
+    try {
+      const stored = (await this.workspace.drafts(this.target)).find(row => row.id === draft.id);
+      if (!same()) return;
+      if (stored) await this.workspace.discard(stored.id, stored.revision);
+    } catch {
+      return;   // the draft changed meanwhile: the user is typing, keep their editor
+    } finally {
+      this.preparing = false;
+    }
+    if (!current()) return;
+    await this.openSaved(base.id, { expectedLibrary: library, expectedTarget: this.target, isCurrent: () => this.getLibrary() === library && this.dialog.open });
+    if (this.mode === 'preview' && this.item?.id === base.id && this.dialog.open && this.getLibrary() === library) {
+      await this.beginEdit();
+      if (this.mode === 'edit') {
+        this.status.textContent = 'Updated with changes from another device';
+        if (focused) this.editor?.focus();
+      }
+    }
   }
   async openSaved(t, { expectedLibrary: i, expectedTarget: e, isCurrent = () => true } = {}) {
     if (this.library = this.getLibrary(), this.target = await this.getTarget(), this.library !== this.getLibrary() || i && this.library !== i || e !== void 0 && this.target !== e) throw new Error("The selected library changed before reading the note.");

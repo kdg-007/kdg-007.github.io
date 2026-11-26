@@ -9,9 +9,9 @@
     "connection": "assets/keepit-onedrive-connect-11dec60718e5.js",
     "drawing": "assets/keepit-note-drawing-578cb5b943ec.js",
     "editor": "assets/keepit-note-editor-0087b4d300fe.js",
-    "ui": "assets/keepit-note-ui-c661ce0d611b.js",
-    "link": "assets/keepit-note-link-7eb71539cc1e.js",
+    "ui": "assets/keepit-note-ui-a5ee7d92de0c.js",
+    "link": "assets/keepit-note-link-a68eae6e61ea.js",
     "noteWorkspace": "assets/keepit-note-workspace-5ed1d98a3c40.js",
-    "entry": "assets/library-app-6c3cab0dda0c.js"
+    "entry": "assets/library-app-f0629818a4f0.js"
   }
 }

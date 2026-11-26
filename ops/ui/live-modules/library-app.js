@@ -2293,7 +2293,7 @@ async function refreshRemoteLibrary() {
     const dialogs = [...document.querySelectorAll('dialog[open]')];
     return u?.isCloud && !u.readOnly && !u.pending && !u.fs.auth.reconnectRequired &&
       !$ && !document.hidden && navigator.onLine !== false &&
-      dialogs.every(dialog => dialog === Z?.dialog && Z.mode === 'preview' && !Z.pending && !Z.historical);
+      dialogs.every(dialog => dialog === Z?.dialog && (Z.mode === 'edit' || Z.mode === 'preview' && !Z.historical));
   };
   if (ei || !canRefresh()) return;
   ei = true;
@@ -2304,7 +2304,7 @@ async function refreshRemoteLibrary() {
       library.state = state;
       await M({reload:false});
     }
-    if (u === library && canRefresh()) await Z?.refreshSavedPreview(library);
+    if (u === library && canRefresh()) await (Z?.mode === 'edit' ? Z.refreshOpenEditor?.(library) : Z?.refreshSavedPreview(library));
   } catch (error) {
     E(j(error), true);
   } finally {
