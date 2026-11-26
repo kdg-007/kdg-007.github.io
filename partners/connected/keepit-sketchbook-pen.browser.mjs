@@ -128,6 +128,10 @@ try{
    await pen('pointerup',.5,.9,.5);await page.waitForTimeout(150);
    assert.ok(await thickness(.9)>0,'line stays after release');
 
+   // 4b/4c need synthetic Touch objects, which desktop WebKit cannot construct.
+   const touchCapable=await page.evaluate(()=>{try{new Touch({identifier:1,target:document.body,clientX:0,clientY:0});return true;}catch{return false;}});
+   if(!touchCapable)console.log('  stylus touch fallback NOT VERIFIED in '+browser.browserType().name()+': this engine cannot create touch events');
+   else {
    // 4b. Fallback: a stylus touch that never produced pointer events is drawn from touch events.
    await dialog.getByRole('radio',{name:'Pen',exact:true}).click();
    const before=await surface.evaluate(c=>{const g=c.getContext('2d'),d=g.getImageData(0,Math.round(c.height*.1)-40,c.width,80).data;let n=0;for(let i=0;i<d.length;i+=4)if(d[i]<120)n++;return n;});
@@ -153,6 +157,7 @@ try{
     }
    });
    assert.equal(await ink(),inkBefore,'Pencil touches on controls must not draw');
+   }
    // 5. Palette is pastel: ink first, then soft tones.
    await dialog.getByRole('button',{name:'Ink color and size'}).click();
    const colours=await dialog.locator('.kd-swatches button').evaluateAll(b=>b.map(x=>x.dataset.color));
