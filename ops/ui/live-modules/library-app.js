@@ -1852,6 +1852,7 @@ async function renderItemPreview(e, t, openedLibrary) {
   itemOfflineControls=mountOfflineControls({container:a('preview').parentElement,library:openedLibrary,itemId:e,isCurrent:()=>T?.id===e&&u===openedLibrary&&t===Ne});
   a("preview").replaceChildren();
   let o = await Lt(i, T);
+  showWriteBeside(o === "pdf" && t === Ne && !openedLibrary.readOnly);
   if (t === Ne) if (o === "pdf") {
     if(navigator.onLine===false){
       const preview=await Vt(i,T,a('preview'),()=>t===Ne);
@@ -2033,6 +2034,28 @@ a("item-form").onsubmit = (e) => {
     if(u?.readOnly||u?.isCloud&&navigator.onLine===false)throw Error('This device copy is read only. Reconnect OneDrive before changing file metadata.');
     T = await u.edit(T.id, T.version, { ...nt(), ...Ce ? { namingChange: Ce } : {} }), Ce = null, Et = nt(), a("item-managed-name").textContent = T.managedName || "Original filename retained", a("item-heading").textContent = T.title, await M({ reload: false }), E("Changes saved.", false, "detail-message");
   }, "detail-message");
+};
+// Write beside: a new sketchbook page with this PDF open next to it.
+const writeBeside = K("button", "Write beside", "secondary");
+writeBeside.type = "button"; writeBeside.id = "pdf-write-beside"; writeBeside.hidden = true;
+writeBeside.title = "Handwrite a note with this PDF open beside it";
+a("download-original").before(writeBeside);
+function showWriteBeside(on) { writeBeside.hidden = !on; }
+writeBeside.onclick = async () => {
+  if (!T || !u) return;
+  const item = T, name = String(item.title || item.originalName || "PDF").replace(/\.pdf$/i, "");
+  try {
+    a("item-dialog").close();
+    const ui = await ce();
+    await ui.newNote({ title: "Notes on " + name });
+    globalThis.keepitPdfLibrary.next = { itemId: item.id, name };
+    await ui.editor.draw();
+    const page = document.querySelector('dialog[aria-label="Note drawing"][open]');
+    page?.addEventListener("close", () => {
+      if (page.returnValue === "inserted" && ui.mode === "edit") ui.saveButton?.click();
+    }, { once: true });
+  } catch (error) { E(j(error), true); }
+  finally { if (globalThis.keepitPdfLibrary) delete globalThis.keepitPdfLibrary.next; }
 };
 a("download-original").onclick = () => W(async () => at(await u.original(T.id), T.originalName), "detail-message");
 a("download-named").onclick = () => W(async () => at(await u.original(T.id), T.managedName || T.originalName), "detail-message");
@@ -2288,6 +2311,21 @@ async function pn() {
 }
 mo();
 var ei = false;
+// The sketchbook's split-screen reader lists and opens this library's PDFs.
+globalThis.keepitPdfLibrary = {
+  async list() {
+    if (!u) return [];
+    const isPdf = item => item.kind === 'pdf' || /^application\/pdf/i.test(String(item.mime || '')) || /\.pdf$/i.test(String(item.originalName || item.name || ''));
+    return (await u.list()).filter(item => !item.trashedAt && isPdf(item))
+      .map(item => ({id: item.id, name: String(item.title || item.originalName || item.name || 'PDF').replace(/\.pdf$/i, '')}))
+      .sort((x, y) => x.name.localeCompare(y.name));
+  },
+  async read(id) {
+    if (!u) throw new Error('Open your KeepIt library to show this PDF.');
+    const original = await u.original(id);
+    return original instanceof Blob ? original : new Blob([original], { type: 'application/pdf' });
+  }
+};
 async function refreshRemoteLibrary() {
   const canRefresh = () => {
     const dialogs = [...document.querySelectorAll('dialog[open]')];
