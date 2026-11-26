@@ -104,6 +104,7 @@ try{
    await pencilLine(.66,.5,{tiltX:10,tiltY:60,altitudeAngle:Math.PI/2-Math.hypot(10,60)*Math.PI/180,azimuthAngle:Math.atan2(60,10)});
    await pencilLine(.76,.5);
    const [wide,thin2]=[await band(.66),await band(.76)];
+   console.log('PEN_EVENT_FIELDS '+browser.browserType().name()+' '+await page.evaluate(()=>{const e=new PointerEvent('pointermove',{pointerType:'pen',tiltX:10,tiltY:60,altitudeAngle:.5,azimuthAngle:1});return JSON.stringify({tiltX:e.tiltX,tiltY:e.tiltY,altitudeAngle:e.altitudeAngle,azimuthAngle:e.azimuthAngle});}));
    assert.ok(wide>thin2*2,'a tilted pencil shades wider: '+thin2+' vs '+wide);
    // 3b. The page keeps up: a stroke whose pen events arrive faster than frames
    // is still captured completely.
