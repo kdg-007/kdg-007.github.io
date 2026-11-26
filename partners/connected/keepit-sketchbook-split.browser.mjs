@@ -109,6 +109,10 @@ try{
    const a=at(140,510),b=at(460,290);
    await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move((a.x+b.x)/2,(a.y+b.y)/2,{steps:4});await page.mouse.move(b.x,b.y,{steps:4});await page.mouse.up();
    await dialog.locator('.kd-status').filter({hasText:'Captured page 2'}).waitFor({timeout:15000});
+   // The capture arrives selected, ready to move; Done places it.
+   await dialog.getByRole('group',{name:'Selection'}).waitFor();
+   await dialog.getByRole('button',{name:'Done',exact:true}).click();
+   await dialog.getByRole('group',{name:'Selection'}).waitFor({state:'hidden'});
    const red=await surface.evaluate(c=>{const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=4)if(d[i]>200&&d[i+1]<60&&d[i+2]<60)n++;return n;});
    assert.ok(red>5000,'captured red block is on the page: '+red);
    await dialog.getByRole('button',{name:'Layers'}).click();

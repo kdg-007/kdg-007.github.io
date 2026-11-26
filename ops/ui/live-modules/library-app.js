@@ -2069,6 +2069,21 @@ a("delete-item").onclick = () => {
     await rt(true), await M(), E(e?.originalsRetained ? "Item removed from the catalog. Some original copies could not be deleted; they remain in Files." : "Item and its original deleted from your library. Exported backups remain unchanged.", !!e?.originalsRetained);
   }, "detail-message");
 };
+// "Beside ‹PDF› · p. N" captions open that PDF at that page, inside KeepIt.
+async function openPdfAt(id, page) {
+  if (!u) return E("Open your KeepIt library to show this PDF.");
+  await ot(id);
+  if (ne?.doc && page > 1) await ne.step(page - ne.page);
+}
+document.addEventListener("click", (event) => {
+  const link = event.target.closest?.("a[href]");
+  if (!link || link.closest('[contenteditable="true"]')) return;
+  let url;
+  try { url = new URL(link.href); } catch { return; }
+  if (url.origin !== location.origin || !url.searchParams.has("open-pdf")) return;
+  event.preventDefault(); event.stopPropagation();
+  openPdfAt(url.searchParams.get("open-pdf"), Math.max(1, parseInt(url.searchParams.get("page"), 10) || 1)).catch((error) => E(j(error), true));
+}, true);
 a("pdf-previous").onclick = () => W(() => ne.step(-1), "detail-message");
 a("pdf-forward").onclick = () => W(() => ne.step(1), "detail-message");
 a("open-backup").onclick = a("backup-shortcut").onclick = ln;
@@ -2324,6 +2339,13 @@ globalThis.keepitPdfLibrary = {
     if (!u) throw new Error('Open your KeepIt library to show this PDF.');
     const original = await u.original(id);
     return original instanceof Blob ? original : new Blob([original], { type: 'application/pdf' });
+  },
+  // A PDF opened from the device joins the library so its page links work everywhere.
+  async add(file, title) {
+    if (!u || u.readOnly) throw new Error('Open your KeepIt library to add this PDF.');
+    const result = await u.importFile(file, { title });
+    await M();
+    return { id: result.item.id, name: String(result.item.title || title), duplicate: !!result.duplicate };
   }
 };
 async function refreshRemoteLibrary() {

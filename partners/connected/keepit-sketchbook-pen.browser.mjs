@@ -28,8 +28,12 @@ try{
    const errors=[];page.on('pageerror',error=>errors.push(error.message));
    await page.goto(origin+'/pen.html');
    await page.evaluate(async path=>{window.sketch=await import('/'+path);window.commits=[];window.openSketch=blob=>window.sketch.drawNote(blob,async file=>{window.commits.push(file);});},drawingPath);
+   // A selection left in the note underneath is cleared when the sketchbook opens
+   // (iPadOS otherwise shows Copy / Look Up / Writing Tools over the page and cancels strokes).
+   await page.evaluate(()=>{const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);});
    await page.evaluate(()=>window.openSketch(null));
    const dialog=page.getByRole('dialog',{name:'Note drawing'});await dialog.waitFor();
+   assert.equal(await page.evaluate(()=>getSelection().isCollapsed||getSelection().rangeCount===0),true,'note selection cleared');
    // Dispatches Pencil-style pointer events straight onto the canvas.
    const pen=(type,x,y,pressure,extra={})=>dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate((c,[type,x,y,pressure,extra])=>{
     const r=c.getBoundingClientRect();
@@ -40,6 +44,10 @@ try{
    const darkest=(y)=>surface.evaluate((c,y)=>{const r=c.getContext('2d').getImageData(Math.round(c.width*.375),Math.round(c.height*y)-30,1,60).data;let m=255;for(let i=0;i<r.length;i+=4)m=Math.min(m,r[i]);return Math.round((255-m)/(255-23)*255);},y);
    const thickness=(y)=>surface.evaluate((c,y)=>{const x=Math.round(c.width*.35),cy=Math.round(c.height*y),d=c.getContext('2d').getImageData(x,cy-60,1,120).data;let n=0;for(let i=0;i<120;i++)if(d[i*4]<200)n++;return n;},y);
 
+   // Measure with a 1 mm nib: at the 0.4 mm default a line is only a few pixels wide.
+   await dialog.getByRole('button',{name:'Ink color and size'}).click();
+   await dialog.getByRole('radiogroup',{name:'Nib size'}).getByRole('radio',{name:'1 mm',exact:true}).click();
+   await page.keyboard.press('Escape');
    // 1. Pressure: harder presses draw a thicker line, and Off ignores pressure.
    await line(.2,.05);await line(.3,.3);await line(.4,.8);
    const [light,mid,hard]=[await thickness(.2),await thickness(.3),await thickness(.4)];
@@ -160,6 +168,19 @@ try{
     }
    });
    assert.equal(await ink(),inkBefore,'Pencil touches on controls must not draw');
+   }
+   // 4d. A focused field (e.g. the hex colour) is released when the Pencil touches the paper,
+   //     and a Pencil touch on the paper is claimed before iPadOS can turn it into a selection.
+   await dialog.getByRole('button',{name:'Ink color and size'}).click();
+   await dialog.getByLabel('Hex ink color').focus();
+   assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Hex ink color');
+   await line(.92,.5);
+   assert.notEqual(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Hex ink color','Pencil on the paper releases text focus');
+   if(touchCapable){
+    const claimed=await dialog.locator('canvas[aria-label^="Drawing surface"]').evaluate(c=>{const r=c.getBoundingClientRect(),t=new Touch({identifier:31,target:c,clientX:r.left+r.width*.6,clientY:r.top+r.height*.95,force:.4});Object.defineProperty(t,'touchType',{value:'stylus'});
+     const ev=new TouchEvent('touchstart',{bubbles:true,cancelable:true,changedTouches:[t],touches:[t],targetTouches:[t]});c.dispatchEvent(ev);
+     c.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,changedTouches:[t],touches:[],targetTouches:[]}));return ev.defaultPrevented;});
+    assert.equal(claimed,true,'Pencil touch on the paper is claimed');
    }
    // 5. Palette is pastel: ink first, then soft tones.
    await dialog.getByRole('button',{name:'Ink color and size'}).click();

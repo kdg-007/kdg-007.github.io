@@ -26,10 +26,10 @@ const server=createServer({key:readFileSync(join(temp,'key')),cert:readFileSync(
 });
 await new Promise(ok=>server.listen(0,'127.0.0.1',ok));const origin='https://127.0.0.1:'+server.address().port;
 // A minimal PDF: each page has a title and one coloured block (page 2: red).
-function makePdf(){
+function makePdf(label='Page'){
  const colours=['0 0 1','1 0 0','0 .6 0'],objects=[];
  const pages=colours.map((rgb,i)=>{
-  const content=`${rgb} rg 150 300 300 200 re f BT /F1 36 Tf 72 700 Td (Page ${i+1}) Tj ET`;
+  const content=`${rgb} rg 150 300 300 200 re f BT /F1 36 Tf 72 700 Td (${label} ${i+1}) Tj ET`;
   return {content};
  });
  // 1 catalog, 2 pages, 3 font, then page/content pairs.
@@ -74,11 +74,35 @@ try{
    assert.equal((await reader.locator('.kd-ref-name').textContent()).trim(),'Course reader');
    const surface=await sketch.locator('canvas[aria-label^="Drawing surface"]').boundingBox();
    await page.mouse.move(surface.x+40,surface.y+60);await page.mouse.down();await page.mouse.move(surface.x+200,surface.y+120,{steps:8});await page.mouse.up();
+   const pageBox=reader.getByRole('spinbutton',{name:'PDF page'});await pageBox.fill('2');await pageBox.press('Enter');
+   await page.waitForFunction(()=>document.querySelector('.kd-ref-pageno').value==='2');
    await sketch.getByRole('button',{name:'Insert drawing'}).click();
    const note=page.locator('dialog.note-dialog[open]');
-   await note.locator('figure figcaption').filter({hasText:'Beside Course reader · p. 1'}).waitFor({timeout:20000});
+   await note.locator('figure figcaption').filter({hasText:'Beside Course reader · p. 2'}).waitFor({timeout:20000});
    await note.locator('.note-status').filter({hasText:/Verified synced to OneDrive|Synced to OneDrive/}).waitFor({timeout:40000});
    assert.equal(await note.getByRole('textbox',{name:'Subject'}).inputValue().catch(()=>null)??(await note.locator('.note-reader h1').textContent()),'Notes on Course reader');
+   // The caption opens the PDF at that page from the saved note.
+   if(await note.getAttribute('data-mode')==='edit'){await note.getByRole('button',{name:'Close',exact:true}).click();await page.locator('main').getByText('Notes on Course reader').filter({visible:true}).first().click();}
+   const captionLink=page.locator('dialog.note-dialog[open] .note-reader figcaption a');
+   await captionLink.waitFor({timeout:20000});
+   await captionLink.click();
+   await page.locator('#item-dialog[open]').waitFor();
+   await page.locator('#pdf-position').filter({hasText:'Page 2 of 3'}).waitFor({timeout:20000});
+   await page.locator('#close-item').click();
+   // A PDF opened from the device can join the library, so its page links work everywhere.
+   if(await page.locator('dialog.note-dialog[open]').count())await page.locator('dialog.note-dialog[open]').getByRole('button',{name:'Close',exact:true}).click().catch(()=>{});
+   await page.locator('dialog.note-dialog[open]').waitFor({state:'detached',timeout:20000}).catch(()=>{});
+   await page.locator('#add-files').click();await page.locator('#sketch-note').click();
+   await sketch.waitFor();
+   await sketch.getByRole('button',{name:'PDF beside',exact:true}).click();
+   const chooser=page.waitForEvent('filechooser');
+   await page.getByRole('button',{name:'From this device…'}).click();
+   await (await chooser).setFiles({name:'Handout.pdf',mimeType:'application/pdf',buffer:makePdf('Handout')});
+   await reader.locator('.kd-ref-page canvas').first().waitFor({timeout:20000});
+   await reader.getByRole('button',{name:'Add this PDF to your library'}).click();
+   await sketch.locator('.kd-status').filter({hasText:'Added to your library'}).waitFor({timeout:30000});
+   assert.equal(await reader.getByRole('button',{name:'Add this PDF to your library'}).isVisible(),false);
+   assert.ok((await page.evaluate(()=>globalThis.keepitPdfLibrary.list())).some(item=>item.name==='Handout'),'the device PDF is now in the library');
    assert.deepEqual(errors,[]);
    console.log('KEEPIT_WRITE_BESIDE_'+engine.name().toUpperCase()+'_PASS');
   }finally{await browser.close();}

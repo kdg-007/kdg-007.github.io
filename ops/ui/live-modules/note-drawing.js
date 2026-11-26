@@ -38,6 +38,7 @@ export async function readPage(png){
 // ---------------------------------------------------------------------------
 const svg = body => '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
 const ICONS = {
+  image: svg('<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="9.5" r="1.6"/><path d="m4 17 5-4.5 3.5 3 3-2.5 4.5 4"/>'),
   book: svg('<path d="M12 6.5C10 5 7.5 4.5 4 4.5v14c3.5 0 6 .5 8 2 2-1.5 4.5-2 8-2v-14c-3.5 0-6 .5-8 2z"/><path d="M12 6.5v14"/>'),
   zoomIn: svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8M10.5 7.5v6M7.5 10.5h6"/>'),
   zoomOut: svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8M7.5 10.5h6"/>'),
@@ -79,6 +80,7 @@ const ICONS = {
   Marker: svg('<path d="M14.2 3.3a1.5 1.5 0 0 1 2.1 0l4.4 4.4a1.5 1.5 0 0 1 0 2.1l-8 8-6.5-6.5z"/><path d="m6.2 11.3 6.5 6.5-2.4 1.6-5.7-5.7z"/><path class="ink" d="m4.6 13.7 5.7 5.7-2.2 1.5H4.6a1.5 1.5 0 0 1-1.5-1.5v-3.5z" fill="currentColor" stroke="none"/>'),
   Highlighter: svg('<path d="M15.6 2.9a1.4 1.4 0 0 1 2 0l3.5 3.5a1.4 1.4 0 0 1 0 2l-6.6 6.6-5.5-5.5z"/><path d="m9 9.5 5.5 5.5-2.2 2.2-5.5-5.5z"/><path d="m6.8 11.7 5.5 5.5-2 1.1-4.6-4.6z"/><rect class="ink" x="3.2" y="19.6" width="12.6" height="2.8" rx="1.2"/>'),
   'Straight line': svg('<path d="M6.4 17.6 17.6 6.4"/><circle class="ink" cx="5" cy="19" r="2.2"/><circle class="ink" cx="19" cy="5" r="2.2"/>'),
+  Select: svg('<path d="M7.5 4.5c-2.6 1.3-4 3.6-3.2 6 .9 2.8 4.6 4.2 8.3 3.3 3.8-.9 6.6-3.6 6.3-6.6-.3-2.6-3.6-4.2-7.4-3.8" stroke-dasharray="2.4 2.2"/><path d="m11.6 12.5 1.6 8 1.9-3.1 3.5.8z"/>'),
   Eraser: svg('<path d="M9 20.5 3.6 15.1a1.6 1.6 0 0 1 0-2.2L12.9 3.6a1.6 1.6 0 0 1 2.2 0l5.3 5.3a1.6 1.6 0 0 1 0 2.2L11 20.5z"/><path d="m8.2 8.2 7.6 7.6M11 20.5h9.5"/>'),
 };
 // Blend modes map to canvas composite operations (all supported by Safari/WebKit).
@@ -89,7 +91,7 @@ const blendName = value => (BLENDS.find(b => b[0] === value) || BLENDS[0])[1];
 // Copied layers stay available for this app session, so a layer can be pasted
 // into another drawing or another note.
 let layerClipboard = null;
-const TOOLS = ['Pen','Pencil','Marker','Highlighter','Straight line','Eraser'];
+const TOOLS = ['Pen','Pencil','Marker','Highlighter','Straight line','Eraser','Select'];
 // Ink and graphite first, then soft architect's-marker tones (Copic / Prismacolor
 // style): muted, chalky, easy to layer. Any colour is still one tap away on the wheel.
 const SWATCHES = ['#173449','#000000','#9aa3ab','#f5b8c4','#f8c8a0','#f6e08c','#b9e0a8','#9fd8cb','#a8d3f0','#c5b5e8','#e8a6bf','#e9d6b4'];
@@ -147,6 +149,18 @@ const STYLE = `
 .kd-pop h3{margin:0;font-size:13px;font-weight:600;color:var(--kd-muted);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;justify-content:space-between}
 .kd-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--kd-muted)}
 .kd-field[hidden]{display:none}
+.kd-sel-layer{position:absolute;inset:0;pointer-events:none;z-index:1}
+.kd-lasso{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.kd-lasso path{fill:color-mix(in srgb,var(--kd-accent) 8%,transparent);stroke:var(--kd-accent);stroke-width:calc(2px*var(--kd-lw,6));stroke-dasharray:calc(10px*var(--kd-lw,6)) calc(7px*var(--kd-lw,6));vector-effect:non-scaling-stroke}
+.kd-sel{position:absolute;pointer-events:auto;touch-action:none;cursor:move;outline:calc(1.5px*var(--kd-hs,1)) dashed var(--kd-accent);outline-offset:calc(3px*var(--kd-hs,1));transform-origin:50% 50%}
+.kd-sel-preview{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.kd-sel-h{position:absolute;width:calc(22px*var(--kd-hs,1));height:calc(22px*var(--kd-hs,1));margin:calc(-11px*var(--kd-hs,1));padding:0;border:calc(2px*var(--kd-hs,1)) solid var(--kd-accent);border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;touch-action:none}
+.kd-sel-h::before{content:"";position:absolute;inset:calc(-12px*var(--kd-hs,1))}
+.kd-sel-nw{left:0;top:0;cursor:nwse-resize}.kd-sel-se{left:100%;top:100%;cursor:nwse-resize}.kd-sel-ne{left:100%;top:0;cursor:nesw-resize}.kd-sel-sw{left:0;top:100%;cursor:nesw-resize}
+.kd-sel-rotate{left:50%;top:calc(-34px*var(--kd-hs,1));cursor:grab;background:var(--kd-accent)}
+.kd-sel-bar{position:absolute;pointer-events:auto;display:flex;gap:2px;padding:4px;border-radius:12px;background:var(--kd-chrome);box-shadow:0 6px 18px #0000002a;transform:translate(-50%,calc(-100% - 52px*var(--kd-hs,1))) scale(var(--kd-hs,1));transform-origin:50% 100%;white-space:nowrap}
+.kd-sel-bar button{min-height:40px;padding:0 14px;border:0;border-radius:9px;background:none;color:var(--kd-text);font-weight:600;cursor:pointer}
+.kd-sel-bar button:last-child{background:var(--kd-accent);color:var(--kd-accent-on)}
 .kd-stage{position:absolute;inset:0;overflow:hidden}
 .kd-ref{position:absolute;display:flex;flex-direction:column;background:#eef1f3;color:var(--kd-text);z-index:3}
 .kd-ref-head{display:flex;align-items:center;gap:2px;padding:calc(env(safe-area-inset-top) + 8px) 8px 6px;background:var(--kd-chrome);border-bottom:1px solid var(--kd-line);min-height:52px}
@@ -172,6 +186,11 @@ const STYLE = `
 .kd-field.kd-check{flex-direction:row;align-items:center;gap:10px;color:var(--kd-text)}.kd-check input{width:20px;height:20px;accent-color:#1d5d78}
 .kd-field>span{display:flex;justify-content:space-between}
 .kd-field b{font-weight:500;color:var(--kd-text);font-variant-numeric:tabular-nums}
+.kd-nib-list{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.kd-nib{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:52px;border:1px solid var(--kd-line);border-radius:10px;background:none;color:var(--kd-text);font-size:12px;font-variant-numeric:tabular-nums;cursor:pointer;padding:4px 2px}
+.kd-nib i{display:block;border-radius:50%;background:var(--kd-ink)}
+.kd-nib[aria-checked="true"]{border-color:var(--kd-accent);background:color-mix(in srgb,var(--kd-accent) 14%,transparent);font-weight:650}
+.kd-nib:focus-visible{outline:2px solid var(--kd-focus);outline-offset:1px}
 .kd-pop select,.kd-pop input[type=number],.kd-pop input[type=text]{min-height:40px;border-radius:10px;border:1px solid var(--kd-line);background:var(--app-surface,#fff);padding:0 10px;color:var(--kd-text);user-select:text;-webkit-user-select:text}
 .kd-pop input[type=range]{width:100%;accent-color:var(--kd-accent);min-height:32px}
 .kd-row{display:flex;gap:8px;align-items:center}
@@ -262,10 +281,23 @@ export async function drawNote(original, commit) {
   // ---- Ink and tool state -------------------------------------------------
   // Each tool remembers its own size and opacity, so switching from the
   // highlighter back to the pen does not leave the pen translucent.
+  // Nib sizes are real millimetres on paper, like technical pens and pencil leads.
+  const NIBS = {
+    Pen: [.1, .2, .3, .4, .5, .6, .8, 1, 1.2, 1.4, 2],
+    Pencil: [.3, .5, .7, .9, 1.4, 2],
+    Marker: [.5, 1, 2, 3, 5, 8],
+    Highlighter: [2, 3, 4, 5, 8, 12],
+    'Straight line': [.1, .2, .3, .4, .5, .6, .8, 1, 1.2, 1.4, 2],
+    Eraser: [1, 2, 5, 10, 20, 40],
+  };
+  const NIB_DEFAULT = {Pen: .4, Pencil: .5, Marker: 2, Highlighter: 5, 'Straight line': .4, Eraser: 5};
+  let savedNibs = {};
+  try { savedNibs = JSON.parse(localStorage.getItem('keepit-sketch-nibs-mm') || '{}') || {}; } catch {}
   const toolState = Object.fromEntries(TOOLS.map(name => [name, {
-    width: 1,
+    mm: (NIBS[name] || NIBS.Pen).includes(savedNibs[name]) ? savedNibs[name] : NIB_DEFAULT[name] ?? .4,
     opacity: name === 'Highlighter' ? .45 : 1,
   }]));
+  function rememberNibs() { try { localStorage.setItem('keepit-sketch-nibs-mm', JSON.stringify(Object.fromEntries(TOOLS.map(n => [n, toolState[n].mm])))); } catch {} }
   const tool = {value: 'Pen'};
   const color = document.createElement('input');
   color.type = 'color';
@@ -291,9 +323,38 @@ export async function drawNote(original, commit) {
     show();
     return {field, input, show};
   }
-  const widthField = rangeField('Thickness', .2, 5, 1, .05, v => v.toFixed(2) + '×');
+  // Nib size: one tap per standard size; the list follows the selected tool.
+  const nibField = document.createElement('div'); nibField.className = 'kd-field kd-nibs';
+  const nibHead = document.createElement('span'); nibHead.className = 'kd-range-head';
+  const nibOut = document.createElement('b'); nibHead.append('Nib size', nibOut);
+  const nibList = document.createElement('div'); nibList.className = 'kd-nib-list';
+  nibList.setAttribute('role', 'radiogroup'); nibList.setAttribute('aria-label', 'Nib size');
+  nibField.append(nibHead, nibList);
+  const formatMm = v => (v < 1 ? String(v).replace(/^0/, '0') : String(v)) + ' mm';
+  const width = {get value() { return toolState[tool.value].mm; }};
+  function showNibs() {
+    nibField.hidden = tool.value === 'Select';
+    const sizes = NIBS[tool.value] || NIBS.Pen, now = toolState[tool.value].mm;
+    nibOut.textContent = formatMm(now);
+    nibList.replaceChildren(...sizes.map(mm => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'kd-nib';
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(mm === now));
+      b.setAttribute('aria-label', formatMm(mm)); b.tabIndex = mm === now ? 0 : -1;
+      const dot = document.createElement('i'); dot.style.width = dot.style.height = Math.max(2, Math.min(22, mm * (tool.value === 'Eraser' || tool.value === 'Highlighter' ? 1.6 : 6))) + 'px';
+      b.append(dot, String(mm));
+      b.onclick = () => { toolState[tool.value].mm = mm; rememberNibs(); showNibs(); drawPreview(); };
+      return b;
+    }));
+  }
+  nibList.addEventListener('keydown', e => {
+    const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[e.key]; if (!step) return;
+    e.preventDefault(); const sizes = NIBS[tool.value] || NIBS.Pen, i = sizes.indexOf(toolState[tool.value].mm);
+    toolState[tool.value].mm = sizes[Math.max(0, Math.min(sizes.length - 1, i + step))]; rememberNibs(); showNibs(); drawPreview();
+    nibList.querySelector('[aria-checked="true"]')?.focus();
+  });
+  const widthField = {field: nibField, show: showNibs};
   const opacityField = rangeField('Opacity', .01, 1, 1, .01, v => Math.round(v * 100) + '%');
-  const width = widthField.input, opacity = opacityField.input;
+  const opacity = opacityField.input;
   const swatchList = document.createElement('div');
   swatchList.className = 'kd-swatches';
   for (const value of SWATCHES) {
@@ -345,12 +406,11 @@ export async function drawNote(original, commit) {
   previewPath.setAttribute('stroke-linecap', 'round');
   preview.append(previewPath);
   function drawPreview() {
-    const base = {Eraser: 32, Marker: 12, Highlighter: 24}[tool.value] ?? 6;
     previewPath.setAttribute('stroke', tool.value === 'Eraser' ? '#c9d2d7' : color.value);
-    previewPath.setAttribute('stroke-width', String(Math.max(1, Math.min(34, base * Number(width.value) * .55))));
+    // Shown at about twice life size so fine nibs stay visible.
+    previewPath.setAttribute('stroke-width', String(Math.max(.8, Math.min(34, toolState[tool.value].mm * 7.5))));
     previewPath.setAttribute('stroke-opacity', String(opacity.value));
   }
-  width.addEventListener('input', () => { toolState[tool.value].width = Number(width.value); drawPreview(); });
   opacity.addEventListener('input', () => { toolState[tool.value].opacity = Number(opacity.value); drawPreview(); });
 
   // ---- Paper -------------------------------------------------------------
@@ -444,6 +504,7 @@ export async function drawNote(original, commit) {
     if (text && !sticky) statusTimer = setTimeout(() => { if (status.textContent === text) status.textContent = ''; }, 2600);
   }
   let mm = [210, 297], changed = false, fit = 'width';
+  let floating = null, lasso = null;   // the lifted selection, the lasso being drawn
   function layoutPlane() {
     const pad = 24;
     const availW = Math.max(120, sheet.clientWidth - pad);
@@ -451,6 +512,7 @@ export async function drawNote(original, commit) {
     const availH = Math.max(120, sheet.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
     const w = fit === 'page' ? Math.min(availW, availH * mm[0] / mm[1]) : Math.min(availW, 1600);
     plane.style.width = Math.round(w) + 'px';
+    if (floating) showFloating();
   }
   function paper() {
     const custom = size.value === 'Custom';
@@ -734,12 +796,12 @@ export async function drawNote(original, commit) {
     live.prev = sample; live.n = (live.n || 0) + 1;
     const dynamic = (live.v == null ? 1 : 1.2 - .5 * Math.min(1, live.v / 2.2)) * Math.min(1, .5 + .17 * live.n);
     const toolName = active.tool;
-    const weight = toolName === 'Eraser' ? 32
-      : toolName === 'Marker' ? (14 + Math.hypot(sample.tiltX, sample.tiltY) / 4) * (1 + (f - 1) * .5)
-      : toolName === 'Highlighter' ? 26
-      : toolName === 'Pencil' ? 4.6 * (1 + (f - 1) * .55) * (1 + (dynamic - 1) * .5)
-      : 6 * f * dynamic;
-    const next = {x: local.x * canvas.width / plane.clientWidth, y: local.y * canvas.height / plane.clientHeight, width: Math.round(weight * Number(width.value) * pxPerMm / 6 * 100) / 100};
+    // The nib size is the line width at normal pressure; pressure, speed and tilt shape it around that.
+    const shape = toolName === 'Eraser' || toolName === 'Highlighter' ? 1
+      : toolName === 'Marker' ? (1 + Math.hypot(sample.tiltX, sample.tiltY) / 56) * (1 + (f - 1) * .5)
+      : toolName === 'Pencil' ? (1 + (f - 1) * .55) * (1 + (dynamic - 1) * .5)
+      : f * dynamic;
+    const next = {x: local.x * canvas.width / plane.clientWidth, y: local.y * canvas.height / plane.clientHeight, width: Math.round(toolState[toolName].mm * shape * pxPerMm * 100) / 100};
     if (rulerOn) {
       const rad = edgeAngle * Math.PI / 180, ux = Math.cos(rad), uy = Math.sin(rad);
       const ox = edgeX * canvas.width, oy = edgeY * canvas.height;
@@ -805,6 +867,7 @@ export async function drawNote(original, commit) {
     schedulePaint(stroke.tool === 'Straight line' ? state?.line : state?.area);
   }
   function beginStroke(sample, id, t0, touchId) {
+    if (tool.value === 'Select') return;
     if (saving) return ignore('saving');
     if (!current.visible) { say('“' + current.name + '” is hidden. Show it in Layers to draw on it.'); return; }
     if (active) { pen.replaced++; endStroke(); }
@@ -823,6 +886,7 @@ export async function drawNote(original, commit) {
     if (event.pointerType === 'touch') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return ignore('button');
     if (active?.touchId != null && event.timeStamp - active.t0 < 400) return;    // this contact is already being drawn from touch events
+    if (tool.value === 'Select') { closePops(); selectDown(event); return; }
     event.preventDefault();
     beginStroke(sampleOf(event), event.pointerId, event.timeStamp);
     showBadge();
@@ -849,12 +913,32 @@ export async function drawNote(original, commit) {
     return {clientX: t.clientX, clientY: t.clientY, pressure: t.force || 0, tiltX: lean * Math.cos(az), tiltY: lean * Math.sin(az), pointerType: 'pen', t: e.timeStamp};
   };
   const waiting = new Map(), endedTouches = new Set();
+  // Text focus or a selection (the note underneath, the page number, a hex field) lets
+  // iPadOS show its Copy / Look Up / Writing Tools menu, which interrupts the Pencil.
+  const editable = el => !!el && el !== document.body && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  function releaseTextFocus() {
+    if (editable(document.activeElement)) document.activeElement.blur();
+    const selection = getSelection();
+    if (selection && selection.rangeCount && !selection.isCollapsed) selection.removeAllRanges();
+  }
+  const onSelection = () => {
+    if (!dialog.open) return;
+    const selection = getSelection(), node = selection?.anchorNode, el = node?.nodeType === 1 ? node : node?.parentElement;
+    if (selection && !selection.isCollapsed && !(el && dialog.contains(el) && editable(el.closest('input,textarea,select,[contenteditable="true"]')))) selection.removeAllRanges();
+  };
+  document.addEventListener('selectionchange', onSelection);
+  dialog.addEventListener('close', () => document.removeEventListener('selectionchange', onSelection), {once: true});
+  dialog.addEventListener('pointerdown', e => { if (e.target === canvas && e.pointerType !== 'touch') releaseTextFocus(); }, true);
   dialog.addEventListener('touchstart', e => {
     for (const t of e.changedTouches) {
       if (t.touchType !== 'stylus') continue;
       pen.rawStylus++; showBadge(); endedTouches.delete(t.identifier);
       // Only the paper can start a stroke: a Pencil touch on a panel, button or the ruler must not draw.
       if (t.target !== canvas) continue;
+      // Claim the Pencil on the paper at once: otherwise iPadOS can read a slow press as
+      // a text-selection gesture (Copy / Look Up menu) and cancel the stroke.
+      if (e.cancelable) e.preventDefault();
+      releaseTextFocus();
       const started = e.timeStamp, queue = [sampleOfTouch(t, e)], id = t.identifier; waiting.set(id, queue);
       setTimeout(() => {
         waiting.delete(id);
@@ -867,7 +951,7 @@ export async function drawNote(original, commit) {
         showBadge();
       }, 35);
     }
-  }, {capture: true, passive: true});
+  }, {capture: true, passive: false});
   dialog.addEventListener('touchmove', e => {
     for (const t of e.changedTouches) {
       if (t.touchType !== 'stylus') continue;
@@ -915,6 +999,7 @@ export async function drawNote(original, commit) {
     return all;
   }
   function doUndo() {
+    if (floating) { cancelFloating(); return; }
     if (saving || active || !history.length) return;
     const entry = history.pop();
     if (entry.stroke) {
@@ -989,9 +1074,10 @@ export async function drawNote(original, commit) {
     return b;
   });
   function selectTool(name) {
+    if (name !== 'Select') placeFloating?.();
     tool.value = name;
     for (const b of toolButtons) { const on = b.getAttribute('aria-label') === name; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; }
-    width.value = toolState[name].width; opacity.value = toolState[name].opacity;
+    opacity.value = toolState[name].opacity;
     widthField.show(); opacityField.show(); drawPreview();
   }
   toolGroup.addEventListener('keydown', e => {
@@ -1317,7 +1403,7 @@ export async function drawNote(original, commit) {
     };
     window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', end, true); window.addEventListener('pointercancel', end, true);
   }
-  layersButton.addEventListener('click', () => refreshLayers());
+  layersButton.addEventListener('click', () => { placeFloating(); refreshLayers(); });
   refreshLayers();
 
   const paperButton = iconButton('Paper', 'paper');
@@ -1374,7 +1460,7 @@ export async function drawNote(original, commit) {
 
   // ---- View: zoom, rotate, pan, fit and full screen -----------------------
   let zoom = 1, angle = 0, panX = 0, panY = 0;
-  function transform() { plane.style.transform = 'translate(' + panX + 'px,' + panY + 'px) rotate(' + angle + 'rad) scale(' + zoom + ')'; }
+  function transform() { plane.style.transform = 'translate(' + panX + 'px,' + panY + 'px) rotate(' + angle + 'rad) scale(' + zoom + ')'; if (floating) showFloating(); }
   function localPoint(e, rect = plane.getBoundingClientRect()) {
     const dx = e.clientX - rect.left - rect.width / 2, dy = e.clientY - rect.top - rect.height / 2;
     return {x: plane.clientWidth / 2 + (dx * Math.cos(angle) + dy * Math.sin(angle)) / zoom, y: plane.clientHeight / 2 + (-dx * Math.sin(angle) + dy * Math.cos(angle)) / zoom};
@@ -1386,6 +1472,7 @@ export async function drawNote(original, commit) {
   function menuItem(label, icon, action) {
     const b = document.createElement('button'); b.type = 'button'; b.innerHTML = ICONS[icon]; b.append(label); b.onclick = action; menu.append(b); return b;
   }
+  menuItem('Insert image…', 'image', () => { closePops(); imageFile.click(); });
   menuItem('Fit width', 'fitWidth', () => setFit('width'));
   menuItem('Fit whole page', 'fitPage', () => setFit('page'));
   menuItem('Pen check', 'select', () => { closePops(); say(penReport()); });
@@ -1429,6 +1516,7 @@ export async function drawNote(original, commit) {
   insert.title = (original ? 'Update the drawing in your note' : 'Insert the drawing into your note') + ' (⌘↩)';
   insert.onclick = async () => {
     if (saving) return;
+    placeFloating();
     active = null;
     saving = true; insert.disabled = true; closePops(); say('Saving to note…', true);
     try {
@@ -1461,6 +1549,7 @@ export async function drawNote(original, commit) {
   confirmBox.append(confirmCard);
   function requestClose() {
     if (saving) return;
+    placeFloating();
     closePops();
     if (!changed) { dialog.close(); return; }
     confirmBox.hidden = false; confirmStay.focus();
@@ -1472,6 +1561,7 @@ export async function drawNote(original, commit) {
   function escapeStep() {
     if (!confirmBox.hidden) { confirmBox.hidden = true; return; }
     if (pops.some(p => !p.hidden)) { closePops(); return; }
+    if (placeFloating()) return;
     requestClose();
   }
   dialog.oncancel = e => { e.preventDefault(); escapeStep(); };
@@ -1501,6 +1591,8 @@ export async function drawNote(original, commit) {
     if (mod && key === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
     else if (mod && key === 'y') { e.preventDefault(); doRedo(); }
     else if (mod && key === 'enter') { e.preventDefault(); insert.click(); }
+    else if (floating && (key === 'delete' || key === 'backspace')) { e.preventDefault(); deleteFloating(); }
+    else if (floating && key === 'enter') { e.preventDefault(); placeFloating(); }
   }
 
   // ---- Assemble --------------------------------------------------------------
@@ -1535,15 +1627,31 @@ export async function drawNote(original, commit) {
   captureButton.setAttribute('aria-pressed', 'false');
   const swapButton = refButton('Swap sides', 'swap', () => { refSide = refSide === 'left' ? 'right' : 'left'; layoutSplit(); remember(); });
   const closeRef = refButton('Close the PDF', 'close', () => closeReference());
+  let refFile = null;
+  const keepRef = refButton('Add this PDF to your library', 'plus', async () => {
+    const source = globalThis.keepitPdfLibrary;
+    if (!refFile || !reference || !source?.add) return;
+    keepRef.disabled = true;
+    try {
+      say('Adding ' + reference.name + ' to your library…', true);
+      const added = await source.add(refFile, reference.name);
+      if (!reference || reference.itemId) return;
+      reference = {...reference, itemId: added.id}; refFile = null; keepRef.hidden = true;
+      for (const layer of layers) if (layer.source && !layer.source.itemId && layer.source.name === reference.name) layer.source = {...layer.source, itemId: added.id};
+      changed = true; say(added.duplicate ? 'Already in your library — linked.' : 'Added to your library. Page links now work on all your devices.');
+    } catch (err) { say(err.message || 'Could not add the PDF.', true); }
+    finally { keepRef.disabled = false; }
+  });
+  keepRef.hidden = true;
   const pageBox = document.createElement('span'); pageBox.className = 'kd-ref-pagebox'; pageBox.append(refPage, refCount);
-  refHead.append(refName, pageBox, zoomOut, zoomIn, captureButton, swapButton, closeRef);
+  refHead.append(refName, pageBox, keepRef, zoomOut, zoomIn, captureButton, swapButton, closeRef);
   refPane.append(refHead, refScroll, marquee);
 
   const pdfButton = iconButton('PDF beside', 'book');
   const pdfPop = popover('PDF beside the note', pdfButton);
   const pdfList = document.createElement('div'); pdfList.className = 'kd-menu kd-pdf-list'; pdfPop.append(pdfList);
   const pdfFile = document.createElement('input'); pdfFile.type = 'file'; pdfFile.accept = 'application/pdf,.pdf'; pdfFile.hidden = true;
-  pdfFile.onchange = () => { const file = pdfFile.files?.[0]; pdfFile.value = ''; if (file) openReference({name: file.name.replace(/\.pdf$/i, ''), blob: file}); };
+  pdfFile.onchange = () => { const file = pdfFile.files?.[0]; pdfFile.value = ''; if (file) openReference({name: file.name.replace(/\.pdf$/i, ''), blob: file, file}); };
   pdfButton.addEventListener('click', () => { if (!pdfPop.hidden) fillPdfList(); });
   async function fillPdfList() {
     const rows = [];
@@ -1583,6 +1691,8 @@ export async function drawNote(original, commit) {
       dropTask(refTask);
       refTask = task; refDoc = doc;
       reference = {itemId: ref.itemId || null, name: ref.name, page: Math.max(1, Math.min(doc.numPages, ref.page || 1))};
+      refFile = ref.itemId ? null : ref.file || null;
+      keepRef.hidden = !refFile || !globalThis.keepitPdfLibrary?.add;
       refZoom = ref.zoom > 0 ? ref.zoom : 1; refSide = ref.side === 'right' ? 'right' : 'left';
       refSplit = ref.split > .15 && ref.split < .85 ? ref.split : .5;
       refName.textContent = ref.name; refName.title = ref.name;
@@ -1612,7 +1722,7 @@ export async function drawNote(original, commit) {
   }
   function closeReference() {
     refToken++; setCapturing(false);
-    dropTask(refTask); refTask = null; refDoc = null; reference = null; refSlots = []; refPages.replaceChildren();
+    dropTask(refTask); refTask = null; refDoc = null; reference = null; refFile = null; keepRef.hidden = true; refSlots = []; refPages.replaceChildren();
     refPane.hidden = divider.hidden = true; dialog.classList.remove('kd-split');
     pdfButton.setAttribute('aria-pressed', 'false');
     layoutSplit();
@@ -1678,6 +1788,7 @@ export async function drawNote(original, commit) {
     const s = refSlots[n - 1]; if (!s) return;
     refScroll.scrollTop = s.slot.offsetTop - 8; trackPage();
   }
+  refPage.addEventListener('keydown', e => { if (e.key === 'Enter') refPage.blur(); });
   refPage.onchange = () => { const n = Math.round(refPage.valueAsNumber); if (n >= 1 && n <= refSlots.length) goToPage(n); else refPage.value = String(reference?.page || 1); };
   function trackPage() {
     if (!reference) return;
@@ -1776,16 +1887,9 @@ export async function drawNote(original, commit) {
       const viewport = page.getViewport({scale, offsetX: -px0 * scale, offsetY: -py0 * scale});
       await page.render({canvas: piece, canvasContext: piece.getContext('2d'), viewport}).promise;
       if (token !== refToken) return;
-      // Centre it on what is visible of the page, kept inside the paper.
-      const view = sheet.getBoundingClientRect(), p = localPoint({clientX: view.left + view.width / 2, clientY: view.top + view.height / 2});
-      const k2 = canvas.width / plane.clientWidth;
-      const cx = Math.max(outW / 2, Math.min(canvas.width - outW / 2, p.x * k2)), cy = Math.max(outH / 2, Math.min(canvas.height - outH / 2, p.y * k2));
-      const pixels = document.createElement('canvas'); pixels.width = canvas.width; pixels.height = canvas.height;
-      pixels.getContext('2d').drawImage(piece, Math.round(cx - outW / 2), Math.round(cy - outH / 2));
-      const before = snapshot();
-      const layer = newLayer({name: reference.name + ' · p. ' + n, rasterImg: pixels, source: {itemId: reference.itemId, name: reference.name, page: n}});
-      insertAbove(current, layer); current = layer; paperSelected = false; commitState(before);
-      setCapturing(false); say('Captured page ' + n + ' onto the page as a new layer');
+      setCapturing(false);
+      placeImage(piece, reference.name + ' · p. ' + n, {source: {itemId: reference.itemId, name: reference.name, page: n}, widthPx: outW});
+      say('Captured page ' + n + ' — drag, resize or rotate it, then tap Done');
     } catch (err) { say(err.message || 'Could not capture that region.', true); }
   }
   // A captured layer links back to its PDF page.
@@ -1794,6 +1898,234 @@ export async function drawNote(original, commit) {
     if (reference && (source.itemId ? reference.itemId === source.itemId : reference.name === source.name)) { goToPage(source.page); return; }
     if (source.itemId) openReference({itemId: source.itemId, name: source.name, page: source.page});
     else say('Open ' + source.name + ' from this device to see page ' + source.page + '.', true);
+  }
+
+  // ---- Selection: lasso, then move / resize / rotate --------------------------
+  // The lasso lifts what it encloses on the current layer: whole strokes (kept as
+  // vectors, so ink stays crisp at any size) and pixels (captured or merged images).
+  // The lifted piece floats above the page until it is placed.
+  const selLayer = document.createElement('div'); selLayer.className = 'kd-sel-layer';
+  const lassoSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); lassoSvg.setAttribute('class', 'kd-lasso'); lassoSvg.setAttribute('preserveAspectRatio', 'none');
+  const lassoPath = document.createElementNS('http://www.w3.org/2000/svg', 'path'); lassoSvg.append(lassoPath);
+  const selBox = document.createElement('div'); selBox.className = 'kd-sel'; selBox.hidden = true;
+  selBox.setAttribute('role', 'group'); selBox.setAttribute('aria-label', 'Selection');
+  const selPreview = document.createElement('canvas'); selPreview.className = 'kd-sel-preview';
+  const selHandle = name => { const h = document.createElement('button'); h.type = 'button'; h.className = 'kd-sel-h kd-sel-' + name; h.dataset.handle = name; h.tabIndex = -1; h.setAttribute('aria-label', name === 'rotate' ? 'Rotate selection' : 'Resize selection'); return h; };
+  selBox.append(selPreview, selHandle('nw'), selHandle('ne'), selHandle('sw'), selHandle('se'), selHandle('rotate'));
+  const selBar = document.createElement('div'); selBar.className = 'kd-sel-bar'; selBar.hidden = true;
+  const selAction = (label, action) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = e => { e.stopPropagation(); action(); }; return b; };
+  selBar.append(selAction('Duplicate', () => duplicateFloating()), selAction('Delete', () => deleteFloating()), selAction('Done', () => placeFloating()));
+  selLayer.append(lassoSvg, selBox, selBar);
+  const k = () => plane.clientWidth / canvas.width;
+  const toCanvas = e => { const p = localPoint(e), f = k(); return {x: p.x / f, y: p.y / f}; };
+  function inside(poly, x, y) {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) hit = !hit;
+    }
+    return hit;
+  }
+  function strokeBox(s) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of s.points) { const r = (p.width || 1) / 2 + 2; x0 = Math.min(x0, p.x - r); y0 = Math.min(y0, p.y - r); x1 = Math.max(x1, p.x + r); y1 = Math.max(y1, p.y + r); }
+    return {x0, y0, x1, y1};
+  }
+  function alphaBox(c, area) {
+    const X = Math.max(0, Math.floor(area.x0)), Y = Math.max(0, Math.floor(area.y0)), W = Math.min(c.width, Math.ceil(area.x1)) - X, H = Math.min(c.height, Math.ceil(area.y1)) - Y;
+    if (W <= 0 || H <= 0) return null;
+    const d = c.getContext('2d').getImageData(X, Y, W, H).data;
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    return x1 < 0 ? null : {x0: X + x0, y0: Y + y0, x1: X + x1 + 1, y1: Y + y1 + 1};
+  }
+  const blank = () => Object.assign(document.createElement('canvas'), {width: canvas.width, height: canvas.height});
+  // Starts a floating piece. `before` is the state undo returns to.
+  function float({layer, pieces = [], raster = null, box, before, fresh = false}) {
+    floating = {layer, strokes: pieces, raster, box, before, fresh, dx: 0, dy: 0, s: 1, r: 0};
+    const w = Math.max(1, Math.ceil(box.x1 - box.x0)), h = Math.max(1, Math.ceil(box.y1 - box.y0));
+    selPreview.width = w; selPreview.height = h;
+    const g = selPreview.getContext('2d');
+    if (raster) g.drawImage(raster, box.x0, box.y0, w, h, 0, 0, w, h);
+    g.save(); g.translate(-box.x0, -box.y0); for (const s of pieces) paintWhole(g, s); g.restore();
+    layer.dirty = true; repaint(); showFloating();
+    dialog.classList.add('kd-selecting');
+  }
+  function showFloating() {
+    const f = floating; if (!f) { selBox.hidden = selBar.hidden = true; return; }
+    const kk = k(), w = (f.box.x1 - f.box.x0) * f.s, h = (f.box.y1 - f.box.y0) * f.s;
+    const cx = (f.box.x0 + f.box.x1) / 2 + f.dx, cy = (f.box.y0 + f.box.y1) / 2 + f.dy;
+    Object.assign(selBox.style, {left: (cx - w / 2) * kk + 'px', top: (cy - h / 2) * kk + 'px', width: w * kk + 'px', height: h * kk + 'px', transform: 'rotate(' + f.r + 'rad)'});
+    // The handles keep their size whatever the page zoom.
+    selBox.style.setProperty('--kd-hs', 1 / zoom);
+    selBar.style.left = cx * kk + 'px'; selBar.style.top = (cy - Math.max(w, h) / 2) * kk + 'px'; selBar.style.setProperty('--kd-hs', 1 / zoom);
+    selBox.hidden = selBar.hidden = false;
+  }
+  function matrix(f) {
+    const cx = (f.box.x0 + f.box.x1) / 2, cy = (f.box.y0 + f.box.y1) / 2, c = Math.cos(f.r) * f.s, s = Math.sin(f.r) * f.s;
+    return {a: c, b: s, c: -s, d: c, e: cx + f.dx - c * cx + s * cy, f: cy + f.dy - s * cx - c * cy};
+  }
+  function transformed(f) {
+    const m = matrix(f);
+    // Always new stroke objects: the undo history keeps the originals untouched.
+    return f.strokes.map(st => {
+      const out = {...st};
+      out.points = out.points.map(p => ({...p, x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f, width: Math.round(p.width * f.s * 100) / 100, ...(p.az != null ? {az: Math.round((p.az + f.r) * 100) / 100} : {})}));
+      return out;
+    });
+  }
+  function rasterInto(f, target) {
+    if (!f.raster) return target;
+    const out = target || blank(), g = out.getContext('2d'), m = matrix(f);
+    g.save(); g.setTransform(m.a, m.b, m.c, m.d, m.e, m.f); g.imageSmoothingQuality = 'high'; g.drawImage(f.raster, 0, 0); g.restore();
+    return out;
+  }
+  function layerPixels(layer) {
+    if (!layer.rasterImg) return null;
+    const c = blank(); c.getContext('2d').drawImage(layer.rasterImg, 0, 0, c.width, c.height); return c;
+  }
+  // Writes the floating piece onto its layer with its move, size and turn.
+  function placeFloating() {
+    const f = floating; if (!f) return false;
+    floating = null; dialog.classList.remove('kd-selecting'); showFloating();
+    if (layers.includes(f.layer)) {
+      strokes.push(...transformed(f));
+      if (f.raster) { f.layer.rasterImg = rasterInto(f, layerPixels(f.layer)); f.layer.raster = null; }
+      f.layer.dirty = true;
+    }
+    commitState(f.before); repaint(); refreshLayers();
+    return true;
+  }
+  function cancelFloating() {
+    const f = floating; if (!f) return false;
+    floating = null; dialog.classList.remove('kd-selecting'); showFloating();
+    restore(f.before); repaint(); refreshHistory(); refreshLayers();
+    return true;
+  }
+  function deleteFloating() {
+    const f = floating; if (!f) return;
+    floating = null; dialog.classList.remove('kd-selecting'); showFloating();
+    if (f.fresh && layers.includes(f.layer) && !f.layer.rasterImg && !strokes.some(s => (s.layer ?? 0) === f.layer.id)) { layers.splice(layers.indexOf(f.layer), 1); if (current === f.layer) current = layers.at(-1); }
+    commitState(f.before); repaint(); refreshLayers(); say('Selection deleted');
+  }
+  function duplicateFloating() {
+    const f = floating; if (!f) return;
+    const copies = transformed(f).map(s => ({...s, id: undefined})), raster = f.raster ? rasterInto(f, null) : null;
+    const box = {x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity};
+    const grow = b => { if (!b) return; box.x0 = Math.min(box.x0, b.x0); box.y0 = Math.min(box.y0, b.y0); box.x1 = Math.max(box.x1, b.x1); box.y1 = Math.max(box.y1, b.y1); };
+    copies.forEach(s => grow(strokeBox(s))); if (raster) grow(alphaBox(raster, {x0: 0, y0: 0, x1: raster.width, y1: raster.height}));
+    const layer = f.layer;
+    placeFloating();
+    if (!isFinite(box.x0)) return;
+    float({layer, pieces: copies, raster, box, before: snapshot()});
+    const shift = 12 * pxPerMm / 4; floating.dx = shift; floating.dy = shift; showFloating();
+    say('Duplicated — drag the copy into place');
+  }
+  function liftSelection(poly) {
+    const layer = current;
+    if (!layer.visible) { say('Show this layer to select on it.', true); return; }
+    const before = snapshot();
+    const picked = strokes.filter(s => (s.layer ?? 0) === layer.id && s.points.length && s.tool !== 'Eraser' &&
+      s.points.filter(p => inside(poly, p.x, p.y)).length * 2 >= s.points.length);
+    let box = {x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity};
+    const grow = b => { if (!b) return; box.x0 = Math.min(box.x0, b.x0); box.y0 = Math.min(box.y0, b.y0); box.x1 = Math.max(box.x1, b.x1); box.y1 = Math.max(box.y1, b.y1); };
+    picked.forEach(s => grow(strokeBox(s)));
+    let cut = null;
+    const pixels = layerPixels(layer);
+    if (pixels) {
+      const path = new Path2D(); poly.forEach((p, i) => i ? path.lineTo(p.x, p.y) : path.moveTo(p.x, p.y)); path.closePath();
+      cut = blank(); const g = cut.getContext('2d'); g.drawImage(pixels, 0, 0); g.globalCompositeOperation = 'destination-in'; g.fill(path);
+      const area = {x0: Math.min(...poly.map(p => p.x)), y0: Math.min(...poly.map(p => p.y)), x1: Math.max(...poly.map(p => p.x)), y1: Math.max(...poly.map(p => p.y))};
+      const found = alphaBox(cut, area);
+      if (found) {
+        grow(found);
+        const rest = pixels.getContext('2d'); rest.globalCompositeOperation = 'destination-out'; rest.fill(path); rest.globalCompositeOperation = 'source-over';
+        layer.rasterImg = pixels; layer.raster = null;
+      } else cut = null;
+    }
+    if (!picked.length && !cut) { say('Nothing on this layer inside the selection.', true); return; }
+    for (const s of picked) strokes.splice(strokes.indexOf(s), 1);
+    float({layer, pieces: picked, raster: cut, box: {x0: Math.max(0, box.x0), y0: Math.max(0, box.y0), x1: Math.min(canvas.width, box.x1), y1: Math.min(canvas.height, box.y1)}, before});
+    say('Drag to move · corners resize · round handle rotates');
+  }
+  // Lasso: drawn with the Pencil, a mouse or a finger while the Select tool is on.
+  function selectDown(event) {
+    event.preventDefault();
+    if (floating) { placeFloating(); return; }   // tapping outside places the selection
+    lasso = {id: event.pointerId, points: [toCanvas(event)]};
+    lassoSvg.setAttribute('viewBox', '0 0 ' + canvas.width + ' ' + canvas.height);
+    lassoPath.setAttribute('d', '');
+    const move = e => {
+      if (e.pointerId !== lasso?.id) return;
+      const samples = e.getCoalescedEvents?.();
+      for (const s of samples?.length ? samples : [e]) lasso.points.push(toCanvas(s));
+      lassoPath.setAttribute('d', 'M' + lasso.points.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('L') + 'Z');
+    };
+    const end = e => {
+      if (e.pointerId !== lasso?.id) return;
+      window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', end, true); window.removeEventListener('pointercancel', end, true);
+      const poly = lasso.points; lasso = null; lassoPath.setAttribute('d', '');
+      const span = Math.max(...poly.map(p => p.x)) - Math.min(...poly.map(p => p.x)) + Math.max(...poly.map(p => p.y)) - Math.min(...poly.map(p => p.y));
+      if (e.type === 'pointerup' && poly.length > 2 && span > 4 * pxPerMm) liftSelection(poly);
+    };
+    window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', end, true); window.addEventListener('pointercancel', end, true);
+  }
+  // Move, resize and rotate the floating piece (Pencil, mouse or finger).
+  selBox.addEventListener('pointerdown', e => {
+    if (!floating) return;
+    e.preventDefault(); e.stopPropagation();
+    try { selBox.setPointerCapture(e.pointerId); } catch {}
+    const f = floating, kind = e.target.dataset?.handle || 'move', p0 = toCanvas(e);
+    const cx = (f.box.x0 + f.box.x1) / 2 + f.dx, cy = (f.box.y0 + f.box.y1) / 2 + f.dy;
+    const start = {dx: f.dx, dy: f.dy, s: f.s, r: f.r, d: Math.hypot(p0.x - cx, p0.y - cy) || 1, a: Math.atan2(p0.y - cy, p0.x - cx)};
+    const move = ev => {
+      if (ev.pointerId !== e.pointerId || floating !== f) return;
+      const p = toCanvas(ev);
+      if (kind === 'move') { f.dx = start.dx + p.x - p0.x; f.dy = start.dy + p.y - p0.y; }
+      else if (kind === 'rotate') {
+        let r = start.r + Math.atan2(p.y - cy, p.x - cx) - start.a;
+        const quarter = Math.PI / 2, near = Math.round(r / quarter) * quarter;
+        if (Math.abs(r - near) < .05) r = near;          // snap to square
+        f.r = r;
+      } else f.s = Math.max(.05, Math.min(20, start.s * Math.hypot(p.x - cx, p.y - cy) / start.d));
+      showFloating();
+    };
+    const up = ev => { if (ev.pointerId !== e.pointerId) return; selBox.removeEventListener('pointermove', move); selBox.removeEventListener('pointerup', up); selBox.removeEventListener('pointercancel', up); };
+    selBox.addEventListener('pointermove', move); selBox.addEventListener('pointerup', up); selBox.addEventListener('pointercancel', up);
+  });
+  selBar.addEventListener('pointerdown', e => e.stopPropagation());
+
+  // ---- Insert an image --------------------------------------------------------
+  const imageFile = document.createElement('input'); imageFile.type = 'file'; imageFile.accept = 'image/*'; imageFile.hidden = true;
+  imageFile.onchange = async () => {
+    const file = imageFile.files?.[0]; imageFile.value = ''; if (!file) return;
+    const url = URL.createObjectURL(file);
+    try {
+      say('Placing ' + file.name + '…', true);
+      const img = new Image(); img.src = url; await img.decode();
+      placeImage(img, file.name.replace(/\.[^.]+$/, '') || 'Image');
+    } catch { say('That image could not be opened.', true); }
+    finally { URL.revokeObjectURL(url); }
+  };
+  // Puts an image (or PDF capture) on a new layer, centred on what is visible and
+  // selected, so it can be moved and sized straight away.
+  function placeImage(img, name, {source, widthPx} = {}) {
+    placeFloating();
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    let w = widthPx || Math.min(iw, canvas.width * .6), h = w * ih / iw;
+    if (h > canvas.height * .6) { h = canvas.height * .6; w = h * iw / ih; }
+    const view = sheet.getBoundingClientRect(), p = toCanvas({clientX: view.left + view.width / 2, clientY: view.top + view.height / 2});
+    const cx = Math.max(w / 2, Math.min(canvas.width - w / 2, p.x)), cy = Math.max(h / 2, Math.min(canvas.height - h / 2, p.y));
+    const raster = blank(), g = raster.getContext('2d'); g.imageSmoothingQuality = 'high';
+    const box = {x0: Math.round(cx - w / 2), y0: Math.round(cy - h / 2), x1: Math.round(cx - w / 2) + Math.round(w), y1: Math.round(cy - h / 2) + Math.round(h)};
+    g.drawImage(img, box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+    const before = snapshot();
+    const layer = newLayer({name, ...(source ? {source} : {})});
+    insertAbove(current, layer); current = layer; paperSelected = false;
+    if (tool.value !== 'Select') selectTool('Select');
+    float({layer, raster, box, before, fresh: true});
+    refreshLayers();
+    say('Drag to move · corners resize · round handle rotates · Done to place');
   }
 
   const viewGroup = pill(pdfButton, layersButton, guidesButton, paperButton, toggle, fullscreenButton, moreButton);
@@ -1875,14 +2207,15 @@ export async function drawNote(original, commit) {
     for (const stroke of knownStrokes()) for (const p of stroke.points) { p.x *= canvas.width / oldWidth; p.y *= canvas.height / oldHeight; p.width *= pxPerMm / oldPx; }
     layers.forEach(l => l.dirty = true); changed = true; insert.disabled = false; say(''); repaint(); describe(); refreshLayers();
   });
-  plane.append(canvas, edge); sheet.append(plane);
+  plane.append(canvas, edge, selLayer); sheet.append(plane);
   stage.append(sheet, bar, dock, status);
-  dialog.append(style, refPane, divider, stage, pdfFile, ...pops, confirmBox);
+  dialog.append(style, refPane, divider, stage, pdfFile, imageFile, ...pops, confirmBox);
   document.body.append(dialog);
   selectTool('Pen');
   setColor(color.value);
   refreshHistory();
   paper(); repaint(); describe();
+  releaseTextFocus();
   dialog.showModal();
   resize.observe(dialog);
   adapt();
@@ -1912,7 +2245,9 @@ export async function editDrawing({editor,assets,selection,insertPosition,makeAs
       const cursor=tr.doc.resolve(Math.min(tr.doc.content.size,Math.max(0,pos)));
       const at=cursor.depth?cursor.after(1):cursor.pos;
       // A new drawing made beside a PDF is captioned with the PDF and page.
-      const ref=meta.reference, caption=ref?.name?editor.schema.text('Beside '+ref.name+' · p. '+ref.page):null;
+      // Library PDFs get a link that opens the PDF at that page from the saved note.
+      const ref=meta.reference, link=ref?.itemId&&editor.schema.marks.link?[editor.schema.marks.link.create({href:location.origin+'/partners/connected/?connected-app=keepit&open-pdf='+encodeURIComponent(ref.itemId)+'&page='+ref.page})]:undefined;
+      const caption=ref?.name?editor.schema.text('Beside '+ref.name+' · p. '+ref.page,link):null;
       if(dispatch)tr.insert(at,editor.schema.nodes.figure.create(attrs,caption));
       return true;
     });
