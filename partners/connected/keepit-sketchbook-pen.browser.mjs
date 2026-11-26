@@ -48,7 +48,10 @@ try{
    await dialog.getByRole('radio',{name:'Off',exact:true}).click();
    await page.keyboard.press('Escape');
    await line(.5,.05);await line(.6,.8);
-   assert.ok(Math.abs(await thickness(.5)-await thickness(.6))<=2,'Pressure Off gives an even line');
+   // Speed still shapes the line, and simulated strokes run at the test machine's pace,
+   // so compare against the pressure effect itself rather than an exact pixel count.
+   const [offLight,offHard]=[await thickness(.5),await thickness(.6)];
+   assert.ok(Math.abs(offLight-offHard)<(hard-light)/2,'Pressure Off gives an even line: '+offLight+' vs '+offHard+' (pressure on: '+light+' vs '+hard+')');
    await dialog.getByRole('button',{name:'Ink color and size'}).click();
    await dialog.getByRole('radio',{name:'Normal',exact:true}).click();
    await page.keyboard.press('Escape');
