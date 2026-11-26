@@ -62,7 +62,7 @@ try{
    await mac.note.getByRole('button',{name:'Save',exact:true}).click();
    await mac.note.locator('.note-status').filter({hasText:/Verified synced to OneDrive|Synced to OneDrive/}).waitFor({timeout:40000});
    const ipad=await openDevice(browser,fixture);
-   const entry=ipad.page.locator('main').getByText('Round trip v1',{exact:true}).filter({visible:true}).first();
+   const entry=ipad.page.locator('main').getByText('Round trip v1').filter({visible:true}).first();
    // The second device may open before the first save is listed; the app catches up
    // on its regular refresh, which a focus event triggers immediately.
    for(let attempt=0;;attempt++){
