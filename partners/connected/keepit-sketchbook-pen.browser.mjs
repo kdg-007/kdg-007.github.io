@@ -100,7 +100,8 @@ try{
    assert.ok(heavyCover>faintCover*1.8,'harder pencil pressure fills more paper tooth: '+faintCover+' < '+heavyCover);
    assert.ok(faintCover>0&&heavyCover<.97,'pencil line is grainy, not solid or empty: '+faintCover+', '+heavyCover);
    const band=(y)=>surface.evaluate((c,y)=>{const g=c.getContext('2d'),x=Math.round(c.width*.35),cy=Math.round(c.height*y),d=g.getImageData(x,cy-80,1,160).data;let n=0;for(let i=0;i<160;i++)if(d[i*4]<200)n++;return n;},y);
-   await pencilLine(.66,.5,{tiltX:10,tiltY:60});
+   // Both forms of tilt: tiltX/tiltY and WebKit's altitude/azimuth angles.
+   await pencilLine(.66,.5,{tiltX:10,tiltY:60,altitudeAngle:Math.PI/2-Math.hypot(10,60)*Math.PI/180,azimuthAngle:Math.atan2(60,10)});
    await pencilLine(.76,.5);
    const [wide,thin2]=[await band(.66),await band(.76)];
    assert.ok(wide>thin2*2,'a tilted pencil shades wider: '+thin2+' vs '+wide);

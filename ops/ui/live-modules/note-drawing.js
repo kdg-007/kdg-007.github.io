@@ -660,7 +660,14 @@ export async function drawNote(original, commit) {
   // happens once per frame from the recorded samples. `live` is the working
   // state of the stroke being drawn and is never saved.
   let live = null;
-  const sampleOf = e => ({clientX: e.clientX, clientY: e.clientY, pressure: e.pressure, tiltX: e.tiltX || 0, tiltY: e.tiltY || 0, pointerType: e.pointerType, t: e.timeStamp});
+  // Tilt arrives as tiltX/tiltY or, in WebKit, possibly only as altitude/azimuth angles.
+  const tiltOf = e => {
+    if (e.tiltX || e.tiltY) return [e.tiltX, e.tiltY];
+    if (typeof e.altitudeAngle !== 'number' || e.altitudeAngle >= Math.PI / 2 - .001) return [0, 0];
+    const lean = (Math.PI / 2 - e.altitudeAngle) * 180 / Math.PI, az = e.azimuthAngle || 0;
+    return [lean * Math.cos(az), lean * Math.sin(az)];
+  };
+  const sampleOf = e => { const [tiltX, tiltY] = tiltOf(e); return {clientX: e.clientX, clientY: e.clientY, pressure: e.pressure, tiltX, tiltY, pointerType: e.pointerType, t: e.timeStamp}; };
   function addSample(sample, rect) {
     const local = localPoint(sample, rect);
     const depth = PRESSURE_DEPTH[pressureMode] ?? .75;
