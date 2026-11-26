@@ -894,12 +894,32 @@ export async function drawNote(original, commit) {
     return {clientX: t.clientX, clientY: t.clientY, pressure: t.force || 0, tiltX: lean * Math.cos(az), tiltY: lean * Math.sin(az), pointerType: 'pen', t: e.timeStamp};
   };
   const waiting = new Map(), endedTouches = new Set();
+  // Text focus or a selection (the note underneath, the page number, a hex field) lets
+  // iPadOS show its Copy / Look Up / Writing Tools menu, which interrupts the Pencil.
+  const editable = el => !!el && el !== document.body && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  function releaseTextFocus() {
+    if (editable(document.activeElement)) document.activeElement.blur();
+    const selection = getSelection();
+    if (selection && selection.rangeCount && !selection.isCollapsed) selection.removeAllRanges();
+  }
+  const onSelection = () => {
+    if (!dialog.open) return;
+    const selection = getSelection(), node = selection?.anchorNode, el = node?.nodeType === 1 ? node : node?.parentElement;
+    if (selection && !selection.isCollapsed && !(el && dialog.contains(el) && editable(el.closest('input,textarea,select,[contenteditable="true"]')))) selection.removeAllRanges();
+  };
+  document.addEventListener('selectionchange', onSelection);
+  dialog.addEventListener('close', () => document.removeEventListener('selectionchange', onSelection), {once: true});
+  dialog.addEventListener('pointerdown', e => { if (e.target === canvas && e.pointerType !== 'touch') releaseTextFocus(); }, true);
   dialog.addEventListener('touchstart', e => {
     for (const t of e.changedTouches) {
       if (t.touchType !== 'stylus') continue;
       pen.rawStylus++; showBadge(); endedTouches.delete(t.identifier);
       // Only the paper can start a stroke: a Pencil touch on a panel, button or the ruler must not draw.
       if (t.target !== canvas) continue;
+      // Claim the Pencil on the paper at once: otherwise iPadOS can read a slow press as
+      // a text-selection gesture (Copy / Look Up menu) and cancel the stroke.
+      if (e.cancelable) e.preventDefault();
+      releaseTextFocus();
       const started = e.timeStamp, queue = [sampleOfTouch(t, e)], id = t.identifier; waiting.set(id, queue);
       setTimeout(() => {
         waiting.delete(id);
@@ -912,7 +932,7 @@ export async function drawNote(original, commit) {
         showBadge();
       }, 35);
     }
-  }, {capture: true, passive: true});
+  }, {capture: true, passive: false});
   dialog.addEventListener('touchmove', e => {
     for (const t of e.changedTouches) {
       if (t.touchType !== 'stylus') continue;
@@ -1741,6 +1761,7 @@ export async function drawNote(original, commit) {
     const s = refSlots[n - 1]; if (!s) return;
     refScroll.scrollTop = s.slot.offsetTop - 8; trackPage();
   }
+  refPage.addEventListener('keydown', e => { if (e.key === 'Enter') refPage.blur(); });
   refPage.onchange = () => { const n = Math.round(refPage.valueAsNumber); if (n >= 1 && n <= refSlots.length) goToPage(n); else refPage.value = String(reference?.page || 1); };
   function trackPage() {
     if (!reference) return;
@@ -1946,6 +1967,7 @@ export async function drawNote(original, commit) {
   setColor(color.value);
   refreshHistory();
   paper(); repaint(); describe();
+  releaseTextFocus();
   dialog.showModal();
   resize.observe(dialog);
   adapt();
