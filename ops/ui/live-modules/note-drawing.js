@@ -172,6 +172,11 @@ const STYLE = `
 .kd-field.kd-check{flex-direction:row;align-items:center;gap:10px;color:var(--kd-text)}.kd-check input{width:20px;height:20px;accent-color:#1d5d78}
 .kd-field>span{display:flex;justify-content:space-between}
 .kd-field b{font-weight:500;color:var(--kd-text);font-variant-numeric:tabular-nums}
+.kd-nib-list{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.kd-nib{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:52px;border:1px solid var(--kd-line);border-radius:10px;background:none;color:var(--kd-text);font-size:12px;font-variant-numeric:tabular-nums;cursor:pointer;padding:4px 2px}
+.kd-nib i{display:block;border-radius:50%;background:var(--kd-ink)}
+.kd-nib[aria-checked="true"]{border-color:var(--kd-accent);background:color-mix(in srgb,var(--kd-accent) 14%,transparent);font-weight:650}
+.kd-nib:focus-visible{outline:2px solid var(--kd-focus);outline-offset:1px}
 .kd-pop select,.kd-pop input[type=number],.kd-pop input[type=text]{min-height:40px;border-radius:10px;border:1px solid var(--kd-line);background:var(--app-surface,#fff);padding:0 10px;color:var(--kd-text);user-select:text;-webkit-user-select:text}
 .kd-pop input[type=range]{width:100%;accent-color:var(--kd-accent);min-height:32px}
 .kd-row{display:flex;gap:8px;align-items:center}
@@ -262,10 +267,23 @@ export async function drawNote(original, commit) {
   // ---- Ink and tool state -------------------------------------------------
   // Each tool remembers its own size and opacity, so switching from the
   // highlighter back to the pen does not leave the pen translucent.
+  // Nib sizes are real millimetres on paper, like technical pens and pencil leads.
+  const NIBS = {
+    Pen: [.1, .2, .3, .4, .5, .6, .8, 1, 1.2, 1.4, 2],
+    Pencil: [.3, .5, .7, .9, 1.4, 2],
+    Marker: [.5, 1, 2, 3, 5, 8],
+    Highlighter: [2, 3, 4, 5, 8, 12],
+    'Straight line': [.1, .2, .3, .4, .5, .6, .8, 1, 1.2, 1.4, 2],
+    Eraser: [1, 2, 5, 10, 20, 40],
+  };
+  const NIB_DEFAULT = {Pen: .4, Pencil: .5, Marker: 2, Highlighter: 5, 'Straight line': .4, Eraser: 5};
+  let savedNibs = {};
+  try { savedNibs = JSON.parse(localStorage.getItem('keepit-sketch-nibs-mm') || '{}') || {}; } catch {}
   const toolState = Object.fromEntries(TOOLS.map(name => [name, {
-    width: 1,
+    mm: (NIBS[name] || NIBS.Pen).includes(savedNibs[name]) ? savedNibs[name] : NIB_DEFAULT[name] ?? .4,
     opacity: name === 'Highlighter' ? .45 : 1,
   }]));
+  function rememberNibs() { try { localStorage.setItem('keepit-sketch-nibs-mm', JSON.stringify(Object.fromEntries(TOOLS.map(n => [n, toolState[n].mm])))); } catch {} }
   const tool = {value: 'Pen'};
   const color = document.createElement('input');
   color.type = 'color';
@@ -291,9 +309,37 @@ export async function drawNote(original, commit) {
     show();
     return {field, input, show};
   }
-  const widthField = rangeField('Thickness', .2, 5, 1, .05, v => v.toFixed(2) + '×');
+  // Nib size: one tap per standard size; the list follows the selected tool.
+  const nibField = document.createElement('div'); nibField.className = 'kd-field kd-nibs';
+  const nibHead = document.createElement('span'); nibHead.className = 'kd-range-head';
+  const nibOut = document.createElement('b'); nibHead.append('Nib size', nibOut);
+  const nibList = document.createElement('div'); nibList.className = 'kd-nib-list';
+  nibList.setAttribute('role', 'radiogroup'); nibList.setAttribute('aria-label', 'Nib size');
+  nibField.append(nibHead, nibList);
+  const formatMm = v => (v < 1 ? String(v).replace(/^0/, '0') : String(v)) + ' mm';
+  const width = {get value() { return toolState[tool.value].mm; }};
+  function showNibs() {
+    const sizes = NIBS[tool.value] || NIBS.Pen, now = toolState[tool.value].mm;
+    nibOut.textContent = formatMm(now);
+    nibList.replaceChildren(...sizes.map(mm => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'kd-nib';
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(mm === now));
+      b.setAttribute('aria-label', formatMm(mm)); b.tabIndex = mm === now ? 0 : -1;
+      const dot = document.createElement('i'); dot.style.width = dot.style.height = Math.max(2, Math.min(22, mm * (tool.value === 'Eraser' || tool.value === 'Highlighter' ? 1.6 : 6))) + 'px';
+      b.append(dot, String(mm));
+      b.onclick = () => { toolState[tool.value].mm = mm; rememberNibs(); showNibs(); drawPreview(); };
+      return b;
+    }));
+  }
+  nibList.addEventListener('keydown', e => {
+    const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[e.key]; if (!step) return;
+    e.preventDefault(); const sizes = NIBS[tool.value] || NIBS.Pen, i = sizes.indexOf(toolState[tool.value].mm);
+    toolState[tool.value].mm = sizes[Math.max(0, Math.min(sizes.length - 1, i + step))]; rememberNibs(); showNibs(); drawPreview();
+    nibList.querySelector('[aria-checked="true"]')?.focus();
+  });
+  const widthField = {field: nibField, show: showNibs};
   const opacityField = rangeField('Opacity', .01, 1, 1, .01, v => Math.round(v * 100) + '%');
-  const width = widthField.input, opacity = opacityField.input;
+  const opacity = opacityField.input;
   const swatchList = document.createElement('div');
   swatchList.className = 'kd-swatches';
   for (const value of SWATCHES) {
@@ -345,12 +391,11 @@ export async function drawNote(original, commit) {
   previewPath.setAttribute('stroke-linecap', 'round');
   preview.append(previewPath);
   function drawPreview() {
-    const base = {Eraser: 32, Marker: 12, Highlighter: 24}[tool.value] ?? 6;
     previewPath.setAttribute('stroke', tool.value === 'Eraser' ? '#c9d2d7' : color.value);
-    previewPath.setAttribute('stroke-width', String(Math.max(1, Math.min(34, base * Number(width.value) * .55))));
+    // Shown at about twice life size so fine nibs stay visible.
+    previewPath.setAttribute('stroke-width', String(Math.max(.8, Math.min(34, toolState[tool.value].mm * 7.5))));
     previewPath.setAttribute('stroke-opacity', String(opacity.value));
   }
-  width.addEventListener('input', () => { toolState[tool.value].width = Number(width.value); drawPreview(); });
   opacity.addEventListener('input', () => { toolState[tool.value].opacity = Number(opacity.value); drawPreview(); });
 
   // ---- Paper -------------------------------------------------------------
@@ -734,12 +779,12 @@ export async function drawNote(original, commit) {
     live.prev = sample; live.n = (live.n || 0) + 1;
     const dynamic = (live.v == null ? 1 : 1.2 - .5 * Math.min(1, live.v / 2.2)) * Math.min(1, .5 + .17 * live.n);
     const toolName = active.tool;
-    const weight = toolName === 'Eraser' ? 32
-      : toolName === 'Marker' ? (14 + Math.hypot(sample.tiltX, sample.tiltY) / 4) * (1 + (f - 1) * .5)
-      : toolName === 'Highlighter' ? 26
-      : toolName === 'Pencil' ? 4.6 * (1 + (f - 1) * .55) * (1 + (dynamic - 1) * .5)
-      : 6 * f * dynamic;
-    const next = {x: local.x * canvas.width / plane.clientWidth, y: local.y * canvas.height / plane.clientHeight, width: Math.round(weight * Number(width.value) * pxPerMm / 6 * 100) / 100};
+    // The nib size is the line width at normal pressure; pressure, speed and tilt shape it around that.
+    const shape = toolName === 'Eraser' || toolName === 'Highlighter' ? 1
+      : toolName === 'Marker' ? (1 + Math.hypot(sample.tiltX, sample.tiltY) / 56) * (1 + (f - 1) * .5)
+      : toolName === 'Pencil' ? (1 + (f - 1) * .55) * (1 + (dynamic - 1) * .5)
+      : f * dynamic;
+    const next = {x: local.x * canvas.width / plane.clientWidth, y: local.y * canvas.height / plane.clientHeight, width: Math.round(toolState[toolName].mm * shape * pxPerMm * 100) / 100};
     if (rulerOn) {
       const rad = edgeAngle * Math.PI / 180, ux = Math.cos(rad), uy = Math.sin(rad);
       const ox = edgeX * canvas.width, oy = edgeY * canvas.height;
@@ -991,7 +1036,7 @@ export async function drawNote(original, commit) {
   function selectTool(name) {
     tool.value = name;
     for (const b of toolButtons) { const on = b.getAttribute('aria-label') === name; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; }
-    width.value = toolState[name].width; opacity.value = toolState[name].opacity;
+    opacity.value = toolState[name].opacity;
     widthField.show(); opacityField.show(); drawPreview();
   }
   toolGroup.addEventListener('keydown', e => {
@@ -1535,15 +1580,31 @@ export async function drawNote(original, commit) {
   captureButton.setAttribute('aria-pressed', 'false');
   const swapButton = refButton('Swap sides', 'swap', () => { refSide = refSide === 'left' ? 'right' : 'left'; layoutSplit(); remember(); });
   const closeRef = refButton('Close the PDF', 'close', () => closeReference());
+  let refFile = null;
+  const keepRef = refButton('Add this PDF to your library', 'plus', async () => {
+    const source = globalThis.keepitPdfLibrary;
+    if (!refFile || !reference || !source?.add) return;
+    keepRef.disabled = true;
+    try {
+      say('Adding ' + reference.name + ' to your library…', true);
+      const added = await source.add(refFile, reference.name);
+      if (!reference || reference.itemId) return;
+      reference = {...reference, itemId: added.id}; refFile = null; keepRef.hidden = true;
+      for (const layer of layers) if (layer.source && !layer.source.itemId && layer.source.name === reference.name) layer.source = {...layer.source, itemId: added.id};
+      changed = true; say(added.duplicate ? 'Already in your library — linked.' : 'Added to your library. Page links now work on all your devices.');
+    } catch (err) { say(err.message || 'Could not add the PDF.', true); }
+    finally { keepRef.disabled = false; }
+  });
+  keepRef.hidden = true;
   const pageBox = document.createElement('span'); pageBox.className = 'kd-ref-pagebox'; pageBox.append(refPage, refCount);
-  refHead.append(refName, pageBox, zoomOut, zoomIn, captureButton, swapButton, closeRef);
+  refHead.append(refName, pageBox, keepRef, zoomOut, zoomIn, captureButton, swapButton, closeRef);
   refPane.append(refHead, refScroll, marquee);
 
   const pdfButton = iconButton('PDF beside', 'book');
   const pdfPop = popover('PDF beside the note', pdfButton);
   const pdfList = document.createElement('div'); pdfList.className = 'kd-menu kd-pdf-list'; pdfPop.append(pdfList);
   const pdfFile = document.createElement('input'); pdfFile.type = 'file'; pdfFile.accept = 'application/pdf,.pdf'; pdfFile.hidden = true;
-  pdfFile.onchange = () => { const file = pdfFile.files?.[0]; pdfFile.value = ''; if (file) openReference({name: file.name.replace(/\.pdf$/i, ''), blob: file}); };
+  pdfFile.onchange = () => { const file = pdfFile.files?.[0]; pdfFile.value = ''; if (file) openReference({name: file.name.replace(/\.pdf$/i, ''), blob: file, file}); };
   pdfButton.addEventListener('click', () => { if (!pdfPop.hidden) fillPdfList(); });
   async function fillPdfList() {
     const rows = [];
@@ -1583,6 +1644,8 @@ export async function drawNote(original, commit) {
       dropTask(refTask);
       refTask = task; refDoc = doc;
       reference = {itemId: ref.itemId || null, name: ref.name, page: Math.max(1, Math.min(doc.numPages, ref.page || 1))};
+      refFile = ref.itemId ? null : ref.file || null;
+      keepRef.hidden = !refFile || !globalThis.keepitPdfLibrary?.add;
       refZoom = ref.zoom > 0 ? ref.zoom : 1; refSide = ref.side === 'right' ? 'right' : 'left';
       refSplit = ref.split > .15 && ref.split < .85 ? ref.split : .5;
       refName.textContent = ref.name; refName.title = ref.name;
@@ -1612,7 +1675,7 @@ export async function drawNote(original, commit) {
   }
   function closeReference() {
     refToken++; setCapturing(false);
-    dropTask(refTask); refTask = null; refDoc = null; reference = null; refSlots = []; refPages.replaceChildren();
+    dropTask(refTask); refTask = null; refDoc = null; reference = null; refFile = null; keepRef.hidden = true; refSlots = []; refPages.replaceChildren();
     refPane.hidden = divider.hidden = true; dialog.classList.remove('kd-split');
     pdfButton.setAttribute('aria-pressed', 'false');
     layoutSplit();
@@ -1912,7 +1975,9 @@ export async function editDrawing({editor,assets,selection,insertPosition,makeAs
       const cursor=tr.doc.resolve(Math.min(tr.doc.content.size,Math.max(0,pos)));
       const at=cursor.depth?cursor.after(1):cursor.pos;
       // A new drawing made beside a PDF is captioned with the PDF and page.
-      const ref=meta.reference, caption=ref?.name?editor.schema.text('Beside '+ref.name+' · p. '+ref.page):null;
+      // Library PDFs get a link that opens the PDF at that page from the saved note.
+      const ref=meta.reference, link=ref?.itemId&&editor.schema.marks.link?[editor.schema.marks.link.create({href:location.origin+'/partners/connected/?connected-app=keepit&open-pdf='+encodeURIComponent(ref.itemId)+'&page='+ref.page})]:undefined;
+      const caption=ref?.name?editor.schema.text('Beside '+ref.name+' · p. '+ref.page,link):null;
       if(dispatch)tr.insert(at,editor.schema.nodes.figure.create(attrs,caption));
       return true;
     });
