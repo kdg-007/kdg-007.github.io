@@ -1226,25 +1226,37 @@ export async function drawNote(original, commit) {
   function startDrag(e, row, layer) {
     if (selecting) return;
     e.preventDefault();
-    const grip = e.currentTarget; grip.setPointerCapture(e.pointerId);
-    const rows = [...layerList.querySelectorAll('.kd-layer:not(.kd-layer-paper)')];
-    const startY = e.clientY, from = rows.indexOf(row);
-    let target = from;
-    row.classList.add('kd-dragging');
+    // The list can be rebuilt while dragging (a thumbnail finishing after a paste),
+    // which removes the grip and its pointer capture. Follow the pointer on the
+    // window and look the rows up afresh so the drop always lands.
+    const pointerId = e.pointerId, startY = e.clientY;
+    try { e.currentTarget.setPointerCapture(pointerId); } catch {}
+    const rowsNow = () => [...layerList.querySelectorAll('.kd-layer:not(.kd-layer-paper)')];
+    const rowOf = () => layerList.querySelector('.kd-layer[data-layer="' + layer.id + '"]');
+    const from = () => rowsNow().indexOf(rowOf());
+    let target = from();
+    rowOf()?.classList.add('kd-dragging');
     const move = ev => {
-      row.style.transform = 'translateY(' + (ev.clientY - startY) + 'px)';
+      if (ev.pointerId !== pointerId) return;
+      const rows = rowsNow(), dragged = rowOf(), origin = rows.indexOf(dragged);
+      if (dragged) { dragged.classList.add('kd-dragging'); dragged.style.transform = 'translateY(' + (ev.clientY - startY) + 'px)'; }
       target = rows.length - 1;
-      for (let i = 0; i < rows.length; i++) { const r = rows[i].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) { target = i; break; } }
-      rows.forEach((r, i) => { r.classList.toggle('kd-drop-before', i === target && target < from); r.classList.toggle('kd-drop-after', i === target && target > from); });
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i] === dragged) continue;
+        const r = rows[i].getBoundingClientRect();
+        if (ev.clientY < r.top + r.height / 2) { target = i > origin ? i - 1 : i; break; }
+      }
+      rows.forEach((r, i) => { r.classList.toggle('kd-drop-before', i === target && target < origin); r.classList.toggle('kd-drop-after', i === target && target > origin); });
     };
-    const end = () => {
-      grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', end); grip.removeEventListener('pointercancel', end);
-      row.style.transform = ''; row.classList.remove('kd-dragging');
-      rows.forEach(r => r.classList.remove('kd-drop-before', 'kd-drop-after'));
+    const end = ev => {
+      if (ev.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', end, true); window.removeEventListener('pointercancel', end, true);
+      const origin = from();
+      rowsNow().forEach(r => { r.style.transform = ''; r.classList.remove('kd-dragging', 'kd-drop-before', 'kd-drop-after'); });
       // Display order is top-first; the layers array is bottom-first.
-      if (target !== from) moveLayer(layer, layers.length - 1 - target); else refreshLayers();
+      if (ev.type === 'pointerup' && origin >= 0 && target !== origin) moveLayer(layer, layers.length - 1 - target); else refreshLayers();
     };
-    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+    window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', end, true); window.addEventListener('pointercancel', end, true);
   }
   layersButton.addEventListener('click', () => refreshLayers());
   refreshLayers();
