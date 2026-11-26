@@ -3,15 +3,15 @@
   "baseline": "a87af0c10621aa233ca0ea8c30f52421f17e98bc",
   "esbuild": "0.28.2",
   "paths": {
-    "auth": "assets/keepit-auth-live-5b14504bb2da.js",
+    "auth": "assets/keepit-auth-live-c0342431b349.js",
     "transfer": "assets/keepit-transfer-hosts-6e9b7483e8b2.js",
     "provider": "assets/keepit-graph-provider-a6dfefa333bb.js",
-    "connection": "assets/keepit-onedrive-connect-372cbc7f560b.js",
-    "drawing": "assets/keepit-note-drawing-e99f0a14e368.js",
-    "editor": "assets/keepit-note-editor-dac1dfc961e7.js",
-    "ui": "assets/keepit-note-ui-7823e17e55a3.js",
-    "link": "assets/keepit-note-link-c874c79db929.js",
+    "connection": "assets/keepit-onedrive-connect-11dec60718e5.js",
+    "drawing": "assets/keepit-note-drawing-578cb5b943ec.js",
+    "editor": "assets/keepit-note-editor-0087b4d300fe.js",
+    "ui": "assets/keepit-note-ui-a5ee7d92de0c.js",
+    "link": "assets/keepit-note-link-a68eae6e61ea.js",
     "noteWorkspace": "assets/keepit-note-workspace-5ed1d98a3c40.js",
-    "entry": "assets/library-app-27ead1ebf26f.js"
+    "entry": "assets/library-app-f0629818a4f0.js"
   }
 }

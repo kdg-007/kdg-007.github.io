@@ -217,10 +217,16 @@ jobs:
         run: node partners/connected/save-connection-layout.browser.mjs
       - name: Verify single-tab draft saves and copy recovery
         run: node partners/connected/keepit-single-tab-draft.browser.mjs
+      - name: Repeated edits between two devices reach the open note both ways
+        run: node partners/connected/keepit-sync-roundtrip.browser.mjs
       - name: Verify full-screen sketchbook controls and editable drawing round trip
         run: node partners/connected/keepit-sketchbook.browser.mjs
       - name: Verify Apple Pencil capture, pressure and pastel palette
         run: node partners/connected/keepit-sketchbook-pen.browser.mjs
+      - name: Reopen the installed app on a stalled connection without a blank screen
+        run: node partners/connected/keepit-shell-worker-stall.browser.mjs
+      - name: Keep the Microsoft sign-in readable after the app is closed
+        run: node partners/connected/keepit-auth-key.browser.mjs
       - name: Exercise canonical KeepIt native-note create, save and reopen
         shell: bash
         timeout-minutes: 9
