@@ -106,9 +106,10 @@ try{
    const [wide,thin2]=[await band(.66),await band(.76)];
    // Headless WebKit drops tilt from synthetic pen events (tiltX/tiltY stay 0 and
    // altitude/azimuth are absent), so tilt is only checked where it can be simulated.
-   if(await page.evaluate(()=>new PointerEvent('pointermove',{pointerType:'pen',tiltX:10}).tiltX===10))
+   // Open item (SUITE_ISSUES KI-012 follow-up 5): unverified in WebKit; confirm on the iPad.
+   if(browser.browserType().name()!=='webkit')
     assert.ok(wide>thin2*2,'a tilted pencil shades wider: '+thin2+' vs '+wide);
-   else console.log('  tilt shading not checked: this engine cannot simulate Pencil tilt');
+   else console.log('  tilt shading NOT VERIFIED in WebKit ('+thin2+' vs '+wide+'); confirm on a real iPad');
    // 3b. The page keeps up: a stroke whose pen events arrive faster than frames
    // is still captured completely.
    await dialog.getByRole('radio',{name:'Pen',exact:true}).click();
