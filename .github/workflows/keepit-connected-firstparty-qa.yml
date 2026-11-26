@@ -223,6 +223,12 @@ jobs:
         run: node partners/connected/keepit-sketchbook.browser.mjs
       - name: Verify Apple Pencil capture, pressure and pastel palette
         run: node partners/connected/keepit-sketchbook-pen.browser.mjs
+      - name: Paper guides toggle, dots, spacing and export option
+        run: node partners/connected/keepit-sketchbook-guides.browser.mjs
+      - name: PDF beside the note, region capture and page links
+        run: node partners/connected/keepit-sketchbook-split.browser.mjs
+      - name: Write beside a library PDF
+        run: node partners/connected/keepit-write-beside.browser.mjs
       - name: Reopen the installed app on a stalled connection without a blank screen
         run: node partners/connected/keepit-shell-worker-stall.browser.mjs
       - name: Keep the Microsoft sign-in readable after the app is closed

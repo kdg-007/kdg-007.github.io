@@ -38,6 +38,12 @@ export async function readPage(png){
 // ---------------------------------------------------------------------------
 const svg = body => '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
 const ICONS = {
+  book: svg('<path d="M12 6.5C10 5 7.5 4.5 4 4.5v14c3.5 0 6 .5 8 2 2-1.5 4.5-2 8-2v-14c-3.5 0-6 .5-8 2z"/><path d="M12 6.5v14"/>'),
+  zoomIn: svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8M10.5 7.5v6M7.5 10.5h6"/>'),
+  zoomOut: svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8M7.5 10.5h6"/>'),
+  capture: svg('<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M9 12h6M12 9v6"/>'),
+  swap: svg('<path d="M7 7h12l-3.5-3.5M17 17H5l3.5 3.5"/>'),
+  guides: svg('<rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9.2h17M3.5 14.8h17M9.2 3.5v17M14.8 3.5v17" opacity=".6"/>'),
   close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
   undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
   redo: svg('<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>'),
@@ -140,6 +146,30 @@ const STYLE = `
 .kd-pop[hidden]{display:none}
 .kd-pop h3{margin:0;font-size:13px;font-weight:600;color:var(--kd-muted);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;justify-content:space-between}
 .kd-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--kd-muted)}
+.kd-field[hidden]{display:none}
+.kd-stage{position:absolute;inset:0;overflow:hidden}
+.kd-ref{position:absolute;display:flex;flex-direction:column;background:#eef1f3;color:var(--kd-text);z-index:3}
+.kd-ref-head{display:flex;align-items:center;gap:2px;padding:calc(env(safe-area-inset-top) + 8px) 8px 6px;background:var(--kd-chrome);border-bottom:1px solid var(--kd-line);min-height:52px}
+.kd-ref-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;padding:0 6px}
+.kd-ref-pagebox{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--kd-muted);padding:0 4px}
+.kd-ref-pageno{width:3.4em;height:34px;border:1px solid var(--kd-line);border-radius:8px;text-align:center;background:var(--kd-chrome)}
+.kd-ref-btn[aria-pressed="true"]{background:color-mix(in srgb,var(--kd-accent) 16%,transparent);color:var(--kd-accent)}
+.kd-ref-scroll{flex:1;overflow:auto;overscroll-behavior:contain;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
+.kd-ref-pages{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px;min-width:min-content}
+.kd-ref-page{position:relative;flex:none;background:#fff;box-shadow:0 1px 4px #0000002e}
+.kd-ref-page canvas{position:absolute;inset:0;width:100%;height:100%}
+.kd-ref.kd-capturing .kd-ref-scroll{touch-action:none;cursor:crosshair}
+.kd-ref.kd-capturing .kd-ref-page{outline:2px dashed color-mix(in srgb,var(--kd-accent) 60%,transparent)}
+.kd-marquee{position:absolute;border:2px solid var(--kd-accent);background:color-mix(in srgb,var(--kd-accent) 14%,transparent);pointer-events:none;border-radius:2px}
+.kd-divider{position:absolute;z-index:4;background:var(--kd-chrome);border-inline:1px solid var(--kd-line);cursor:col-resize;touch-action:none;display:grid;place-items:center}
+.kd-divider::after{content:"";width:4px;height:44px;border-radius:2px;background:var(--kd-line)}
+.kd-split-rows .kd-divider{cursor:row-resize;border-inline:0;border-block:1px solid var(--kd-line)}
+.kd-split-rows .kd-divider::after{width:44px;height:4px}
+.kd-divider:focus-visible{outline:2px solid var(--kd-focus);outline-offset:-2px}
+.kd-layer .kd-source{flex:none;min-height:32px;padding:0 8px;border:1px solid var(--kd-line);border-radius:8px;background:none;color:var(--kd-accent);font-size:12px;cursor:pointer}
+.kd-hint{margin:6px 10px;color:var(--kd-muted);font-size:13px}
+.kd-pdf-list{max-height:min(60vh,420px);overflow:auto}
+.kd-field.kd-check{flex-direction:row;align-items:center;gap:10px;color:var(--kd-text)}.kd-check input{width:20px;height:20px;accent-color:#1d5d78}
 .kd-field>span{display:flex;justify-content:space-between}
 .kd-field b{font-weight:500;color:var(--kd-text);font-variant-numeric:tabular-nums}
 .kd-pop select,.kd-pop input[type=number],.kd-pop input[type=text]{min-height:40px;border-radius:10px;border:1px solid var(--kd-line);background:var(--app-surface,#fff);padding:0 10px;color:var(--kd-text);user-select:text;-webkit-user-select:text}
@@ -332,7 +362,13 @@ export async function drawNote(original, commit) {
     return el;
   }
   const size = select('Paper size', [...Object.keys(sizes), 'Custom']);
-  const guide = select('Paper guides', ['Plain', 'Ruled', 'Grid']);
+  const guide = select('Paper guides', ['Plain', 'Ruled', 'Grid', 'Dots']);
+  // Guide spacing in millimetres: ruled follows notebook rulings, grid and dots a drafting pitch.
+  const GUIDE_MM = {Ruled: {Narrow: 6, Medium: 7.1, Wide: 8.7}, Grid: {Narrow: 4, Medium: 5, Wide: 7}, Dots: {Narrow: 4, Medium: 5, Wide: 7}};
+  const guideSpacing = select('Guide spacing', ['Narrow', 'Medium', 'Wide']); guideSpacing.value = 'Medium';
+  const guidePrint = document.createElement('input'); guidePrint.type = 'checkbox'; guidePrint.checked = true;
+  guidePrint.setAttribute('aria-label', 'Include guides in the note');
+  let exportingWithoutGuides = false;
   function millimetres(label, value) {
     const input = document.createElement('input');
     input.type = 'number'; input.min = '1'; input.step = 'any'; input.value = value; input.inputMode = 'decimal';
@@ -462,12 +498,19 @@ export async function drawNote(original, commit) {
     ctx.clearRect(X, Y, W, H);
     ctx.globalAlpha = paperOpacity;
     ctx.fillStyle = 'white'; ctx.fillRect(X, Y, W, H);
-    const spacing = (guide.value === 'Grid' ? 5 : 8) * canvas.height / mm[1];
-    if (guide.value !== 'Plain' && spacing >= 2) {
-      ctx.beginPath(); ctx.strokeStyle = '#c5d9e5'; ctx.lineWidth = 1;
-      for (let y = spacing * Math.max(1, Math.ceil(Y / spacing - 1)); y < canvas.height && y <= Y + H + spacing; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
-      if (guide.value === 'Grid') for (let x = spacing * Math.max(1, Math.ceil(X / spacing - 1)); x < canvas.width && x <= X + W + spacing; x += spacing) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
-      ctx.stroke();
+    const spacing = (GUIDE_MM[guide.value]?.[guideSpacing.value] || 0) * canvas.height / mm[1];
+    if (guide.value !== 'Plain' && spacing >= 2 && !exportingWithoutGuides) {
+      const y0 = spacing * Math.max(1, Math.ceil(Y / spacing - 1)), x0 = spacing * Math.max(1, Math.ceil(X / spacing - 1));
+      if (guide.value === 'Dots') {
+        const dot = Math.max(1.5, pxPerMm * .35); ctx.fillStyle = '#9fbccd';
+        for (let y = y0; y < canvas.height && y <= Y + H + spacing; y += spacing)
+          for (let x = x0; x < canvas.width && x <= X + W + spacing; x += spacing) ctx.fillRect(x - dot / 2, y - dot / 2, dot, dot);
+      } else {
+        ctx.beginPath(); ctx.strokeStyle = '#c5d9e5'; ctx.lineWidth = Math.max(1, pxPerMm * .12);
+        for (let y = y0; y < canvas.height && y <= Y + H + spacing; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+        if (guide.value === 'Grid') for (let x = x0; x < canvas.width && x <= X + W + spacing; x += spacing) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+        ctx.stroke();
+      }
     }
     if (raster) ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
     ctx.globalAlpha = 1;
@@ -491,6 +534,7 @@ export async function drawNote(original, commit) {
     blend: blendOk(l.blend) ? l.blend : 'source-over',
     raster: typeof l.raster === 'string' && l.raster.startsWith('data:image/png;base64,') ? l.raster : null,
     rasterImg: null, surface: document.createElement('canvas'), dirty: true,
+    ...(l.source && typeof l.source.name === 'string' && Number.isInteger(l.source.page) ? {source: {itemId: typeof l.source.itemId === 'string' ? l.source.itemId : null, name: l.source.name, page: l.source.page}} : {}),
   }));
   // Merged layers keep their pixels as a PNG; decode them before first paint.
   await Promise.all(layers.filter(l => l.raster).map(async l => {
@@ -1003,7 +1047,7 @@ export async function drawNote(original, commit) {
       const c = document.createElement('canvas'); c.width = l.rasterImg.width; c.height = l.rasterImg.height;
       c.getContext('2d').drawImage(l.rasterImg, 0, 0); l.raster = c.toDataURL('image/png');
     }
-    return {id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, ...(l.raster ? {raster: l.raster} : {})};
+    return {id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, ...(l.raster ? {raster: l.raster} : {}), ...(l.source ? {source: l.source} : {})};
   }
   function insertAbove(target, layer) { layers.splice(layers.indexOf(target) + 1, 0, layer); }
 
@@ -1170,7 +1214,7 @@ export async function drawNote(original, commit) {
     });
     const name = document.createElement('button');
     name.type = 'button'; name.className = 'kd-name';
-    const meta = [layer.blend !== 'source-over' ? blendName(layer.blend) : '', layer.opacity < 1 ? Math.round(layer.opacity * 100) + '%' : '', layer.rasterImg ? 'merged' : ''].filter(Boolean).join(' · ');
+    const meta = [layer.blend !== 'source-over' ? blendName(layer.blend) : '', layer.opacity < 1 ? Math.round(layer.opacity * 100) + '%' : '', layer.source ? 'from PDF' : layer.rasterImg ? 'merged' : ''].filter(Boolean).join(' · ');
     name.append(layer.name, Object.assign(document.createElement('span'), {className: 'kd-meta', textContent: meta}));
     name.setAttribute('aria-label', (selecting ? 'Toggle selection of ' : 'Select ') + layer.name + (layer.visible ? '' : ' (hidden)'));
     name.onclick = () => {
@@ -1184,7 +1228,15 @@ export async function drawNote(original, commit) {
       box.setAttribute('role', 'checkbox'); box.setAttribute('aria-checked', String(selected.has(layer.id)));
       row.append(box);
     }
-    row.append(thumbnail(renderLayer(layer), layer.opacity), name, eye);
+    row.append(thumbnail(renderLayer(layer), layer.opacity), name);
+    if (layer.source) {
+      const link = document.createElement('button'); link.type = 'button'; link.className = 'kd-source';
+      link.textContent = 'p. ' + layer.source.page; link.title = 'Show page ' + layer.source.page + ' of ' + layer.source.name;
+      link.setAttribute('aria-label', 'Show page ' + layer.source.page + ' of ' + layer.source.name);
+      link.onclick = () => { closePops(); showSource(layer.source); };
+      row.append(link);
+    }
+    row.append(eye);
     return row;
   }
   function paperRow() {
@@ -1272,8 +1324,22 @@ export async function drawNote(original, commit) {
   const paperPop = popover('Paper', paperButton);
   const sizeField = document.createElement('label'); sizeField.className = 'kd-field'; sizeField.append('Size', size);
   const guideField = document.createElement('label'); guideField.className = 'kd-field'; guideField.append('Guides', guide);
+  const spacingField = document.createElement('label'); spacingField.className = 'kd-field'; spacingField.append('Spacing', guideSpacing);
+  const printField = document.createElement('label'); printField.className = 'kd-field kd-check'; printField.append(guidePrint, 'Include guides in the note');
   const resolutionField = document.createElement('label'); resolutionField.className = 'kd-field'; resolutionField.append('Resolution', resolution);
-  paperPop.append(sizeField, guideField, customRow, resolutionField, dpiField, pixelInfo);
+  paperPop.append(sizeField, guideField, spacingField, printField, customRow, resolutionField, dpiField, pixelInfo);
+  // One tap cycles the guides; the Paper panel has spacing and export options.
+  const GUIDE_CYCLE = ['Plain', 'Ruled', 'Grid', 'Dots'];
+  const guidesButton = iconButton('Guides', 'guides', () => {
+    guide.value = GUIDE_CYCLE[(GUIDE_CYCLE.indexOf(guide.value) + 1) % GUIDE_CYCLE.length];
+    guide.dispatchEvent(new Event('change'));
+  });
+  function showGuides() {
+    guidesButton.setAttribute('aria-label', 'Guides: ' + guide.value);
+    guidesButton.title = 'Guides: ' + guide.value + ' — tap to change';
+    guidesButton.setAttribute('aria-pressed', String(guide.value !== 'Plain'));
+    spacingField.hidden = guide.value === 'Plain';
+  }
 
   let rulerOn = false, edgeX = .5, edgeY = .5, edgeAngle = 0, drag = null, lastTap = null;
   const edge = document.createElement('div'), handle = document.createElement('button');
@@ -1366,11 +1432,13 @@ export async function drawNote(original, commit) {
     active = null;
     saving = true; insert.disabled = true; closePops(); say('Saving to note…', true);
     try {
+      exportingWithoutGuides = !guidePrint.checked;
       repaint();
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      exportingWithoutGuides = false;
       if (!blob) throw Error('Could not encode the drawing.');
-      const result = packPage(blob, {version: 1, basePNG, mm, size: size.value, guide: guide.value, dpi: pxPerMm * 25.4, paperOpacity, strokes, layers: layers.map(layerRecord), activeLayer: current.id});
-      await commit(new File([result], 'KeepIt drawing.png', {type: 'image/png'}));
+      const result = packPage(blob, {version: 1, basePNG, mm, size: size.value, guide: guide.value, guideSpacing: guideSpacing.value, guidePrint: guidePrint.checked, ...(reference ? {reference: {...reference}} : {}), dpi: pxPerMm * 25.4, paperOpacity, strokes, layers: layers.map(layerRecord), activeLayer: current.id});
+      await commit(new File([result], 'KeepIt drawing.png', {type: 'image/png'}), {reference: reference && {...reference}});
       dialog.returnValue = 'inserted';
       dialog.close('inserted');
     } catch (err) { say(err.message, true); insert.disabled = false; }
@@ -1413,6 +1481,7 @@ export async function drawNote(original, commit) {
     document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
     if (fullscreenTarget() === dialog) (document.exitFullscreen?.call(document) ?? document.webkitExitFullscreen?.call(document))?.catch?.(() => {});
     resize.disconnect();
+    refToken++; dropTask(refTask); refTask = null; refDoc = null;
     dialog.remove();
   };
   // Shortcuts apply only to the sketchbook and never while typing in a field.
@@ -1439,7 +1508,295 @@ export async function drawNote(original, commit) {
   title.className = 'kd-title';
   const titleSmall = document.createElement('small');
   title.append(original ? 'Edit drawing' : 'New drawing', titleSmall);
-  const viewGroup = pill(layersButton, paperButton, toggle, fullscreenButton, moreButton);
+  // ---- PDF beside the note (split screen) ---------------------------------
+  // A PDF from the library (or this device) opens in a reader pane next to the
+  // page. Fingers and the Pencil scroll and zoom the reader; only the page takes
+  // ink. A region of the PDF can be captured onto the page as a new layer, and
+  // the drawing remembers the PDF and page so reopening it returns there.
+  const stage = document.createElement('div'); stage.className = 'kd-stage';
+  const refPane = document.createElement('section'); refPane.className = 'kd-ref'; refPane.hidden = true;
+  refPane.setAttribute('aria-label', 'PDF beside the note');
+  const refHead = document.createElement('div'); refHead.className = 'kd-ref-head';
+  const refName = document.createElement('strong'); refName.className = 'kd-ref-name';
+  const refPage = document.createElement('input'); refPage.type = 'number'; refPage.min = '1'; refPage.inputMode = 'numeric';
+  refPage.setAttribute('aria-label', 'PDF page'); refPage.className = 'kd-ref-pageno';
+  const refCount = document.createElement('span'); refCount.className = 'kd-ref-count';
+  const refScroll = document.createElement('div'); refScroll.className = 'kd-ref-scroll'; refScroll.tabIndex = 0;
+  refScroll.setAttribute('aria-label', 'PDF pages');
+  const refPages = document.createElement('div'); refPages.className = 'kd-ref-pages'; refScroll.append(refPages);
+  const divider = document.createElement('div'); divider.className = 'kd-divider'; divider.hidden = true;
+  divider.setAttribute('role', 'separator'); divider.setAttribute('aria-label', 'Resize the PDF and the page'); divider.tabIndex = 0;
+  const marquee = document.createElement('div'); marquee.className = 'kd-marquee'; marquee.hidden = true;
+  let reference = null, refDoc = null, refTask = null, refSlots = [], refZoom = 1, refBase = 1, refSide = 'left', refSplit = .5, capturing = false, refToken = 0;
+  const refButton = (label, icon, action) => { const b = iconButton(label, icon, action); b.classList.add('kd-ref-btn'); return b; };
+  const zoomOut = refButton('Zoom out', 'zoomOut', () => setRefZoom(refZoom / 1.25));
+  const zoomIn = refButton('Zoom in', 'zoomIn', () => setRefZoom(refZoom * 1.25));
+  const captureButton = refButton('Capture a region onto the page', 'capture', () => setCapturing(!capturing));
+  captureButton.setAttribute('aria-pressed', 'false');
+  const swapButton = refButton('Swap sides', 'swap', () => { refSide = refSide === 'left' ? 'right' : 'left'; layoutSplit(); remember(); });
+  const closeRef = refButton('Close the PDF', 'close', () => closeReference());
+  const pageBox = document.createElement('span'); pageBox.className = 'kd-ref-pagebox'; pageBox.append(refPage, refCount);
+  refHead.append(refName, pageBox, zoomOut, zoomIn, captureButton, swapButton, closeRef);
+  refPane.append(refHead, refScroll, marquee);
+
+  const pdfButton = iconButton('PDF beside', 'book');
+  const pdfPop = popover('PDF beside the note', pdfButton);
+  const pdfList = document.createElement('div'); pdfList.className = 'kd-menu kd-pdf-list'; pdfPop.append(pdfList);
+  const pdfFile = document.createElement('input'); pdfFile.type = 'file'; pdfFile.accept = 'application/pdf,.pdf'; pdfFile.hidden = true;
+  pdfFile.onchange = () => { const file = pdfFile.files?.[0]; pdfFile.value = ''; if (file) openReference({name: file.name.replace(/\.pdf$/i, ''), blob: file}); };
+  pdfButton.addEventListener('click', () => { if (!pdfPop.hidden) fillPdfList(); });
+  async function fillPdfList() {
+    const rows = [];
+    const add = (label, icon, action) => { const b = document.createElement('button'); b.type = 'button'; b.innerHTML = ICONS[icon]; b.append(label); b.onclick = action; rows.push(b); };
+    const source = globalThis.keepitPdfLibrary;
+    pdfList.replaceChildren(Object.assign(document.createElement('p'), {className: 'kd-hint', textContent: 'Loading your PDFs…'}));
+    let items = [];
+    try { items = source ? await source.list() : []; } catch (err) { items = []; }
+    for (const item of items) add(item.name, 'book', () => { closePops(); openReference({itemId: item.id, name: item.name}); });
+    if (!items.length) rows.push(Object.assign(document.createElement('p'), {className: 'kd-hint', textContent: source ? 'No PDFs in this library yet.' : 'Open your KeepIt library to list its PDFs.'}));
+    add('From this device…', 'export', () => { closePops(); pdfFile.click(); });
+    if (reference) add('Close the PDF', 'close', () => { closePops(); closeReference(); });
+    pdfList.replaceChildren(...rows);
+  }
+
+  // The same PDF.js build, worker and font data the library preview already ships.
+  async function loadPdfJs() {
+    const lib = await import('./chunk-WRLX6ZEL.js');
+    lib.GlobalWorkerOptions.workerSrc = '/assets/pdf.worker-bb422f608044.mjs';
+    return {lib, base: '/vendor/pdfjs/'};
+  }
+  async function openReference(ref, {quiet = false} = {}) {
+    const token = ++refToken;
+    try {
+      say('Opening ' + ref.name + '…', true);
+      let blob = ref.blob;
+      if (!blob) {
+        const source = globalThis.keepitPdfLibrary;
+        if (!source) throw Error('Open your KeepIt library to show ' + ref.name + '.');
+        blob = await source.read(ref.itemId);
+      }
+      const {lib, base} = await loadPdfJs();
+      const task = lib.getDocument({data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false, enableXfa: false, maxImageSize: 16e6,
+        cMapUrl: base + 'cmaps/', cMapPacked: true, standardFontDataUrl: base + 'standard_fonts/', wasmUrl: base + 'wasm/'});
+      const doc = await task.promise;
+      if (token !== refToken || !dialog.open) { dropTask(task); return; }
+      dropTask(refTask);
+      refTask = task; refDoc = doc;
+      reference = {itemId: ref.itemId || null, name: ref.name, page: Math.max(1, Math.min(doc.numPages, ref.page || 1))};
+      refZoom = ref.zoom > 0 ? ref.zoom : 1; refSide = ref.side === 'right' ? 'right' : 'left';
+      refSplit = ref.split > .15 && ref.split < .85 ? ref.split : .5;
+      refName.textContent = ref.name; refName.title = ref.name;
+      refPage.max = String(doc.numPages); refCount.textContent = '/ ' + doc.numPages;
+      const first = await doc.getPage(1);
+      const view = first.getViewport({scale: 1});
+      refSlots = [];
+      const sizes = await Promise.all(Array.from({length: doc.numPages}, (_, i) => i === 0 ? view : doc.getPage(i + 1).then(p => p.getViewport({scale: 1})).catch(() => view)));
+      if (token !== refToken) return;
+      refPages.replaceChildren();
+      sizes.forEach((v, i) => {
+        const slot = document.createElement('div'); slot.className = 'kd-ref-page'; slot.dataset.page = String(i + 1);
+        slot.setAttribute('aria-label', 'Page ' + (i + 1));
+        refPages.append(slot); refSlots.push({slot, w: v.width, h: v.height, canvas: null, scale: 0, task: null});
+      });
+      refPane.hidden = divider.hidden = false; dialog.classList.add('kd-split');
+      pdfButton.setAttribute('aria-pressed', 'true');
+      layoutSplit();
+      refBase = Math.max(.2, (refScroll.clientWidth - 24) / Math.max(...refSlots.map(s => s.w)));
+      sizeSlots();
+      goToPage(reference.page);
+      if (!quiet) changed = true;
+      remember(); say('');
+    } catch (err) {
+      if (token === refToken) say(err.message || 'Could not open the PDF.', true);
+    }
+  }
+  function closeReference() {
+    refToken++; setCapturing(false);
+    dropTask(refTask); refTask = null; refDoc = null; reference = null; refSlots = []; refPages.replaceChildren();
+    refPane.hidden = divider.hidden = true; dialog.classList.remove('kd-split');
+    pdfButton.setAttribute('aria-pressed', 'false');
+    layoutSplit();
+  }
+  // PDF.js frees a document through its loading task.
+  function dropTask(task) { try { task?.destroy()?.catch?.(() => {}); } catch {} }
+  function remember() { if (reference) reference = {...reference, zoom: refZoom, side: refSide, split: refSplit}; }
+  // Side by side on wide screens; stacked (PDF on top) on phones.
+  function layoutSplit() {
+    const W = dialog.clientWidth, H = dialog.clientHeight, gap = 14;
+    for (const el of [stage, refPane, divider]) el.style.left = el.style.right = el.style.top = el.style.bottom = el.style.width = el.style.height = '';
+    if (!reference) { adapt(); return; }
+    const rows = W < 700;
+    dialog.classList.toggle('kd-split-rows', rows); swapButton.hidden = rows;
+    if (rows) {
+      const h = Math.round(Math.max(160, Math.min(H - 260, H * refSplit)));
+      Object.assign(refPane.style, {left: '0', right: '0', top: '0', height: h + 'px'});
+      Object.assign(divider.style, {left: '0', right: '0', top: h + 'px', height: gap + 'px'});
+      Object.assign(stage.style, {top: h + gap + 'px'});
+    } else {
+      const w = Math.round(Math.max(260, Math.min(W - 340, W * refSplit)));
+      const near = refSide === 'left' ? 'left' : 'right', far = near === 'left' ? 'right' : 'left';
+      Object.assign(refPane.style, {[near]: '0', top: '0', bottom: '0', width: w + 'px'});
+      Object.assign(divider.style, {[near]: w + 'px', top: '0', bottom: '0', width: gap + 'px'});
+      stage.style[near] = w + gap + 'px'; stage.style[far] = '0';
+    }
+    divider.setAttribute('aria-orientation', rows ? 'horizontal' : 'vertical');
+    divider.setAttribute('aria-valuenow', String(Math.round(refSplit * 100)));
+    adapt();
+    if (refSlots.length) { const page = reference.page; refBase = Math.max(.2, (refScroll.clientWidth - 24) / Math.max(...refSlots.map(s => s.w))); sizeSlots(); goToPage(page); }
+  }
+  divider.onpointerdown = e => {
+    e.preventDefault(); divider.setPointerCapture(e.pointerId);
+    const move = ev => {
+      const rect = dialog.getBoundingClientRect(), rows = dialog.classList.contains('kd-split-rows');
+      let f = rows ? (ev.clientY - rect.top) / rect.height : (ev.clientX - rect.left) / rect.width;
+      if (!rows && refSide === 'right') f = 1 - f;
+      refSplit = Math.max(.2, Math.min(.8, f)); layoutSplit();
+    };
+    const end = () => { divider.removeEventListener('pointermove', move); divider.removeEventListener('pointerup', end); divider.removeEventListener('pointercancel', end); remember(); };
+    divider.addEventListener('pointermove', move); divider.addEventListener('pointerup', end); divider.addEventListener('pointercancel', end);
+  };
+  divider.onkeydown = e => {
+    const step = {ArrowLeft: -.05, ArrowUp: -.05, ArrowRight: .05, ArrowDown: .05}[e.key]; if (!step) return;
+    e.preventDefault(); refSplit = Math.max(.2, Math.min(.8, refSplit + (refSide === 'right' && !dialog.classList.contains('kd-split-rows') ? -step : step))); layoutSplit(); remember();
+  };
+
+  function sizeSlots() {
+    for (const s of refSlots) {
+      s.slot.style.width = Math.round(s.w * refBase * refZoom) + 'px';
+      s.slot.style.height = Math.round(s.h * refBase * refZoom) + 'px';
+    }
+    queueRender();
+  }
+  function setRefZoom(z, focus) {
+    if (!refSlots.length) return;
+    const old = refZoom; refZoom = Math.max(.5, Math.min(5, z));
+    const fx = focus ? focus.x : refScroll.clientWidth / 2, fy = focus ? focus.y : refScroll.clientHeight / 2;
+    const x = (refScroll.scrollLeft + fx) * refZoom / old - fx, y = (refScroll.scrollTop + fy) * refZoom / old - fy;
+    sizeSlots(); refScroll.scrollLeft = x; refScroll.scrollTop = y; remember();
+  }
+  function goToPage(n) {
+    const s = refSlots[n - 1]; if (!s) return;
+    refScroll.scrollTop = s.slot.offsetTop - 8; trackPage();
+  }
+  refPage.onchange = () => { const n = Math.round(refPage.valueAsNumber); if (n >= 1 && n <= refSlots.length) goToPage(n); else refPage.value = String(reference?.page || 1); };
+  function trackPage() {
+    if (!reference) return;
+    const mark = refScroll.scrollTop + refScroll.clientHeight / 3;
+    let n = 1; for (let i = 0; i < refSlots.length; i++) if (refSlots[i].slot.offsetTop <= mark) n = i + 1;
+    reference.page = n;
+    if (document.activeElement !== refPage) refPage.value = String(n);
+  }
+  let renderQueued = false;
+  function queueRender() { if (renderQueued) return; renderQueued = true; requestAnimationFrame(() => { renderQueued = false; renderVisible(); }); }
+  refScroll.addEventListener('scroll', () => { trackPage(); queueRender(); }, {passive: true});
+  // Only pages near the viewport keep pixels, which keeps memory low on iPad.
+  function renderVisible() {
+    if (!refDoc) return;
+    const top = refScroll.scrollTop - refScroll.clientHeight, bottom = refScroll.scrollTop + 2 * refScroll.clientHeight;
+    const ratio = Math.min(2, devicePixelRatio || 1);
+    refSlots.forEach((s, i) => {
+      const near = s.slot.offsetTop + s.slot.offsetHeight >= top && s.slot.offsetTop <= bottom;
+      if (!near) { if (s.canvas) { s.task?.cancel(); s.canvas.remove(); s.canvas = null; s.scale = 0; } return; }
+      let scale = refBase * refZoom * ratio;
+      const maxPixels = 12e6; if (s.w * s.h * scale * scale > maxPixels) scale = Math.sqrt(maxPixels / (s.w * s.h));
+      if (s.canvas && Math.abs(s.scale - scale) / scale < .05) return;
+      const token = refToken;
+      refDoc.getPage(i + 1).then(page => {
+        if (token !== refToken || !refSlots.includes(s)) return;
+        const viewport = page.getViewport({scale});
+        const c = document.createElement('canvas'); c.width = Math.floor(viewport.width); c.height = Math.floor(viewport.height);
+        s.task?.cancel();
+        s.task = page.render({canvas: c, canvasContext: c.getContext('2d'), viewport});
+        return s.task.promise.then(() => { if (token !== refToken || !refSlots.includes(s)) return; s.canvas?.remove(); s.canvas = c; s.scale = scale; s.slot.append(c); });
+      }).catch(err => { if (err?.name !== 'RenderingCancelledException') console.warn('PDF page', i + 1, err); });
+    });
+  }
+  // Pinch with two fingers zooms the reader (native page zoom is off here).
+  let pinch = null;
+  refScroll.addEventListener('touchstart', e => {
+    if (e.touches.length === 2 && !capturing) { const [a, b] = e.touches; pinch = {d: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY), z: refZoom}; }
+  }, {passive: true});
+  refScroll.addEventListener('touchmove', e => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    const [a, b] = e.touches, rect = refScroll.getBoundingClientRect();
+    const d = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+    setRefZoom(pinch.z * d / pinch.d, {x: (a.clientX + b.clientX) / 2 - rect.left, y: (a.clientY + b.clientY) / 2 - rect.top});
+  }, {passive: false});
+  refScroll.addEventListener('touchend', e => { if (e.touches.length < 2) pinch = null; });
+  refScroll.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey) return; e.preventDefault();
+    const rect = refScroll.getBoundingClientRect();
+    setRefZoom(refZoom * Math.exp(-e.deltaY * .01), {x: e.clientX - rect.left, y: e.clientY - rect.top});
+  }, {passive: false});
+
+  // Capture: drag a rectangle over a PDF page; it lands on the page as a new layer.
+  function setCapturing(on) {
+    capturing = on && !!reference;
+    refPane.classList.toggle('kd-capturing', capturing);
+    captureButton.setAttribute('aria-pressed', String(capturing));
+    marquee.hidden = true;
+    if (capturing) say('Drag over the PDF to capture a region', true); else if (!saving) say('');
+  }
+  let grab = null;
+  refScroll.addEventListener('pointerdown', e => {
+    if (!capturing) return;
+    const slot = e.target.closest?.('.kd-ref-page'); if (!slot) return;
+    e.preventDefault(); refScroll.setPointerCapture(e.pointerId);
+    grab = {id: e.pointerId, slot, x: e.clientX, y: e.clientY};
+    drawMarquee(e);
+  });
+  refScroll.addEventListener('pointermove', e => { if (grab?.id === e.pointerId) drawMarquee(e); });
+  refScroll.addEventListener('pointerup', e => { if (grab?.id !== e.pointerId) return; const g = grab; grab = null; marquee.hidden = true; captureRegion(g, e); });
+  refScroll.addEventListener('pointercancel', e => { if (grab?.id === e.pointerId) { grab = null; marquee.hidden = true; } });
+  function regionOf(g, e) {
+    const r = g.slot.getBoundingClientRect();
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const x0 = clamp(Math.min(g.x, e.clientX), r.left, r.right), x1 = clamp(Math.max(g.x, e.clientX), r.left, r.right);
+    const y0 = clamp(Math.min(g.y, e.clientY), r.top, r.bottom), y1 = clamp(Math.max(g.y, e.clientY), r.top, r.bottom);
+    return {r, x0, x1, y0, y1};
+  }
+  function drawMarquee(e) {
+    const {x0, x1, y0, y1} = regionOf(grab, e), pane = refPane.getBoundingClientRect();
+    Object.assign(marquee.style, {left: x0 - pane.left + 'px', top: y0 - pane.top + 'px', width: x1 - x0 + 'px', height: y1 - y0 + 'px'});
+    marquee.hidden = false;
+  }
+  async function captureRegion(g, e) {
+    const {r, x0, x1, y0, y1} = regionOf(g, e);
+    if (x1 - x0 < 8 || y1 - y0 < 8) return;
+    const n = Number(g.slot.dataset.page), s = refSlots[n - 1], token = refToken;
+    // Region in PDF points, placed on the page at its printed size (at most 90% of the paper width).
+    const k = s.w / r.width, px0 = (x0 - r.left) * k, py0 = (y0 - r.top) * k, pw = (x1 - x0) * k, ph = (y1 - y0) * k;
+    const mmPerPt = 25.4 / 72, widthMm = Math.min(pw * mmPerPt, mm[0] * .9);
+    const outW = Math.max(1, Math.round(widthMm * pxPerMm)), scale = outW / pw, outH = Math.max(1, Math.round(ph * scale));
+    try {
+      say('Capturing from page ' + n + '…', true);
+      const page = await refDoc.getPage(n);
+      const piece = document.createElement('canvas'); piece.width = outW; piece.height = outH;
+      const viewport = page.getViewport({scale, offsetX: -px0 * scale, offsetY: -py0 * scale});
+      await page.render({canvas: piece, canvasContext: piece.getContext('2d'), viewport}).promise;
+      if (token !== refToken) return;
+      // Centre it on what is visible of the page, kept inside the paper.
+      const view = sheet.getBoundingClientRect(), p = localPoint({clientX: view.left + view.width / 2, clientY: view.top + view.height / 2});
+      const k2 = canvas.width / plane.clientWidth;
+      const cx = Math.max(outW / 2, Math.min(canvas.width - outW / 2, p.x * k2)), cy = Math.max(outH / 2, Math.min(canvas.height - outH / 2, p.y * k2));
+      const pixels = document.createElement('canvas'); pixels.width = canvas.width; pixels.height = canvas.height;
+      pixels.getContext('2d').drawImage(piece, Math.round(cx - outW / 2), Math.round(cy - outH / 2));
+      const before = snapshot();
+      const layer = newLayer({name: reference.name + ' · p. ' + n, rasterImg: pixels, source: {itemId: reference.itemId, name: reference.name, page: n}});
+      insertAbove(current, layer); current = layer; paperSelected = false; commitState(before);
+      setCapturing(false); say('Captured page ' + n + ' onto the page as a new layer');
+    } catch (err) { say(err.message || 'Could not capture that region.', true); }
+  }
+  // A captured layer links back to its PDF page.
+  function showSource(source) {
+    if (!source) return;
+    if (reference && (source.itemId ? reference.itemId === source.itemId : reference.name === source.name)) { goToPage(source.page); return; }
+    if (source.itemId) openReference({itemId: source.itemId, name: source.name, page: source.page});
+    else say('Open ' + source.name + ' from this device to see page ' + source.page + '.', true);
+  }
+
+  const viewGroup = pill(pdfButton, layersButton, guidesButton, paperButton, toggle, fullscreenButton, moreButton);
   const historyGroup = pill(undo, redo);
   const leftGroup = pill(closeButton, title);
   const spacer = document.createElement('div'); spacer.className = 'kd-spacer';
@@ -1451,15 +1808,15 @@ export async function drawNote(original, commit) {
   // Narrow screens (phones) move the view controls into the bottom dock so the
   // top bar keeps only close, undo/redo and Insert.
   function adapt() {
-    const narrow = dialog.clientWidth < 640;
+    const narrow = stage.clientWidth < 640;
     dialog.classList.toggle('kd-narrow', narrow);
     if (narrow && viewGroup.parentElement !== dock) { dock.append(viewGroup); historyGroup.after(spacer); }
     if (!narrow && viewGroup.parentElement !== bar) { spacer.after(viewGroup); }
-    title.style.display = dialog.clientWidth < 760 ? 'none' : '';
+    title.style.display = stage.clientWidth < 760 ? 'none' : '';
     for (const pop of pops) if (!pop.hidden) placePop(pop);
     layoutPlane();
   }
-  const resize = new ResizeObserver(() => adapt());
+  const resize = new ResizeObserver(() => layoutSplit());
 
   // Two-finger pan / pinch / rotate (fingers never ink; the Pencil and mouse do).
   sheet.onselectstart = sheet.oncontextmenu = e => { e.preventDefault(); };
@@ -1495,19 +1852,22 @@ export async function drawNote(original, commit) {
     zoom = Math.max(.25, Math.min(6, zoom * Math.exp(-e.deltaY * .01))); transform();
   }, {passive: false});
 
-  if (saved) { size.value = saved.size in sizes ? saved.size : 'Custom'; guide.value = saved.guide; paperWidth.value = saved.mm[0]; paperHeight.value = saved.mm[1]; }
+  if (saved) { size.value = saved.size in sizes ? saved.size : 'Custom'; guide.value = saved.guide; if (saved.guideSpacing in GUIDE_MM.Grid) guideSpacing.value = saved.guideSpacing; if (saved.guidePrint === false) guidePrint.checked = false; paperWidth.value = saved.mm[0]; paperHeight.value = saved.mm[1]; }
   if (raster && !saved) { size.value = 'Custom'; paperWidth.value = String(background.width / 6); paperHeight.value = String(background.height / 6); }
   // Existing drawings keep the resolution their strokes were recorded at.
   if (saved) dpi = Number.isFinite(saved.dpi) && saved.dpi > 0 ? saved.dpi : Math.min(6, 3072 / Math.max(...saved.mm)) * 25.4;
   else if (raster) dpi = 6 * 25.4;
   setResolutionControls(dpi);
   function describe() {
-    description = (size.value === 'Custom' ? Math.round(mm[0]) + '×' + Math.round(mm[1]) + ' mm' : size.value) + (guide.value === 'Plain' ? '' : ' · ' + guide.value) + ' · ' + Math.round(pxPerMm * 25.4) + ' dpi';
+    description = (size.value === 'Custom' ? Math.round(mm[0]) + '×' + Math.round(mm[1]) + ' mm' : size.value) + (guide.value === 'Plain' ? '' : ' · ' + guide.value + (guideSpacing.value === 'Medium' ? '' : ' ' + guideSpacing.value.toLowerCase())) + ' · ' + Math.round(pxPerMm * 25.4) + ' dpi';
     showBadge();
   }
   resolution.addEventListener('change', () => { dpiField.hidden = resolution.value !== 'Custom'; if (resolution.value !== 'Custom') dpi = RESOLUTIONS[resolution.value]; else dpiInput.focus(); });
   dpiInput.addEventListener('change', () => { const v = dpiInput.valueAsNumber; if (Number.isFinite(v)) dpi = Math.max(72, Math.min(600, v)); dpiInput.value = String(Math.round(dpi)); });
-  for (const el of [size, paperWidth, paperHeight, guide, resolution, dpiInput]) el.addEventListener('change', () => {
+  // Guides only change how the paper is drawn: no need to re-express the strokes.
+  for (const el of [guide, guideSpacing]) el.addEventListener('change', () => { showGuides(); describe(); repaint(); });
+  showGuides();
+  for (const el of [size, paperWidth, paperHeight, resolution, dpiInput]) el.addEventListener('change', () => {
     if (saving || (el === resolution && resolution.value === 'Custom')) return;
     const oldWidth = canvas.width, oldHeight = canvas.height, oldPx = pxPerMm;
     if (!paper()) { insert.disabled = true; return; }
@@ -1516,7 +1876,8 @@ export async function drawNote(original, commit) {
     layers.forEach(l => l.dirty = true); changed = true; insert.disabled = false; say(''); repaint(); describe(); refreshLayers();
   });
   plane.append(canvas, edge); sheet.append(plane);
-  dialog.append(style, sheet, bar, dock, status, ...pops, confirmBox);
+  stage.append(sheet, bar, dock, status);
+  dialog.append(style, refPane, divider, stage, pdfFile, ...pops, confirmBox);
   document.body.append(dialog);
   selectTool('Pen');
   setColor(color.value);
@@ -1525,13 +1886,20 @@ export async function drawNote(original, commit) {
   dialog.showModal();
   resize.observe(dialog);
   adapt();
+  // Reopening a drawing made beside a PDF brings the PDF back at the same page.
+  const savedRef = saved?.reference, pending = globalThis.keepitPdfLibrary?.next;
+  if (pending && !savedRef) { delete globalThis.keepitPdfLibrary.next; openReference(pending); }
+  else if (savedRef && typeof savedRef.name === 'string') {
+    if (savedRef.itemId) openReference(savedRef, {quiet: true});
+    else say('This drawing was made beside ' + savedRef.name + '. Open it again with PDF beside.');
+  }
 }
 
 export async function editDrawing({editor,assets,selection,insertPosition,makeAsset,canEdit}) {
   const previous = selection && assets.get(selection.node.attrs.assetId);
   const replace = previous?.name === 'KeepIt drawing.png';
   const pos = replace ? selection.pos : insertPosition();
-  await drawNote(replace ? previous.blob : null, async file => {
+  await drawNote(replace ? previous.blob : null, async (file, meta = {}) => {
     const asset = await makeAsset(file);
     if (!canEdit()) throw Error('Reopen the note to save this drawing.');
     if (replace && editor.state.doc.nodeAt(pos)?.attrs.assetId !== previous.id) throw Error('The selected drawing changed.');
@@ -1543,7 +1911,9 @@ export async function editDrawing({editor,assets,selection,insertPosition,makeAs
     }) : editor.commands.command(({tr,dispatch})=>{
       const cursor=tr.doc.resolve(Math.min(tr.doc.content.size,Math.max(0,pos)));
       const at=cursor.depth?cursor.after(1):cursor.pos;
-      if(dispatch)tr.insert(at,editor.schema.nodes.figure.create(attrs));
+      // A new drawing made beside a PDF is captioned with the PDF and page.
+      const ref=meta.reference, caption=ref?.name?editor.schema.text('Beside '+ref.name+' · p. '+ref.page):null;
+      if(dispatch)tr.insert(at,editor.schema.nodes.figure.create(attrs,caption));
       return true;
     });
     if (!ok) throw Error('Could not insert the drawing.');
