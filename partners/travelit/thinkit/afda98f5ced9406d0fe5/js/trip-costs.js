@@ -23,10 +23,8 @@ export function normalizeExpense(input,trip,now=new Date().toISOString()){
   if(date&&(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<trip.startDate||date>trip.endDate||Number.isNaN(parsed.getTime())||parsed.toISOString().slice(0,10)!==date))throw Error('Expense date must be within the trip.');
   const plannedPhp=nonnegative(input.plannedPhp,'Planned cost (₱)',100000000,{nullable:true});
   const actualPhp=nonnegative(input.actualPhp,'Actual cost (₱)',100000000,{nullable:true});
-  const amountPending=plannedPhp===null&&actualPhp===null&&input.amountPending===true;
-  if(plannedPhp===null&&actualPhp===null&&!amountPending)throw Error('Enter a planned or actual cost.');
-  const group=text(input.group,80),stopId=text(input.stopId,80);
-  return {...(amountPending?{amountPending:true}:{}),...(group?{group}:{}),...(stopId?{stopId}:{}),id:input.id||crypto.randomUUID(),tripId:trip.id,date,label,category:EXPENSE_CATEGORIES.includes(input.category)?input.category:'Other',plannedPhp,actualPhp,notes:text(input.notes,1000),createdAt:input.createdAt||now,updatedAt:now};
+  if(plannedPhp===null&&actualPhp===null)throw Error('Enter a planned or actual cost.');
+  return {id:input.id||crypto.randomUUID(),tripId:trip.id,date,label,category:EXPENSE_CATEGORIES.includes(input.category)?input.category:'Other',plannedPhp,actualPhp,notes:text(input.notes,1000),createdAt:input.createdAt||now,updatedAt:now};
 }
 export function normalizeLeg(input){
   const legDistanceKm=nonnegative(input.legDistanceKm,'Estimated driving distance (km)',100000,{nullable:true});
