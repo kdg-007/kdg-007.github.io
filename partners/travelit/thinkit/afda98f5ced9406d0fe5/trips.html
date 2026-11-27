@@ -6,10 +6,10 @@
 <meta name="color-scheme" content="light dark">
 <title>TravelIt</title>
 <link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
-<link rel="stylesheet" href="./css/trips.css?v=trips-1">
+<link rel="stylesheet" href="./css/trips.css?v=trips-2">
 </head>
 <body>
-<header class="top"><div class="wrap"><a class="brand" href="#trips">TravelIt</a><span class="crumb" id="crumb"></span><span class="grow"></span><span class="sync" id="sync" hidden role="status"></span><span class="net" id="net" hidden>Offline</span><a class="btn ghost sm" href="./index.html" title="The previous TravelIt screens, same data" onclick="try{localStorage.setItem('travelit-view','classic')}catch{}">Classic view</a></div></header>
+<header class="top"><div class="wrap"><a class="brand" href="#trips">TravelIt</a><span class="crumb" id="crumb"></span><span class="grow"></span><span class="sync" id="sync" hidden role="status"></span><span class="net" id="net" hidden>Offline</span></div></header>
 <nav class="tabs" id="tabs" hidden aria-label="Trip sections"><div class="wrap"></div></nav>
 <main><div class="wrap" id="view"><p class="muted">Opening TravelIt…</p></div></main>
 <dialog id="sheet" class="sheet" aria-labelledby="sheet-title"><form method="dialog" id="sheet-form"></form></dialog>
@@ -17,6 +17,6 @@
 <input type="file" id="pick-xlsx" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
 <input type="file" id="pick-photo" accept="image/*" hidden>
 <script src="./vendor/leaflet/leaflet.js"></script>
-<script type="module" src="./js/trips-app.js?v=trips-1"></script>
+<script type="module" src="./js/trips-app.js?v=trips-2"></script>
 </body>
 </html>

@@ -58,12 +58,14 @@ export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritab
       },
       /** Saves a new file (such as a trip photo) into the writable KeepIt library and returns its link. */
       async addFile(file, {title = ''} = {}) {
-        if (!(file instanceof Blob) || !file.size) throw Error('Choose a photo or file to add.');
+        // The file comes from the app's frame (another realm), so check its shape, not instanceof.
+        if (!file || typeof file.size !== 'number' || typeof file.arrayBuffer !== 'function' || !file.size) throw Error('Choose a photo or file to add.');
         const library = getWritableLibrary?.();
         if (!library || library.readOnly || typeof library.importFile !== 'function') throw Error('Connect your KeepIt library with OneDrive to add photos from ' + target.name + '.');
         const {scope, assertCurrent} = await connection();
         const name = String(title || file.name || 'Photo').slice(0, 200);
-        const saved = await library.importFile(file instanceof File ? file : new File([file], name, {type: file.type}), {title: name.replace(/\.[a-z0-9]+$/i, '')});
+        const local = new File([await file.arrayBuffer()], String(file.name || name).slice(0, 200), {type: file.type || 'application/octet-stream', lastModified: Number(file.lastModified) || Date.now()});
+        const saved = await library.importFile(local, {title: name.replace(/\.[a-z0-9]+$/i, '')});
         assertCurrent();
         if (!saved?.item?.id) throw Error('KeepIt did not confirm the saved file.');
         return {scope, itemId: saved.item.id, kind: 'file', title: String(saved.item.title || name).slice(0, 256)};

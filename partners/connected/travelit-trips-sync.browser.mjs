@@ -28,7 +28,6 @@ try{
   browser=await engine.launch({headless:true});const fixture=connectionFixture(origin,{writable:true});uploadFixture=fixture;fixture.uploadEndpoint=origin+'/__calendar-upload';
   async function device(){
    const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:1200,height:900}});
-   await context.addInitScript(()=>{try{localStorage.setItem('travelit-view','trips')}catch{}});
    await context.route('**/*',fixture.route);
    await context.route('https://overpass-api.de/api/interpreter',route=>route.fulfill({status:200,headers:{'access-control-allow-origin':'*'},contentType:'application/json',body:JSON.stringify(overpass)}));
    await context.route(/tile\.openstreetmap\.org/,route=>route.abort());
@@ -46,6 +45,14 @@ try{
   await chooser.setFiles(join(root,base,'tests/fixtures-sample-trip.xlsx'));
   await ipad.frame.locator('.stop .what',{hasText:'Boat tour'}).waitFor({timeout:30000});
   await ipad.frame.locator('#sync[data-state=ok]').waitFor({timeout:60000});
+  // A photo added from a stop is saved into KeepIt through the real host bridge and shows as a thumbnail.
+  await ipad.frame.locator('.stop .what',{hasText:'Boat tour'}).click();await ipad.frame.locator('#sheet[open]').waitFor();
+  const [pick]=await Promise.all([ipad.page.waitForEvent('filechooser'),ipad.frame.locator('[data-sact=att-photo]').click()]);
+  await pick.setFiles({name:'pier.jpg',mimeType:'image/jpeg',buffer:Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAkADADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwCCiiivjj9VCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA//9k=','base64')});
+  await ipad.frame.locator('#att-list').getByText('pier').waitFor({timeout:30000});
+  await ipad.frame.locator('#att-list img.thumb').waitFor({timeout:30000});
+  await ipad.frame.locator('#sheet button[value=save]').click();await ipad.frame.locator('#sheet').waitFor({state:'hidden'});
+  await ipad.frame.locator('.stop',{hasText:'Boat tour'}).locator('img.thumb').waitFor({timeout:30000});
   // Offline road maps for the trip's pinned places, then backed up to KeepIt.
   await tab(ipad.frame,'Map');await ipad.frame.getByText('0/1 areas saved').waitFor();
   await ipad.frame.getByRole('button',{name:'Save offline maps for this trip'}).click();
