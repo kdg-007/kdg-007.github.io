@@ -1647,7 +1647,7 @@ async function W(e, t = "message", { capture: i = false, propagate: o = false } 
     if (o) throw new Error("Another operation is still running. Retry this upload.");
     return E("Please wait for the current operation to finish.", false, t);
   }
-  $ = true, document.querySelectorAll("button:not(#startup-reload):not(.viewer-exit):not(.card-open):not(.viewer-dock button):not(.item-pane-tabs button)").forEach((n) => {
+  $ = true, document.querySelectorAll("button:not(#startup-reload):not(#close-item):not(.viewer-exit):not(.card-open):not(.viewer-dock button):not(.item-pane-tabs button)").forEach((n) => {
     n.closest(".note-dialog") || (n.disabled = true);
   }), i && sn(true);
   try {
@@ -1811,10 +1811,49 @@ function applyOriginalReadPermissions(){
 }
 async function Po() {
   itemOfflineControls?.dispose();itemOfflineControls=null;
-  Ne++, ni?.(), ni = null, ne && (await ne.close(), ne = null), De && URL.revokeObjectURL(De), De = null, a("preview").replaceChildren(), a("pdf-controls").hidden = true, a("preview-status").textContent = "";
+  Ne++, ni?.(), ni = null, ne && (await Promise.race([ne.close().catch(() => {}), later(3000)]), ne = null), De && URL.revokeObjectURL(De), De = null, a("preview").replaceChildren(), a("pdf-controls").hidden = true, a("preview-status").textContent = "";
 }
 function Fo() {
-  a("pdf-previous").disabled = $ || !ne?.doc || ne.page <= 1, a("pdf-forward").disabled = $ || !ne?.doc || (ne.pageEnd || ne.page) >= ne.doc.numPages;
+  a("pdf-previous").disabled = pdfTurning || !ne?.doc || ne.page <= 1, a("pdf-forward").disabled = pdfTurning || !ne?.doc || (ne.pageEnd || ne.page) >= ne.doc.numPages;
+}
+// PDF page turns are reader-local. They never take the library-wide operation
+// lock, so Close, Write beside and Download stay usable while a heavy page draws.
+let pdfTurning = false, itemSaving = false;
+const pdfPageBudget = () => Number(globalThis.keepitPdfPageBudgetMs) || 20000;
+const later = (ms) => new Promise((ok) => setTimeout(ok, ms));
+// Every render of a heavy page gets a time budget. When iPadOS runs short of
+// memory it can stop the PDF worker silently, and its promises never settle.
+function guardReader(reader) {
+  const render = reader.render;
+  reader.render = function guardedRender(...args) {
+    let timer;
+    const slow = setTimeout(() => { if (ne === reader) a("preview-status").textContent = "Drawing page…"; }, 600);
+    const budget = new Promise((_, fail) => { timer = setTimeout(() => {
+      reader.serial = (reader.serial || 0) + 1;
+      try { reader.renderTask?.cancel(); } catch {}
+      reader.renderTask = null;
+      const error = Error("This page is taking too long to draw. It may be too heavy for this device. Close and reopen the PDF, try another page, or use Download original.");
+      error.code = "PDF_PAGE_TIMEOUT";
+      fail(error);
+    }, pdfPageBudget()); });
+    return Promise.race([render.apply(this, args), budget]).finally(() => {
+      clearTimeout(timer); clearTimeout(slow);
+      if (ne === reader && a("preview-status").textContent === "Drawing page…") a("preview-status").textContent = "";
+    });
+  };
+  return reader;
+}
+async function savingItem(task) {
+  itemSaving = true;
+  try { return await task(); } finally { itemSaving = false; }
+}
+async function pdfTurn(delta) {
+  const reader = ne;
+  if (!reader?.doc || pdfTurning) return;
+  pdfTurning = true, Fo();
+  try { await reader.step(delta); }
+  catch (error) { if (ne === reader) a("preview-status").textContent = j(error); }
+  finally { pdfTurning = false; if (ne === reader || !ne) Fo(); }
 }
 async function ot(e, expectedLibrary, pane = "preview", backgroundPreview = false) {
   await Po();
@@ -1876,10 +1915,11 @@ async function renderItemPreview(e, t, openedLibrary) {
       ne = new r(n, a("preview"), (s, p, d) => {
         if (t !== Ne) return;
         a("preview-status").textContent = /^(?:PDF page ready|Rendered within|No document open)/.test(s) ? "" : s, a("pdf-position").textContent = `Page ${p} of ${d}`, Fo();
-      }), await ne.load({ data: new Uint8Array(await i.arrayBuffer()) });
+      }), guardReader(ne), await ne.load({ data: new Uint8Array(await i.arrayBuffer()) });
       if (t === Ne) a("pdf-controls").hidden = false;
-    } catch {
-      if (t === Ne) a("preview-status").textContent = "This PDF could not be displayed here. Download the original to open it in your PDF reader.";
+    } catch (error) {
+      if (t === Ne) a("preview-status").textContent = error?.code === "PDF_PAGE_TIMEOUT" ? j(error) : "This PDF could not be displayed here. Download the original to open it in your PDF reader.";
+      if (t === Ne && ne?.doc) a("pdf-controls").hidden = false, Fo();
     }
   } else if (o === "image") {
     let n = U("img");
@@ -1930,7 +1970,7 @@ function Te() {
   return T && (Ce !== null || e(nt()) !== e(Et));
 }
 async function rt(e = false) {
-  $ && !e || !e && Te() && !confirm("Discard unsaved changes to this item?") || (a("item-dialog").close(), T = null, je?.dispose(), je = null, await Po());
+  itemSaving && !e || !e && Te() && !confirm("Discard unsaved changes to this item?") || (a("item-dialog").close(), T = null, je?.dispose(), je = null, await Po());
 }
 function at(e, t) {
   let i = URL.createObjectURL(e), o = U("a");
@@ -2030,10 +2070,10 @@ a("item-dialog").addEventListener("cancel", (e) => {
   e.preventDefault(), rt();
 });
 a("item-form").onsubmit = (e) => {
-  e.preventDefault(), W(async () => {
+  e.preventDefault(), W(() => savingItem(async () => {
     if(u?.readOnly||u?.isCloud&&navigator.onLine===false)throw Error('This device copy is read only. Reconnect OneDrive before changing file metadata.');
     T = await u.edit(T.id, T.version, { ...nt(), ...Ce ? { namingChange: Ce } : {} }), Ce = null, Et = nt(), a("item-managed-name").textContent = T.managedName || "Original filename retained", a("item-heading").textContent = T.title, await M({ reload: false }), E("Changes saved.", false, "detail-message");
-  }, "detail-message");
+  }), "detail-message");
 };
 // Write beside: a new sketchbook page with this PDF open next to it.
 const writeBeside = K("button", "Write beside", "secondary");
@@ -2059,15 +2099,15 @@ writeBeside.onclick = async () => {
 };
 a("download-original").onclick = () => W(async () => at(await u.original(T.id), T.originalName), "detail-message");
 a("download-named").onclick = () => W(async () => at(await u.original(T.id), T.managedName || T.originalName), "detail-message");
-a("trash-item").onclick = () => W(async () => {
+a("trash-item").onclick = () => W(() => savingItem(async () => {
   let e = !!T.trashedAt;
   await u.trash(T.id, T.version, e), await rt(true), await M(), E(e ? "Item restored from Trash." : "Item moved to Trash. You can restore it there.");
-}, "detail-message");
+}), "detail-message");
 a("delete-item").onclick = () => {
-  confirm("Permanently delete this original from your library? This cannot be undone here. Exported backups remain unchanged.") && W(async () => {
+  confirm("Permanently delete this original from your library? This cannot be undone here. Exported backups remain unchanged.") && W(() => savingItem(async () => {
     let e = await u.remove(T.id, T.version);
     await rt(true), await M(), E(e?.originalsRetained ? "Item removed from the catalog. Some original copies could not be deleted; they remain in Files." : "Item and its original deleted from your library. Exported backups remain unchanged.", !!e?.originalsRetained);
-  }, "detail-message");
+  }), "detail-message");
 };
 // "Beside ‹PDF› · p. N" captions open that PDF at that page, inside KeepIt.
 async function openPdfAt(id, page) {
@@ -2084,8 +2124,8 @@ document.addEventListener("click", (event) => {
   event.preventDefault(); event.stopPropagation();
   openPdfAt(url.searchParams.get("open-pdf"), Math.max(1, parseInt(url.searchParams.get("page"), 10) || 1)).catch((error) => E(j(error), true));
 }, true);
-a("pdf-previous").onclick = () => W(() => ne.step(-1), "detail-message");
-a("pdf-forward").onclick = () => W(() => ne.step(1), "detail-message");
+a("pdf-previous").onclick = () => pdfTurn(-1);
+a("pdf-forward").onclick = () => pdfTurn(1);
 a("open-backup").onclick = a("backup-shortcut").onclick = ln;
 a("backup-dialog").addEventListener("cancel", (e) => {
   $ && e.preventDefault();
