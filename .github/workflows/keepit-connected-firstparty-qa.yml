@@ -235,6 +235,8 @@ jobs:
         run: node partners/connected/keepit-write-beside.browser.mjs
       - name: Verify a stuck PDF page never locks KeepIt
         run: node partners/connected/keepit-pdf-stuck-page.browser.mjs
+      - name: Verify large uploads survive a weak connection
+        run: node partners/connected/keepit-upload-resilience.browser.mjs
       - name: Reopen the installed app on a stalled connection without a blank screen
         run: node partners/connected/keepit-shell-worker-stall.browser.mjs
       - name: Keep the Microsoft sign-in readable after the app is closed

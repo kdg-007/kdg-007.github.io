@@ -2338,7 +2338,7 @@ async function pn() {
         let g = { phase: f.error ? "error" : "connecting", message: f.error || f.stage };
         window.keepItConnectionState = g, window.dispatchEvent(new CustomEvent("keepit-connection-state", { detail: g }));
       }
-      return f.stage ? o(f.stage) : f.error ? E(f.error, true) : E(`Uploading ${f.name} \xB7 ${pe(f.done)} / ${pe(f.total)}`);
+      return f.stage ? o(f.stage) : f.error ? E(f.error, true) : E(f.retrying ? `Weak connection \u2014 retrying ${f.name} from ${pe(f.done)} / ${pe(f.total)} (attempt ${f.retrying + 1})` : `Uploading ${f.name} \xB7 ${pe(f.done)} / ${pe(f.total)}`);
     } }), r) u = null, await J.previewRemembered(), u || (si(), a("result-count").textContent = "Connecting to OneDrive\u2026", a("empty").hidden = true);
     else if (Be) {
       if (si(), he && le && await le.queryPermission({ mode: "readwrite" }).catch(() => "denied") === "granted") try {

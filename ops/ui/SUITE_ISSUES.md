@@ -89,3 +89,10 @@ After the earlier comments are addressed, add editable handwriting and drawings 
 - Fix: page turns are reader-local; each page render has a 20 s budget and then shows a message; Close and Escape work unless a change is being saved; closing the reader is bounded to 3 s.
 - Test: `partners/connected/keepit-pdf-stuck-page.browser.mjs` (fails on the previous release).
 - Still open: render cost of very heavy pages on iPad (lag) — measure on device.
+
+## 2026-11-27 · Large uploads on a weak connection
+
+- Symptom: a 37 MB PDF upload stalled or failed on a poor connection.
+- Cause: files over 4 MiB went up in fixed 640 KiB pieces (≈57 requests for 37 MB), each with a 60 s limit; one failed piece stopped the upload until a manual retry.
+- Fix: pieces adapt (start 1.25 MiB, double to 10 MiB while they succeed, halve to 320 KiB after a failure); a failed piece is retried up to 6 times with backoff (1–30 s, honouring OneDrive throttling), asking OneDrive where to resume first; uploads wait for the connection when offline; each piece may take up to 3 minutes. The upload status says "Weak connection — retrying …".
+- Test: `partners/connected/keepit-upload-resilience.browser.mjs` (503s and a dropped connection mid-upload; bytes verified exactly).
