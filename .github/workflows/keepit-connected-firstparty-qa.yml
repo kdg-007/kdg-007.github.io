@@ -268,6 +268,8 @@ jobs:
           cmp /tmp/travelit-committed.js partners/travelit/thinkit/afda98f5ced9406d0fe5/js/app-fast.js
       - name: Verify the TravelIt trips workspace (import, edit, KeepIt links, timeline, map, budget)
         run: node partners/connected/travelit-trips.browser.mjs
+      - name: Verify TravelIt trips sync across devices and offline trip maps
+        run: node partners/connected/travelit-trips-sync.browser.mjs
       - name: Verify bounded read-only Excel reader and planner
         run: node partners/travelit/thinkit/afda98f5ced9406d0fe5/tests/excel-preview.test.mjs
       - name: Verify Excel batch metadata and backup compatibility
