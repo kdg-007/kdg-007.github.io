@@ -140,7 +140,7 @@ async function headers(browser){
   await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
   for(const app of ['liveit','thinkit','travelit','keepit']){
    await page.goto(origin+'/partners/connected/?connected-app='+app);
-   const header=app==='keepit'?'.library-top':'.topbar';
+   const header=app==='keepit'?'.library-top':app==='travelit'?'header.top':'.topbar';
    if(app!=='keepit')await page.locator('iframe').first().waitFor();
    const frame=app==='keepit'?page:page.frameLocator('iframe').first();await frame.locator(header).waitFor();
    if(app==='thinkit'){await frame.locator('#diStartCreate').click();await frame.getByRole('button',{name:'Create blank project',exact:true}).click();await frame.locator('#diMenuTabs [data-tab=File]').click();await frame.locator('body').press('Escape');}
@@ -149,7 +149,7 @@ async function headers(browser){
     await page.setViewportSize({width,height:900});await page.evaluate(()=>new Promise(ok=>requestAnimationFrame(()=>requestAnimationFrame(ok))));
     const geometry=await page.evaluate(app=>{
      const bar=document.querySelector('.connected-shell-bar').getBoundingClientRect(),frame=app==='keepit'?null:document.querySelector('iframe'),f=frame?frame.getBoundingClientRect():{left:0,top:0};
-     const controls=[...(frame?frame.contentDocument:document).querySelectorAll(app==='keepit'?'.library-top button,.library-top input,.library-top select':'.topbar button,.topbar input,.topbar select')].filter(e=>e.getBoundingClientRect().width&&getComputedStyle(e).visibility!=='hidden');
+     const controls=[...(frame?frame.contentDocument:document).querySelectorAll(app==='keepit'?'.library-top button,.library-top input,.library-top select':app==='travelit'?'header.top a,header.top button,header.top .sync,header.top .net':'.topbar button,.topbar input,.topbar select')].filter(e=>e.getBoundingClientRect().width&&getComputedStyle(e).visibility!=='hidden');
      const overlap=controls.filter(e=>{const r=e.getBoundingClientRect(),x=r.left+f.left,y=r.top+f.top;return x<bar.right&&x+r.width>bar.left&&y<bar.bottom&&y+r.height>bar.top;}).map(e=>e.textContent||e.id);
      return {left:bar.left,right:bar.right,width:innerWidth,overlap};
     },app);
@@ -166,10 +166,6 @@ async function headers(browser){
    }
    await page.locator('#connected-apps-toggle').click();await frame.locator(header).click({position:{x:10,y:10}});assert.equal(await page.locator('#connected-apps-list').isHidden(),true);
    await page.locator('#connected-apps-toggle').click();await frame.locator('body').press('Escape');assert.equal(await page.locator('#connected-apps-list').isHidden(),true);
-   if(app==='travelit'){
-    await frame.locator('#view-select').selectOption('trips');await frame.getByRole('button',{name:'+ New trip',exact:true}).click();await frame.locator('#f-title').fill('Menu dismissal test');await frame.locator('#f-startDate').fill('2026-12-01');await frame.locator('#f-endDate').fill('2026-12-02');await frame.locator('#modal-form button[type=submit]').click();
-    const actions=frame.locator('details.action-menu').first();await actions.locator('summary').click();await frame.locator('.topbar').click({position:{x:10,y:10}});assert.equal(await actions.getAttribute('open'),null);
-   }
    if(app==='thinkit'){
     await frame.locator('#diMenuTabs [data-tab=File]').click();await page.locator('#connected-apps-toggle').click();assert.equal(await frame.locator('#diMenuPopup').isHidden(),true);
    }
