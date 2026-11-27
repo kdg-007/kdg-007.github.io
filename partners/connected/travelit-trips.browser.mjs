@@ -81,7 +81,7 @@ async function run(engine){
 
     // Classic screens read the same records.
     await page.goto(origin+base+'index.html?view=trips');await page.locator('html[data-travelit-ready="true"]').waitFor();
-    assert.match(await page.locator('body').innerText(),/Lake weekend/);
+    assert.match(await page.locator('body').textContent(),/Lake weekend/); // the name sits in a trip picker; WebKit omits option text from innerText
     assert.deepEqual(errors,[]);
     console.log(engine.name()+': TravelIt trips workspace import, edit, attach, timeline, map, packing, budget and journal pass');
   }finally{await browser.close()}
