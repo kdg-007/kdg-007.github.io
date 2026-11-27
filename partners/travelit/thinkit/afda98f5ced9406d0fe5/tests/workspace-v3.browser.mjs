@@ -100,7 +100,7 @@ export async function checkMobileTripDensity(browser,origin){
  try{
   await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   const page=await context.newPage();
-  await page.goto(origin+'/partners/connected/?connected-app=travelit',{waitUntil:'domcontentloaded'});
+  await page.goto(origin+'/partners/connected/?connected-app=travelit&travelit-view=classic',{waitUntil:'domcontentloaded'});
   const frame=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await frame.locator('html[data-travelit-ready="true"]').waitFor({timeout:20000});
   await frame.getByLabel('Workspace',{exact:true}).selectOption('trips');

@@ -21,12 +21,14 @@ button{cursor:pointer}:focus-visible{outline:3px solid var(--coral);outline-offs
 .btn.ghost{background:transparent;color:inherit;border-color:#ffffff40}.btn[disabled]{opacity:.5;cursor:default}
 .top{background:var(--teal);color:var(--teal-ink)}
 .top .wrap{display:flex;align-items:center;gap:12px;min-height:56px;padding-top:env(safe-area-inset-top)}
+@media(min-width:1100px){.top .wrap{padding-right:max(max(3vw,14px),calc(var(--connected-controls-width,0px) - (100vw - min(1180px,100vw))/2))}}
 .brand{font-weight:700;font-size:20px;text-decoration:none}.crumb{opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sync{cursor:pointer;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:700;background:#ffffff22}.sync[data-state=ok]{background:#2f7a55}.sync[data-state=warn]{background:var(--coral)}
 .net{background:var(--coral);color:#fff;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:700}
 .tabs{position:sticky;top:0;z-index:500;background:var(--teal);box-shadow:0 1px 0 #0003}
 .tabs .wrap{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-bottom:8px}
 .tabs a{flex:none;color:var(--teal-ink);text-decoration:none;padding:8px 14px;border-radius:999px;font-weight:600;font-size:15px;opacity:.8;min-height:40px;display:flex;align-items:center}
+.tabs a.all-trips{opacity:1;border:1px solid #ffffff4d;margin-right:6px}
 .tabs a[aria-current=page]{background:var(--paper);color:var(--ink);opacity:1}
 main{padding:20px 0 80px}
 .card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:16px}
@@ -46,7 +48,9 @@ main{padding:20px 0 80px}
 .stub .info{padding:clamp(18px,3vw,30px);display:flex;flex-direction:column;gap:12px}
 .stub .count{font-weight:800;font-size:clamp(34px,5.5vw,52px);line-height:1}
 .stub .route{position:relative;min-height:260px;background:#0a434d;border-left:2px dashed #ffffff40}
-.stub .route>div{position:absolute;inset:0}
+.days-mini{list-style:none;margin:0;padding:clamp(18px,3vw,30px);display:grid;gap:10px;align-content:center;height:100%;box-sizing:border-box}
+.days-mini li{display:grid;gap:2px;padding:12px 14px;border-radius:14px;background:#ffffff12;border-left:4px solid var(--coral)}
+.days-mini b{font-size:16px}.days-mini span{font-size:15px;opacity:.95}.days-mini small{font-size:13px;opacity:.75}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .stats div{background:#ffffff14;border-radius:12px;padding:9px}.stats b{display:block;font-size:20px}.stats span{font-size:13px;opacity:.85}
 .trip-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;padding:16px;border-radius:18px;background:var(--paper);border:1px solid var(--line)}

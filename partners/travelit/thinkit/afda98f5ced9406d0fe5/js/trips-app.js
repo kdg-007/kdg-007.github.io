@@ -80,8 +80,12 @@ async function thumbPut(id,v){const db=await thumbDb;if(!db)return;try{db.transa
 async function thumbUrl(ref){
   if(thumbUrls.has(ref.itemId))return thumbUrls.get(ref.itemId);
   let v=await thumbGet(ref.itemId);
-  if(v===undefined&&bridge()?.thumbnail&&ref.kind!=='note'){try{v=await bridge().thumbnail(ref)||'none'}catch{v=undefined}if(v!==undefined)await thumbPut(ref.itemId,v)}
-  const url=v instanceof Blob?URL.createObjectURL(v):null;thumbUrls.set(ref.itemId,url);return url;
+  if(v===undefined&&bridge()?.thumbnail&&ref.kind!=='note'){
+    try{const got=await bridge().thumbnail(ref);
+      // KeepIt's Blob belongs to the host page; copy it into this page before storing or showing it.
+      v=got&&typeof got.arrayBuffer==='function'?new Blob([await got.arrayBuffer()],{type:got.type||'image/jpeg'}):'none'}catch{v=undefined}
+    if(v!==undefined)await thumbPut(ref.itemId,v)}
+  const url=v&&typeof v.arrayBuffer==='function'?URL.createObjectURL(v):null;thumbUrls.set(ref.itemId,url);return url;
 }
 function hydrateThumbs(root=document){
   for(const el of root.querySelectorAll('[data-thumb]:not([data-done])')){el.dataset.done='1';const ref=JSON.parse(el.dataset.thumb);
@@ -97,9 +101,9 @@ let mapDispose=null;
 function render(){
   if(mapDispose){mapDispose();mapDispose=null}
   const r=route();const view=$('#view'),tabs=$('#tabs');
-  if(!r.trip){tabs.hidden=true;$('#crumb').textContent='';view.innerHTML=viewTrips();drawStubRoute();hydrateThumbs();return}
+  if(!r.trip){tabs.hidden=true;$('#crumb').textContent='';view.innerHTML=viewTrips();hydrateThumbs();return}
   tabs.hidden=false;$('#crumb').textContent='· '+r.trip.title;
-  tabs.firstElementChild.innerHTML=TABS.map(([id,l])=>`<a href="${link(r.trip,id)}" ${id===r.tab?'aria-current="page"':''}>${l}</a>`).join('')+`<a href="#" data-act="edit-trip" style="margin-left:auto">Trip details</a>`;
+  tabs.firstElementChild.innerHTML=`<a href="#trips" class="all-trips">‹ All trips</a>`+TABS.map(([id,l])=>`<a href="${link(r.trip,id)}" ${id===r.tab?'aria-current="page"':''}>${l}</a>`).join('')+`<a href="#" data-act="edit-trip" style="margin-left:auto">Trip details</a>`;
   view.innerHTML=({today:viewToday,plan:viewPlan,map:viewMap,bookings:viewBookings,packing:viewPacking,budget:viewBudget,journal:viewJournal})[r.tab](r.trip);
   if(r.tab==='map')mountMap(r.trip);
   hydrateThumbs();
@@ -124,7 +128,8 @@ function viewTrips(){
     <div><h2 style="font-size:clamp(26px,4vw,38px)">${esc(next.title)}</h2>${next.subtitle?`<p style="margin:6px 0 0;opacity:.85">${esc(next.subtitle)}</p>`:''}</div>
     <div class="count">${countdown(next)}</div><p style="margin:0;opacity:.9">${dayName(next.startDate)} – ${dayName(next.endDate)}${next.departFrom?' · from '+esc(next.departFrom):''}</p>
     <div class="stats"><div><b>${st.length}</b><span>stops</span></div><div><b>${new Set(st.map(s=>s.placeId).filter(Boolean)).size}</b><span>places</span></div><div><b>${pk.filter(p=>p.packed).length}/${pk.length}</b><span>packed</span></div><div><b>${peso(planned)}</b><span>budget</span></div></div>
-    <span class="btn primary" style="align-self:flex-start">Open trip</span></div><div class="route"><div id="stub-route" data-trip="${esc(next.id)}"></div></div></a>`}
+    <span class="btn primary" style="align-self:flex-start">Open trip</span></div><div class="route"><ol class="days-mini">${daysOf(next).map((d,i)=>{const l=st.filter(x=>x.date===d),names=[...new Set(l.map(x=>placeById(x.placeId)?.name.split(' — ')[0]).filter(Boolean))];
+      return `<li><b>Day ${i+1} · ${dayName(d)}</b><span>${names.length?esc(names.length>1?names[0]+' → '+names.at(-1):names[0]):'No places yet'}</span><small>${l.length} stop${l.length===1?'':'s'}${l[0]?.time?` · from ${esc(l[0].time)}`:''}</small></li>`}).join('')}</ol></div></a>`}
   const card=t=>`<a class="trip-card" href="${link(t,'plan')}"><b style="font-size:18px">${esc(t.title)}</b><span class="muted small">${dayName(t.startDate)} – ${dayName(t.endDate)} · ${stopsOf(t).length} stops</span></a>`;
   return `<div class="row between" style="margin-bottom:16px"><h1>My trips</h1>${actions}</div>
   ${hero||`<div class="empty"><p style="font-size:18px;margin-top:0">No trips yet.</p><p>Create a trip, or import an itinerary spreadsheet (Activity, places, packing, costs and bookings sheets are all read).</p>${actions}</div>`}
@@ -143,8 +148,7 @@ function routeSvg(t,w,h){
   if(pins.length<2)return `<svg viewBox="0 0 ${w} ${h}"><text x="${w/2}" y="${h/2}" fill="#ffffffa0" text-anchor="middle" font-size="14">Pins appear here once places have coordinates</text></svg>`;
   const pad=30,c=Math.cos(pins[0].lat*Math.PI/180),la=pins.map(p=>p.lat),lo=pins.map(p=>p.lng),[a0,a1,o0,o1]=[Math.min(...la),Math.max(...la),Math.min(...lo),Math.max(...lo)];
   const k=Math.min((w-2*pad)/((o1-o0)*c||1),(h-2*pad)/((a1-a0)||1)),cx=(w-(o1-o0)*c*k)/2,cy=(h-(a1-a0)*k)/2,xy=p=>[cx+(p.lng-o0)*c*k,h-cy-(p.lat-a0)*k];
-  const lines=daysOf(t).map((d,i)=>{const seq=st.filter(s=>s.date===d).map(s=>placeById(s.placeId)).filter(hasPin).filter((p,j,a)=>!j||a[j-1].id!==p.id);return seq.length>1?`<polyline points="${seq.map(p=>xy(p).join(',')).join(' ')}" fill="none" stroke="${DAY_COLORS[i%7]}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`:''}).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" role="img" aria-label="Trip route">${lines}${pins.map(p=>{const[x,y]=xy(p);return`<circle cx="${x}" cy="${y}" r="7" fill="#fff" stroke="#0a434d" stroke-width="2.5"/>`}).join('')}</svg>`;
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" role="img" aria-label="Where the trip goes">${pins.map((p,i)=>{const[x,y]=xy(p);return`<circle cx="${x}" cy="${y}" r="11" fill="#fff" stroke="#0a434d" stroke-width="2"/><text x="${x}" y="${y+4}" text-anchor="middle" font-size="11" font-weight="700" fill="#0a434d">${i+1}</text>`}).join('')}</svg>`;
 }
 
 /* ---------- Stop rows (shared by Today and Plan) ---------- */
@@ -234,13 +238,21 @@ async function saveTripMaps(t,button){
   for(const [i,a] of todo.entries()){
     button.textContent=`Downloading area ${i+1} of ${todo.length}…`;
     const name=`${t.title} · ${a.places[0].name.split(' — ')[0]}${a.places.length>1?` +${a.places.length-1}`:''}`;
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+    let controller,timer;
     try{
-      const atlas=await downloadRoadRegion({latitude:a.center.lat,longitude:a.center.lng,radiusKm:a.radiusKm,name,signal:controller.signal});
+      // The public exporter is often briefly busy (HTTP 429/502/504): retry with growing pauses.
+      let atlas;
+      for(let attempt=1;;attempt++){
+        controller=new AbortController();timer=setTimeout(()=>controller.abort(),45000);
+        try{atlas=await downloadRoadRegion({latitude:a.center.lat,longitude:a.center.lng,radiusKm:a.radiusKm,name,signal:controller.signal});clearTimeout(timer);break}
+        catch(e){clearTimeout(timer);const busy=controller.signal.aborted||/HTTP (429|5\d\d)|busy|incomplete|fetch|network|load failed/i.test(e.message||'');
+          if(!busy||attempt>=4)throw e;
+          button.textContent=`Map service busy · retrying area ${i+1} of ${todo.length}…`;await new Promise(ok=>setTimeout(ok,attempt*4000))}
+      }
       const {manifest,tiles}=await prepareRegionAtlas(atlas),{mapRevision}=await getWorkspaceMetadata(state.db);
       await putAtlasRegion(state.db,manifest,tiles,{expectedMapRevision:mapRevision,rejectExisting:true});saved++;
     }catch(e){clearTimeout(timer);await load();render();notifyHost('travelit-maps-change');
-      return toast(`${saved?`Saved ${saved} area(s). `:''}${controller.signal.aborted?'The map download timed out.':e.message} Try again for the rest.`,true)}
+      return toast(`${saved?`Saved ${saved} area(s). `:''}${controller?.signal.aborted?'The map service did not answer.':e.message} Tap the button again later for the rest.`,true)}
     clearTimeout(timer);
     if(i<todo.length-1)await new Promise(ok=>setTimeout(ok,1500)); // be gentle with the public exporter
   }
@@ -258,21 +270,27 @@ async function atlasLayer(L,bounds){
 }
 
 /* ---------- Map ---------- */
+/** Places for the chosen day in visiting order; pinned ones numbered 1, 2, 3… with no gaps. */
+function mapPlaces(t,day){
+  const st=stopsOf(t).filter(s=>day==='all'||s.date===day),ids=[...new Set(st.map(s=>s.placeId).filter(Boolean))];
+  let n=0;const list=ids.map(placeById).filter(Boolean).map(p=>({p,n:hasPin(p)?++n:null,stops:st.filter(s=>s.placeId===p.id).length}));
+  return [...list.filter(x=>x.n),...list.filter(x=>!x.n)];
+}
 function viewMap(t){
   const day=state.ui.mapDay&&daysOf(t).includes(state.ui.mapDay)?state.ui.mapDay:'all',st=stopsOf(t).filter(s=>day==='all'||s.date===day);
-  const ids=[...new Set(st.map(s=>s.placeId).filter(Boolean))],places=ids.map(placeById).filter(Boolean),sel=state.ui.mapSel,picking=state.ui.pinFor;
+  const list=mapPlaces(t,day),sel=state.ui.mapSel,picking=state.ui.pinFor;
   return `<div class="row between" style="margin-bottom:12px"><h1>Map</h1><div class="row" role="group" aria-label="Day"><button class="chip" data-act="map-day" data-d="all" aria-pressed="${day==='all'}">All days</button>${daysOf(t).map((d,i)=>`<button class="chip" data-act="map-day" data-d="${d}" aria-pressed="${day===d}">Day ${i+1}</button>`).join('')}<button class="btn sm teal" data-act="edit-place">Add place</button></div></div>
   ${picking?`<div class="notice" style="margin-bottom:10px">Tap the map where <b>${esc(placeById(picking)?.name)}</b> is. <button class="btn sm" data-act="cancel-pin">Cancel</button></div>`:''}
   <div class="grid2"><div class="map-wrap"><div id="map"></div><span class="map-status" id="map-status">Loading street map…</span></div>
-  <div style="display:grid;gap:10px">${offlineMapsHtml(t)}${places.map((p,i)=>`<div class="place${p.id===sel?' sel':''}" data-act="map-select" data-id="${esc(p.id)}"><span class="n${hasPin(p)?'':' link'}">${hasPin(p)?i+1:'?'}</span><div><b>${esc(p.name)}</b>
-   <div class="small muted">${hasPin(p)?esc(p.coordinateStatus||'Pinned'):'No pin yet'} · ${st.filter(s=>s.placeId===p.id).length} stop(s)</div>${p.notes?`<div class="small" style="margin-top:3px">${esc(p.notes)}</div>`:''}
+  <div style="display:grid;gap:10px">${offlineMapsHtml(t)}${list.map(({p,n,stops})=>`<div class="place${p.id===sel?' sel':''}" data-act="map-select" data-id="${esc(p.id)}"><span class="n${n?'':' link'}">${n||'–'}</span><div><b>${esc(p.name)}</b>
+   <div class="small muted">${n?esc(p.coordinateStatus||'Pinned'):'Not on the map yet'} · ${stops} stop${stops===1?'':'s'}</div>${p.notes?`<div class="small" style="margin-top:3px">${esc(p.notes)}</div>`:''}
    <div class="row" style="margin-top:8px"><a class="btn sm" href="${esc(navUrl(null,p))}" target="_blank" rel="noopener">Google Maps</a>${hasPin(p)?`<a class="btn sm" href="${esc(wazeUrl(p))}" target="_blank" rel="noopener">Waze</a>`:''}<button class="btn sm" data-act="pin-place" data-id="${esc(p.id)}">${hasPin(p)?'Move pin':'Set pin on map'}</button><button class="btn sm" data-act="edit-place" data-id="${esc(p.id)}">Edit</button></div></div></div>`).join('')||'<div class="empty">No places on this day yet. Add a place to a stop to see it here.</div>'}</div></div>`;
 }
 function mountMap(t){
   const L=window.L,el=$('#map'),status=$('#map-status');if(!el)return;
   if(!L){status.textContent='Street map could not start. Reload online.';return}
   const day=state.ui.mapDay&&daysOf(t).includes(state.ui.mapDay)?state.ui.mapDay:'all',st=stopsOf(t).filter(s=>day==='all'||s.date===day);
-  const ids=[...new Set(st.map(s=>s.placeId).filter(Boolean))],places=ids.map(placeById).filter(Boolean);
+  const list=mapPlaces(t,day),ids=list.map(x=>x.p.id);
   const map=L.map(el,{zoomControl:true,attributionControl:true});
   const tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}).addTo(map);
   let loaded=0,fallback=null,disposed=false;
@@ -281,12 +299,10 @@ function mountMap(t){
   tiles.on('tileload',()=>{loaded++;if(!fallback)status.textContent='Street map · OpenStreetMap'});tiles.on('load',()=>{if(!loaded)useOffline()});tiles.on('tileerror',()=>{if(!loaded)setTimeout(()=>{if(!loaded)useOffline()},2500)});
   setTimeout(()=>{if(!loaded&&status.isConnected)useOffline()},8000);
   if(navigator.onLine===false)useOffline();
-  const pts=[],all=ids.map(placeById).filter(hasPin);
+  const pts=[],all=list.filter(x=>x.n).map(x=>x.p);
   state.ui.tripBounds=all.length?{minLat:Math.min(...all.map(p=>p.lat)),maxLat:Math.max(...all.map(p=>p.lat)),minLng:Math.min(...all.map(p=>p.lng)),maxLng:Math.max(...all.map(p=>p.lng))}:null;
-  daysOf(t).forEach((d,i)=>{if(day!=='all'&&d!==day)return;const seq=stopsOf(t).filter(s=>s.date===d).map(s=>placeById(s.placeId)).filter(hasPin).filter((p,j,a)=>!j||a[j-1].id!==p.id);
-    if(seq.length>1)L.polyline(seq.map(p=>[p.lat,p.lng]),{color:DAY_COLORS[i%7],weight:4,opacity:.9}).addTo(map)});
-  places.forEach((p,i)=>{if(!hasPin(p))return;pts.push([p.lat,p.lng]);
-    const m=L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:`<div class="pin${p.id===state.ui.mapSel?' sel':''}">${i+1}</div>`,iconSize:[28,28],iconAnchor:[14,14]}),title:p.name,keyboard:true}).addTo(map);
+  list.forEach(({p,n})=>{if(!n)return;pts.push([p.lat,p.lng]);
+    const m=L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:`<div class="pin${p.id===state.ui.mapSel?' sel':''}">${n}</div>`,iconSize:[28,28],iconAnchor:[14,14]}),title:p.name,keyboard:true}).addTo(map);
     const tip=document.createElement('span');tip.textContent=p.name;m.bindTooltip(tip,{direction:'top',offset:[0,-14]});
     m.on('click',()=>{state.ui.mapSel=p.id;keepUi();document.querySelector(`.place[data-id="${CSS.escape(p.id)}"]`)?.scrollIntoView({block:'nearest',behavior:'smooth'});document.querySelectorAll('.place').forEach(x=>x.classList.toggle('sel',x.dataset.id===p.id))})});
   const sel=placeById(state.ui.mapSel);
@@ -594,7 +610,6 @@ window.keepItAppFiles=Object.freeze({
 // KeepIt's notes bar asks TravelIt for its records through these hooks, as with the classic view.
 let markReady;const storageReady=new Promise(ok=>markReady=ok);
 window.travelItOwnedHooks=ownedTravelItHooks({ready:storageReady,getDB:()=>state.db,refresh:async()=>{await load();render()}});
-try{localStorage.setItem('travelit-view','trips')}catch{} // KeepIt reopens the trips workspace on this device
 (async()=>{
   try{state.db=await openDatabase(()=>location.reload());markReady();await load();net();render();document.documentElement.dataset.travelitTrips='ready'}
   catch(e){$('#view').innerHTML=`<div class="empty">TravelIt storage could not open: ${esc(e.message)}. Reload the page.</div>`}

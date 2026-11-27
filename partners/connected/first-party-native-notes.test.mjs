@@ -295,7 +295,7 @@ try{
    console.log('KEEPIT_CONNECTED_LIVEIT_NATIVE_CREATE_SAVE_REOPEN_'+tag+'_PASS');
    // Other two first-party hosts must mount under the same KeepIt-owned origin.
    // Full topic/trip note roundtrip is a separate acceptance gate, NOT inferred.
-   await page.goto(origin+'/partners/connected/?connected-app=travelit',{waitUntil:'domcontentloaded'});
+   await page.goto(origin+'/partners/connected/?connected-app=travelit&travelit-view=classic',{waitUntil:'domcontentloaded'});
    await page.locator('section[aria-label="TravelIt connected workspace"]')
      .waitFor({state:'visible',timeout:40000});
    await page.frameLocator('iframe[title="TravelIt trip planning workspace"]')

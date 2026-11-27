@@ -52,7 +52,7 @@ const layouts=[
 const workspaces=[
  {id:'keepit',label:'KeepIt',content:page=>page.getByRole('heading',{name:'Library',exact:true})},
  {id:'thinkit',label:'ThinkIt',content:page=>page.frameLocator('iframe[title="ThinkIt diagramming and Mind Map workspace"]').locator('#diStartScreen')},
- {id:'travelit',label:'TravelIt',content:page=>page.frameLocator('iframe[title="TravelIt trip planning workspace"]').locator('#app .topbar')}
+ {id:'travelit',label:'TravelIt',content:page=>page.frameLocator('iframe[title="TravelIt trip planning workspace"]').locator('html[data-travelit-trips=ready] header.top')}
 ];
 
 async function checkLauncher(browser,origin,layout){
@@ -87,7 +87,7 @@ async function checkLauncher(browser,origin,layout){
    await standalone.goto(origin+'/partners/liveit/thinkit/connected-w18e-c15396/index.html',{waitUntil:'domcontentloaded'});
    await standalone.locator('#liveit-apps-button').click();
    const trip=await open(standalone.locator('#liveit-app-switcher a[data-app="travelit"]'));
-   await trip.frameLocator('iframe[title="TravelIt trip planning workspace"]').locator('#app .topbar')
+   await trip.frameLocator('iframe[title="TravelIt trip planning workspace"]').locator('html[data-travelit-trips=ready] header.top')
     .waitFor({state:'visible',timeout:20000});
    await trip.close();
    await standalone.close();
@@ -191,7 +191,7 @@ async function checkLauncher(browser,origin,layout){
 
 async function checkWorkspaceStartup(browser,origin){
  for(const [id,selector,content] of [
-  ['travelit','iframe[title="TravelIt trip planning workspace"]','#app .topbar'],
+  ['travelit','iframe[title="TravelIt trip planning workspace"]','html[data-travelit-trips=ready] header.top'],
   ['thinkit','iframe[title="ThinkIt diagramming and Mind Map workspace"]','#diStartScreen']
  ]){
   const context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:900},serviceWorkers:'block'});
@@ -236,7 +236,7 @@ async function checkTravelActivities(browser,origin){
  try{
   await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   const page=await context.newPage();
-  await page.goto(origin+'/partners/connected/?connected-app=travelit',{waitUntil:'domcontentloaded'});
+  await page.goto(origin+'/partners/connected/?connected-app=travelit&travelit-view=classic',{waitUntil:'domcontentloaded'});
   const trip=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await trip.getByLabel('Workspace',{exact:true}).selectOption('map');
   await trip.locator('#street-map').waitFor({state:'visible',timeout:10000});

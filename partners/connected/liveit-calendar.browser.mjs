@@ -287,7 +287,7 @@ try{
   console.log('KEEPIT_DEVICE_COPY_OPEN_DURING_PROVIDER_OUTAGE_'+engine.name().toUpperCase()+'_PASS');
 
 
-  await a.page.goto(connectedPath('travelit'));await b.page.goto(connectedPath('travelit'));
+  await a.page.goto(connectedPath('travelit')+'&travelit-view=classic');await b.page.goto(connectedPath('travelit')+'&travelit-view=classic');
   const travel=a.page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await travel.locator('#view-select').selectOption('trips');await travel.locator('[data-action="new-trip"]').click();
   await travel.locator('#f-title').fill('App folder trip');

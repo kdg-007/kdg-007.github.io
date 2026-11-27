@@ -75,7 +75,7 @@ try{
   const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:1200,height:900}});
   await context.route('**/*',fixture.route);
   await context.route('https://overpass-api.de/api/interpreter',route=>route.fulfill({status:200,headers:{'access-control-allow-origin':'*'},contentType:'application/json',body:JSON.stringify({elements:[{type:'way',tags:{highway:'residential',name:'Synthetic road'},geometry:[{lat:14.599,lon:120.984},{lat:14.601,lon:120.985}]}]})}));
-  const page=await context.newPage();await page.goto(origin+'/partners/connected/?connected-app=travelit&connect-onedrive=1');
+  const page=await context.newPage();await page.goto(origin+'/partners/connected/?connected-app=travelit&travelit-view=classic&connect-onedrive=1');
   await page.locator('#onedrive-signin').click();await page.locator('#connected-cloud-status[data-phase=connected]').waitFor({timeout:30000}).catch(async error=>{console.error('SYNTHETIC_CONNECTION_DIAGNOSTIC',await page.evaluate(()=>({phase:window.keepItConnectionState?.phase,message:document.getElementById('message')?.textContent,cloud:document.getElementById('connected-cloud-status')?.textContent,dialog:document.getElementById('onedrive-dialog')?.textContent})));throw error;});
   const frame=page.frameLocator('iframe[title="TravelIt trip planning workspace"]');
   await frame.locator('#view-select').waitFor();return {context,page,frame};
