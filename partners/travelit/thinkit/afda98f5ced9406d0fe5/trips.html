@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en" data-suite-app="travelit">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>TravelIt</title>
+<link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="./css/trips.css?v=trips-1">
+</head>
+<body>
+<header class="top"><div class="wrap"><a class="brand" href="#trips">TravelIt</a><span class="crumb" id="crumb"></span><span class="grow"></span><span class="net" id="net" hidden>Offline</span><a class="btn ghost sm" href="./index.html" title="The previous TravelIt screens, same data">Classic view</a></div></header>
+<nav class="tabs" id="tabs" hidden aria-label="Trip sections"><div class="wrap"></div></nav>
+<main><div class="wrap" id="view"><p class="muted">Opening TravelIt…</p></div></main>
+<dialog id="sheet" class="sheet" aria-labelledby="sheet-title"><form method="dialog" id="sheet-form"></form></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="pick-xlsx" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+<input type="file" id="pick-photo" accept="image/*" hidden>
+<script src="./vendor/leaflet/leaflet.js"></script>
+<script type="module" src="./js/trips-app.js?v=trips-1"></script>
+</body>
+</html>

@@ -19,7 +19,7 @@ export function normalizePlace(input, now = new Date().toISOString()){
   const hasLat=String(input.lat??'').trim()!=='' || String(input.lng??'').trim()!=='';
   if(hasLat && !validCoords(input.lat,input.lng)) throw Error('Enter valid latitude AND longitude, or leave both empty.');
   if(input.stage!==undefined && !DISCOVERY_STAGES.includes(input.stage)) throw Error('Unknown discovery stage.');
-  return {...(input.importSource!==undefined?{importSource:importMetadata(input.importSource,'source')}:{}),id:input.id||uid(),name:name||'Unidentified place', category:PLACE_CATEGORIES.includes(input.category)?input.category:'Other', stage:input.stage||'Idea', sourceUrl, lat:hasLat?Number(input.lat):null, lng:hasLat?Number(input.lng):null, notes:cleanText(input.notes,4000), createdAt:input.createdAt||now, updatedAt:now};
+  return {...(input.importSource!==undefined?{importSource:importMetadata(input.importSource,'source')}:{}),...(httpUrl(input.navigationUrl,'Navigation link')?{navigationUrl:httpUrl(input.navigationUrl,'Navigation link')}:{}),...(cleanText(input.coordinateStatus,80)?{coordinateStatus:cleanText(input.coordinateStatus,80)}:{}),...(cleanText(input.code,20)?{code:cleanText(input.code,20)}:{}),id:input.id||uid(),name:name||'Unidentified place', category:PLACE_CATEGORIES.includes(input.category)?input.category:'Other', stage:input.stage||'Idea', sourceUrl, lat:hasLat?Number(input.lat):null, lng:hasLat?Number(input.lng):null, notes:cleanText(input.notes,4000), createdAt:input.createdAt||now, updatedAt:now};
 }
 export const tripDocumentReferences=globalThis.LiveItKeepItReferences;
 function normalizeTripDocuments(value){
@@ -27,6 +27,26 @@ function normalizeTripDocuments(value){
   if(value?.some(link=>Object.keys(link).sort().join(',')!=='itemId,kind,scope,title'))throw Error('A trip document must contain only its KeepIt reference and display title.');
   return documents;
 }
+// Optional trip-workspace extensions. Each is stored only when present.
+const httpUrl=(v,label)=>{const t=cleanText(v,2000);if(!t)return '';try{const u=new URL(t);if(!['https:','http:'].includes(u.protocol))throw Error();}catch{throw Error(label+' must start with https:// or http://');}return t;};
+const dateOrEmpty=v=>validDate(v)?v:'';
+const money=v=>{if(v===''||v===null||v===undefined)return null;const n=Number(v);if(!Number.isFinite(n)||n<0||n>1e9)throw Error('Amounts must be 0 or more.');return Math.round(n*100)/100;};
+export function normalizeStopDocuments(value){return value===undefined?undefined:normalizeTripDocuments(value);}
+function normalizeBookings(list){if(list===undefined)return undefined;if(!Array.isArray(list)||list.length>200)throw Error('Bookings must be a list.');
+ return list.map(b=>{const name=cleanText(b.name,150);if(!name)throw Error('Booking name is required.');
+  return {id:cleanText(b.id,80)||uid(),name,placeId:cleanText(b.placeId,80)||null,checkIn:dateOrEmpty(b.checkIn),checkOut:dateOrEmpty(b.checkOut),status:cleanText(b.status,80),confirmation:cleanText(b.confirmation,120),amountPhp:money(b.amountPhp),notes:cleanText(b.notes,1000),...(b.keepItDocuments?.length?{keepItDocuments:normalizeTripDocuments(b.keepItDocuments)}:{})};});}
+function normalizeShopping(list){if(list===undefined)return undefined;if(!Array.isArray(list)||list.length>500)throw Error('Shopping list must be a list.');
+ return list.map(x=>{const name=cleanText(x.name,120);if(!name)throw Error('Shopping item name is required.');
+  return {id:cleanText(x.id,80)||uid(),name,group:cleanText(x.group,80),unit:cleanText(x.unit,20)||'kg',lowPhp:money(x.lowPhp),highPhp:money(x.highPhp),pricePhp:money(x.pricePhp),plannedQty:money(x.plannedQty),boughtQty:money(x.boughtQty),paidPhp:money(x.paidPhp),notes:cleanText(x.notes,500)};});}
+function normalizeJournal(list){if(list===undefined)return undefined;if(!Array.isArray(list)||list.length>400)throw Error('Journal must be a list of days.');
+ return list.filter(d=>validDate(d?.date)).map(d=>({date:d.date,text:cleanText(d.text,20000),...(d.keepItDocuments?.length?{keepItDocuments:normalizeTripDocuments(d.keepItDocuments)}:{})}));}
+function tripExtras(input){const out={};
+ const b=normalizeBookings(input.bookings);if(b?.length)out.bookings=b;
+ const s=normalizeShopping(input.shopping);if(s?.length)out.shopping=s;
+ const j=normalizeJournal(input.journal);if(j?.length)out.journal=j;
+ const sub=cleanText(input.subtitle,200);if(sub)out.subtitle=sub;
+ const ds=cleanText(input.departFrom,120);if(ds)out.departFrom=ds;
+ return out;}
 export function normalizeTrip(input,now=new Date().toISOString()){
   const title=cleanText(input.title,150);
   if(!title) throw Error('Trip name is required.');
@@ -35,7 +55,7 @@ export function normalizeTrip(input,now=new Date().toISOString()){
   const timezone=cleanText(input.timezone||'Asia/Manila',100);
   try{ new Intl.DateTimeFormat('en-US',{timeZone:timezone});}catch{throw Error('Unknown time zone.');}
   const documents=normalizeTripDocuments(input.keepItDocuments);
-  const reserve=Number(input.fuelReservePct??10);if(!Number.isFinite(reserve)||reserve<0||reserve>50)throw Error('Fuel reserve must be 0–50%.');return {...(input.importReceipt!==undefined?{importReceipt:importMetadata(input.importReceipt,'trip')}:{}),...(documents.length?{keepItDocuments:documents}:{}),id:input.id||uid(),title,startDate:input.startDate,endDate:input.endDate,timezone,vehicleId:input.vehicleId||null,fuelReservePct:reserve,notes:cleanText(input.notes,2000),createdAt:input.createdAt||now,updatedAt:now};
+  const reserve=Number(input.fuelReservePct??10);if(!Number.isFinite(reserve)||reserve<0||reserve>50)throw Error('Fuel reserve must be 0–50%.');return {...(input.importReceipt!==undefined?{importReceipt:importMetadata(input.importReceipt,'trip')}:{}),...(documents.length?{keepItDocuments:documents}:{}),...tripExtras(input),id:input.id||uid(),title,startDate:input.startDate,endDate:input.endDate,timezone,vehicleId:input.vehicleId||null,fuelReservePct:reserve,notes:cleanText(input.notes,2000),createdAt:input.createdAt||now,updatedAt:now};
 }
 export function validDate(v){ const d=new Date(v+'T12:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(v||'') && !Number.isNaN(d.getTime()) && d.toISOString().slice(0,10)===v;}
 export function normalizeStop(input,trip,now=new Date().toISOString()){
@@ -48,13 +68,13 @@ export function normalizeStop(input,trip,now=new Date().toISOString()){
   if(!Number.isInteger(duration)||duration<0||duration>10080) throw Error('Duration must be 0–10080 minutes.');
   const sortOrder=input.sortOrder===undefined||input.sortOrder===null?1000000:Number(input.sortOrder);
   if(!Number.isInteger(sortOrder)||sortOrder<0||sortOrder>100000000) throw Error('Invalid itinerary order.');
-  return {...(input.importSource!==undefined?{importSource:importMetadata(input.importSource,'source')}:{}),...(input.dependencies!==undefined?{dependencies:normalizeStopDependencies(input.dependencies)}:{}),id:input.id||uid(),tripId:trip.id,placeId:input.placeId||null,title,date,time,durationMinutes:duration,kind:STOP_KINDS.includes(input.kind)?input.kind:'Activity',fixed:!!input.fixed,sortOrder,notes:cleanText(input.notes,2000),...normalizeLeg(input),createdAt:input.createdAt||now,updatedAt:now};
+  return {...(input.importSource!==undefined?{importSource:importMetadata(input.importSource,'source')}:{}),...(input.dependencies!==undefined?{dependencies:normalizeStopDependencies(input.dependencies)}:{}),...(input.keepItDocuments?.length?{keepItDocuments:normalizeTripDocuments(input.keepItDocuments)}:{}),...(cleanText(input.priority,40)&&input.priority!=='Planned'?{priority:cleanText(input.priority,40)}:{}),...(input.done===true?{done:true}:{}),...(cleanText(input.activityType,40)?{activityType:cleanText(input.activityType,40)}:{}),...(cleanText(input.code,20)?{code:cleanText(input.code,20)}:{}),id:input.id||uid(),tripId:trip.id,placeId:input.placeId||null,title,date,time,durationMinutes:duration,kind:STOP_KINDS.includes(input.kind)?input.kind:'Activity',fixed:!!input.fixed,sortOrder,notes:cleanText(input.notes,2000),...normalizeLeg(input),createdAt:input.createdAt||now,updatedAt:now};
 }
 export function normalizePacking(input,trip,now=new Date().toISOString()){
   const label=cleanText(input.label,150),qty=Number(input.quantity??1);
   if(!label) throw Error('Packing item name is required.');
   if(!Number.isInteger(qty)||qty<1||qty>999) throw Error('Quantity must be 1–999.');
-  return {id:input.id||uid(),tripId:trip.id,label,category:PACK_CATEGORIES.includes(input.category)?input.category:'Other',quantity:qty,packed:!!input.packed,owner:cleanText(input.owner,80),createdAt:input.createdAt||now,updatedAt:now};
+  return {...(cleanText(input.group,80)?{group:cleanText(input.group,80)}:{}),...(cleanText(input.unit,20)?{unit:cleanText(input.unit,20)}:{}),...(cleanText(input.notes,500)?{notes:cleanText(input.notes,500)}:{}),id:input.id||uid(),tripId:trip.id,label,category:PACK_CATEGORIES.includes(input.category)?input.category:'Other',quantity:qty,packed:!!input.packed,owner:cleanText(input.owner,80),createdAt:input.createdAt||now,updatedAt:now};
 }
 export function wazeUrl(place){if(place?.lat===null||place?.lng===null||!validCoords(place?.lat,place?.lng)) return null;return `https://waze.com/ul?ll=${encodeURIComponent(place.lat+','+place.lng)}&navigate=yes`;}
 export function tripDateAt(date,timezone='Asia/Manila'){
