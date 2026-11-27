@@ -500,6 +500,7 @@ document.addEventListener('visibilitychange',async()=>{if(document.visibilitySta
 // KeepIt's notes bar asks TravelIt for its records through these hooks, as with the classic view.
 let markReady;const storageReady=new Promise(ok=>markReady=ok);
 window.travelItOwnedHooks=ownedTravelItHooks({ready:storageReady,getDB:()=>state.db,refresh:async()=>{await load();render()}});
+try{localStorage.setItem('travelit-view','trips')}catch{} // KeepIt reopens the trips workspace on this device
 (async()=>{
   try{state.db=await openDatabase(()=>location.reload());markReady();await load();net();render();document.documentElement.dataset.travelitTrips='ready'}
   catch(e){$('#view').innerHTML=`<div class="empty">TravelIt storage could not open: ${esc(e.message)}. Reload the page.</div>`}

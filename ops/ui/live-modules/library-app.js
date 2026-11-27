@@ -186,7 +186,7 @@ function Vi({ workspace: e, getLibrary: t, getReadLibrary: readLibrary=t, getTar
       l(w);
     }, s.append(v), v;
   }, g = document.createElement("iframe");
-  g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = "/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html?v=trips-1", g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
+  g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = (() => { try { if (localStorage.getItem("travelit-view") === "trips") return "/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html?v=trips-1"; } catch {} return "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=trip-sync-1"; })(), g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
   mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: readLibrary, getWritableLibrary: t, getTarget: i, openItem: openTravelDocument, isNote: ue, downloadFile: at,prepareOffline:prepareOfflineItem });
   let h = null, b = null, y = false, I = () => {
     let c = g.contentWindow?.travelItOwnedHooks;
