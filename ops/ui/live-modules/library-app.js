@@ -1,6 +1,6 @@
 import { readCalendarNotes } from "/partners/connected/liveit-calendar-read.mjs?v=recovery-1";
 import { CALENDAR_SOURCE as ft, CALENDAR_TAG as mt, eventRecord as Qe, eventSignature as Fe, eventNoteId as Mt, eventEnvelope as $i, readEventEnvelope as $t } from "/partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1";
-import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=2";
+import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=3";
 import { mountOfflineControls } from "/partners/connected/offline-originals-ui.mjs";
 import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=device-copies-1";
 import { a as qt } from "./chunk-W72KRQYW.js";
@@ -186,8 +186,8 @@ function Vi({ workspace: e, getLibrary: t, getReadLibrary: readLibrary=t, getTar
       l(w);
     }, s.append(v), v;
   }, g = document.createElement("iframe");
-  g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=trip-sync-1", g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
-  mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: readLibrary, getTarget: i, openItem: openTravelDocument, isNote: ue, downloadFile: at,prepareOffline:prepareOfflineItem });
+  g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = (() => { try { if (localStorage.getItem("travelit-view") === "trips") return "/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html?v=trips-1"; } catch {} return "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=trip-sync-1"; })(), g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
+  mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: readLibrary, getWritableLibrary: t, getTarget: i, openItem: openTravelDocument, isNote: ue, downloadFile: at,prepareOffline:prepareOfflineItem });
   let h = null, b = null, y = false, I = () => {
     let c = g.contentWindow?.travelItOwnedHooks;
     if (!c) throw Error("TravelIt is still opening.");

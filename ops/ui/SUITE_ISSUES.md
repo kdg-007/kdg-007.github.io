@@ -96,3 +96,14 @@ After the earlier comments are addressed, add editable handwriting and drawings 
 - Cause: files over 4 MiB went up in fixed 640 KiB pieces (≈57 requests for 37 MB), each with a 60 s limit; one failed piece stopped the upload until a manual retry.
 - Fix: pieces adapt (start 1.25 MiB, double to 10 MiB while they succeed, halve to 320 KiB after a failure); a failed piece is retried up to 6 times with backoff (1–30 s, honouring OneDrive throttling), asking OneDrive where to resume first; uploads wait for the connection when offline; each piece may take up to 3 minutes. The upload status says "Weak connection — retrying …".
 - Test: `partners/connected/keepit-upload-resilience.browser.mjs` (503s and a dropped connection mid-upload; bytes verified exactly).
+
+## 2026-11-27 · TravelIt redesign, first working version (KI-023 to KI-027)
+
+- Owner feedback: TravelIt was not functional or appealing; a read-only preview was "pointless" without in-app editing, the street map and KeepIt links; the timeline must show stop details and photos.
+- New `trips.html` workspace on the same local records as the classic screens (classic view kept one tap away): My trips (countdown, stats, route), and per trip Today, Plan (list and readable timeline with photo thumbnails), Map (Leaflet street map, numbered pins, per-day routes, set a pin by tapping), Bookings, Packing, Budget (planned vs actual, amounts still to enter, shopping list) and Journal.
+- Everything is editable in the app; every write goes through the guarded store.
+- Whole-workbook import: Activity, Location Register, Activity Links, Packing List, Cost Estimate, Hotels & Bookings, a shopping sheet and Trip Summary.
+- KeepIt links: attach existing notes, drawings, photos and PDFs to stops, bookings and journal days; add a new photo, which is saved into KeepIt. The host bridge gains `thumbnail()` and `addFile()`; KeepIt opens the new workspace by default.
+- Offline: "Save for offline" adds the new page and its modules to the app cache; thumbnails are cached on the device.
+- Test: `partners/connected/travelit-trips.browser.mjs` (synthetic workbook `tests/fixtures-sample-trip.xlsx`).
+- Open: trip records are still stored per device (no OneDrive sync between iPad and iPhone); street tiles need a connection.

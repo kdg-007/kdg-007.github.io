@@ -6,19 +6,19 @@ import '../liveit/thinkit/connected-w18e-c15396/keepit-reference.js?v=1';
 const {isItemId, normalize} = globalThis.LiveItKeepItReferences;
 const apps = Object.freeze({
   liveit: {name:'LiveIt', path:'/partners/liveit/thinkit/connected-w18e-c15396/index.html', property:'liveItKeepItLinks'},
-  travelit: {name:'TravelIt', path:'/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html', property:'travelItKeepItLinks'}
+  travelit: {name:'TravelIt', path:'/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html', paths:['/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html','/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html'], property:'travelItKeepItLinks'}
 });
 const isVisible = item => item && !item.trashedAt && isItemId(item.id) &&
   !(item.source === CALENDAR_SOURCE &&
     item.tags?.includes(CALENDAR_TAG));
 
-export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getTarget, openItem, isNote, downloadFile,prepareOffline=async()=>{}}) {
+export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritableLibrary=null, getTarget, openItem, isNote, downloadFile,prepareOffline=async()=>{}}) {
   if (!Object.hasOwn(apps,app)) throw Error('Unsupported KeepIt link consumer.');
   const target = apps[app];
   function install() {
     const child = frame.contentWindow;
     const document = frame.contentDocument;
-    if (!document || child.location.pathname !== target.path) return;
+    if (!document || !(target.paths || [target.path]).includes(child.location.pathname)) return;
     async function connection() {
       if (!frame.isConnected || frame.contentDocument !== document) throw Error('Reopen '+target.name+' to use KeepIt links.');
       const library = getLibrary();
@@ -40,7 +40,34 @@ export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getTarget
       if (!isVisible(item)) throw Error('This item is unavailable in KeepIt. It may have been removed or moved to Trash.');
       return {item, library, assertCurrent};
     }
+    const isImage = item => !isNote(item) && (/^image\//i.test(item.mime || '') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(item.originalName || ''));
     child[target.property] = Object.freeze({
+      /** Small JPEG preview of an image item, or null for notes and other files. */
+      async thumbnail(reference, size = 320) {
+        const {item, library, assertCurrent} = await resolve(reference);
+        if (!isImage(item)) return null;
+        const original = await library.original(item.id);
+        assertCurrent();
+        const bitmap = await createImageBitmap(original).catch(() => null);
+        if (!bitmap) return null;
+        const scale = Math.min(1, Math.max(64, Math.min(640, Number(size) || 320)) / Math.max(bitmap.width, bitmap.height));
+        const canvas = frame.ownerDocument.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close?.();
+        return new Promise(done => canvas.toBlob(done, 'image/jpeg', 0.78));
+      },
+      /** Saves a new file (such as a trip photo) into the writable KeepIt library and returns its link. */
+      async addFile(file, {title = ''} = {}) {
+        if (!(file instanceof Blob) || !file.size) throw Error('Choose a photo or file to add.');
+        const library = getWritableLibrary?.();
+        if (!library || library.readOnly || typeof library.importFile !== 'function') throw Error('Connect your KeepIt library with OneDrive to add photos from ' + target.name + '.');
+        const {scope, assertCurrent} = await connection();
+        const name = String(title || file.name || 'Photo').slice(0, 200);
+        const saved = await library.importFile(file instanceof File ? file : new File([file], name, {type: file.type}), {title: name.replace(/\.[a-z0-9]+$/i, '')});
+        assertCurrent();
+        if (!saved?.item?.id) throw Error('KeepIt did not confirm the saved file.');
+        return {scope, itemId: saved.item.id, kind: 'file', title: String(saved.item.title || name).slice(0, 256)};
+      },
       async list() {
         const {library, scope, assertCurrent} = await connection();
         // Travel documents may have just been added in a separate KeepIt tab.
