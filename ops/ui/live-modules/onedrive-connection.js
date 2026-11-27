@@ -458,6 +458,25 @@ var U = class {
 function ge(h) {
   return h?.details?.status === 400 && /^invalidRequest$/i.test(h?.details?.providerCode || "");
 }
+// Upload resilience for weak connections: which failures are worth retrying.
+const UPLOAD_RETRIES = 6;
+function uploadRetryable(failure) {
+  const code = failure?.code, status = failure?.details?.status;
+  if (code === "NETWORK_UNKNOWN" || code === "THROTTLED" || code === "RANGE_RECONCILE") return true;
+  return code === "PROVIDER" && [408, 500, 502, 503, 504].includes(status);
+}
+async function uploadPause(attempt, provider) {
+  const wait = Math.min(30000, 1000 * 2 ** (attempt - 1)), cooldown = Math.max(0, (provider?.cooldownUntil || 0) - Date.now());
+  await new Promise((ok) => setTimeout(ok, Math.max(wait, cooldown + 250)));
+}
+async function uploadOnline() {
+  if (globalThis.navigator?.onLine !== false) return;
+  await new Promise((ok) => {
+    const done = () => { clearTimeout(timer), globalThis.removeEventListener?.("online", done), ok(); };
+    const timer = setTimeout(done, 120000);
+    globalThis.addEventListener?.("online", done);
+  });
+}
 async function pe({ error: h, size: e, minimalSession: t, directUpload: i } = {}) {
   if (!ge(h)) throw h;
   if (!Number.isSafeInteger(e) || e < 0) throw new Error("Invalid original size for OneDrive recovery.");
@@ -734,9 +753,31 @@ var T = encodeURIComponent, B = () => new DOMException("File not found in OneDri
       if (o) {
         d(Number.isFinite(Date.parse(o.expirationDateTime)), "OneDrive did not provide an upload expiration."), D(o.uploadUrl), await this.sessionStore.put(n, o);
         try {
+          // Pieces adapt to the connection (320 KiB multiples, as Graph requires):
+          // grow while they succeed, shrink after a failure. A failed piece is
+          // retried after asking OneDrive where to resume, so nothing is resent.
+          let piece = 4 * 327680, misses = 0;
           for (; l < i.size; ) {
             this.writable(e);
-            let c = te(l, i.size, 2 * 327680), f = await this.provider.request("PUT", o.uploadUrl, { transfer: true, body: i.slice(l, c), headers: { "Content-Type": "application/octet-stream", "Content-Range": `bytes ${l}-${c - 1}/${i.size}` }, tag: "KeepIt upload" }), m = await f.json();
+            await uploadOnline();
+            let c = te(l, i.size, piece), f, m;
+            try {
+              f = await this.provider.request("PUT", o.uploadUrl, { transfer: true, body: i.slice(l, c), headers: { "Content-Type": "application/octet-stream", "Content-Range": `bytes ${l}-${c - 1}/${i.size}` }, tag: "KeepIt upload", timeoutMs: 18e4 }), m = await f.json();
+            } catch (failure) {
+              if (!uploadRetryable(failure) || ++misses > UPLOAD_RETRIES) throw failure;
+              piece = Math.max(327680, piece / 2);
+              try { this.onProgress({ name: t, done: l, total: i.size, retrying: misses }); } catch {}
+              await uploadPause(misses, this.provider);
+              try {
+                let status = await (await this.provider.request("GET", o.uploadUrl, { transfer: true, tag: "resume upload status" })).json();
+                if (!status.nextExpectedRanges?.length && (s = await this.child(e, t).catch(() => null))) { l = i.size; continue; }
+                l = j(status.nextExpectedRanges, i.size), status.expirationDateTime && (o.expirationDateTime = status.expirationDateTime);
+              } catch (lost) {
+                if ([404, 410].includes(lost.details?.status)) throw lost;
+              }
+              continue;
+            }
+            misses = 0, piece = Math.min(32 * 327680, piece * 2);
             if (f.status === 200 || f.status === 201) s = m, l = i.size;
             else {
               d(f.status === 202, "Unexpected upload response.");
