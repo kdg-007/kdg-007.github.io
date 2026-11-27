@@ -2,7 +2,12 @@
  * (trip, stop, place, packing, expense); every write goes through the guarded
  * store so a stale tab can never overwrite newer data. KeepIt items are linked
  * by reference only, through the host's travelItKeepItLinks bridge. */
-import {openDatabase,allData,guardedSaveRecord,guardedDeleteRecord,guardedDeleteTrip,getWorkspaceMetadata,revisionFor} from './db.js';
+import {openDatabase,allData,guardedSaveRecord,guardedDeleteRecord,guardedDeleteTrip,getWorkspaceMetadata,revisionFor,restore,listMapPacks,putMapPack,setActiveMapPack,listAtlasRegions,putAtlasRegion,getAtlasTiles,deleteAtlasRegion} from './db.js';
+import {createBackup} from './backup.js?v=excel-import-1';
+import {portableMapExport,portableMapImport} from './offline-map-pack.js';
+import {prepareRegionAtlas} from './region-atlas.js';
+import {inspectInstalledAtlas} from './atlas-pack-tools.js';
+import {downloadRoadRegion} from './road-region-download.js';
 import {normalizeTrip,normalizeStop,normalizePlace,normalizePacking,tripDateAt,validCoords,uid} from './domain.js';
 import {normalizeExpense,EXPENSE_CATEGORIES} from './trip-costs.js';
 import {readTripWorkbook} from './trip-workbook-import.js';
@@ -44,7 +49,9 @@ const navUrl=(s,p)=>p?.navigationUrl||(hasPin(p)?`https://www.google.com/maps/se
 const wazeUrl=p=>hasPin(p)?`https://waze.com/ul?ll=${p.lat},${p.lng}&navigate=yes`:'';
 
 function toast(message,error=false){const t=$('#toast');t.textContent=message;t.classList.toggle('err',error);t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),error?4200:2000)}
-async function load(){const data=await allData(state.db);state.records=data.records;state.meta=await getWorkspaceMetadata(state.db)}
+async function load(){const data=await allData(state.db);state.records=data.records;state.meta=await getWorkspaceMetadata(state.db);state.atlases=await listAtlasRegions(state.db).catch(()=>[])}
+// KeepIt (the host page) syncs the workspace to OneDrive; tell it right after each local change.
+const notifyHost=name=>{try{if(parent!==window)parent.document.dispatchEvent(new parent.Event(name))}catch{}};
 
 /* ---------- Guarded writes ---------- */
 async function put(type,data){
@@ -56,7 +63,7 @@ async function remove(type,id){
   await guardedDeleteRecord(state.db,type,id,{expectedEpoch:state.meta.epoch,expectedWorkspaceRevision:null,expectedRevisionByKey:{[key]:revisionFor(row)},expectedPresenceByKey:{[key]:true}});
 }
 async function commit(work,message){
-  try{await work();await load();render();if(message)toast(message);return true}
+  try{await work();await load();render();notifyHost('travelit-workspace-change');if(message)toast(message);return true}
   catch(error){await load().catch(()=>{});render();toast(error?.message||'That change could not be saved.',true);return false}
 }
 const saveTrip=(t,patch)=>put('trip',normalizeTrip({...t,...patch}));
@@ -203,6 +210,53 @@ function timelineHtml(t){
     <span class="t">${esc(s.time)}${w>90&&s.durationMinutes?' · '+fmtDur(s.durationMinutes):''}</span><b>${esc(s.title)}</b>${w>70&&p?`<span class="t">${esc(p.name)}</span>`:''}${img&&w>60?`<img data-thumb="${esc(JSON.stringify(img))}" alt="" hidden>`:''}</button>`}).join('')}</div></div>`).join('')}</div></div>`;
 }
 
+/* ---------- Offline road maps for a trip ---------- */
+const km=(a,b)=>{const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.sqrt(x))};
+const inBounds=(p,b,pad=0.004)=>p.lat>=b.minLat-pad&&p.lat<=b.maxLat+pad&&p.lng>=b.minLng-pad&&p.lng<=b.maxLng+pad;
+/** Groups the trip's pinned places into areas of at most a 5 km radius (the exporter's limit). */
+function tripAreas(t){
+  const pins=[...new Map(stopsOf(t).map(s=>placeById(s.placeId)).filter(hasPin).map(p=>[p.id,p])).values()],left=[...pins],areas=[];
+  while(left.length){const seed=left.shift(),group=[seed];for(let i=left.length-1;i>=0;i--)if(km(seed,left[i])<=6)group.push(...left.splice(i,1));
+    const lat=(Math.min(...group.map(p=>p.lat))+Math.max(...group.map(p=>p.lat)))/2,lng=(Math.min(...group.map(p=>p.lng))+Math.max(...group.map(p=>p.lng)))/2,c={lat,lng};
+    areas.push({center:c,radiusKm:Math.min(5,Math.max(2,Math.ceil((Math.max(...group.map(p=>km(c,p)))+1.5)*2)/2)),places:group});}
+  return areas.map(a=>({...a,covered:(state.atlases||[]).some(m=>a.places.every(p=>inBounds(p,m.bounds)))}));
+}
+function offlineMapsHtml(t){
+  const areas=tripAreas(t),done=areas.filter(a=>a.covered).length,mine=(state.atlases||[]).filter(m=>areas.some(a=>a.places.some(p=>inBounds(p,m.bounds,0))));
+  if(!areas.length)return '';
+  return `<section class="card" style="display:grid;gap:8px"><div class="row between"><h3>Offline road maps</h3><span class="tag ${done===areas.length?'':'warn'}">${done}/${areas.length} areas saved</span></div>
+  <p class="small muted" style="margin:0">Roads and street names around your stops, kept on this device for when there is no signal. They also back up to KeepIt.</p>
+  ${done<areas.length?`<button class="btn teal" data-act="save-trip-maps" ${navigator.onLine===false?'disabled':''}>Save offline maps for this trip</button>`:''}
+  ${mine.length?`<ul class="check">${mine.map(m=>`<li><span style="flex:1">${esc(m.name)}<span class="small muted"> · ${m.featureCount.toLocaleString()} road pieces</span></span><button class="btn sm danger" data-act="remove-atlas" data-id="${esc(m.id)}">Remove</button></li>`).join('')}</ul>`:''}</section>`;
+}
+async function saveTripMaps(t,button){
+  const todo=tripAreas(t).filter(a=>!a.covered);let saved=0;
+  for(const [i,a] of todo.entries()){
+    button.textContent=`Downloading area ${i+1} of ${todo.length}…`;
+    const name=`${t.title} · ${a.places[0].name.split(' — ')[0]}${a.places.length>1?` +${a.places.length-1}`:''}`;
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+    try{
+      const atlas=await downloadRoadRegion({latitude:a.center.lat,longitude:a.center.lng,radiusKm:a.radiusKm,name,signal:controller.signal});
+      const {manifest,tiles}=await prepareRegionAtlas(atlas),{mapRevision}=await getWorkspaceMetadata(state.db);
+      await putAtlasRegion(state.db,manifest,tiles,{expectedMapRevision:mapRevision,rejectExisting:true});saved++;
+    }catch(e){clearTimeout(timer);await load();render();notifyHost('travelit-maps-change');
+      return toast(`${saved?`Saved ${saved} area(s). `:''}${controller.signal.aborted?'The map download timed out.':e.message} Try again for the rest.`,true)}
+    clearTimeout(timer);
+    if(i<todo.length-1)await new Promise(ok=>setTimeout(ok,1500)); // be gentle with the public exporter
+  }
+  await load();render();notifyHost('travelit-maps-change');toast(`Saved ${saved} offline road map${saved===1?'':'s'} for this trip`);
+}
+/** Draws saved offline roads under the pins; used when street tiles cannot load. */
+async function atlasLayer(L,bounds){
+  const regions=(state.atlases||[]).filter(m=>m.bounds.minLat<=bounds.maxLat&&m.bounds.maxLat>=bounds.minLat&&m.bounds.minLng<=bounds.maxLng&&m.bounds.maxLng>=bounds.minLng);
+  if(!regions.length)return null;
+  const renderer=L.canvas({padding:.3}),group=L.layerGroup(),style={'road-major':{color:'#e8a33d',weight:5},'road-secondary':{color:'#f2d27a',weight:4},'road-local':{color:'#9aa5a3',weight:2.2},'road-path':{color:'#9aa5a3',weight:1.2,dashArray:'3 4'},water:{color:'#6fa8dc',weight:2}};
+  for(const m of regions){const rows=await getAtlasTiles(state.db,m.id,m.tiles),byKind={};
+    for(const row of rows)for(const f of row?.features||[])(byKind[f.kind]||=[]).push(...f.groups.map(g=>g.coords.map(([x,y])=>[y,x])));
+    for(const [kind,lines] of Object.entries(byKind))L.polyline(lines,{...style[kind],renderer,interactive:false}).addTo(group);}
+  group.attribution=regions[0].attribution;return group;
+}
+
 /* ---------- Map ---------- */
 function viewMap(t){
   const day=state.ui.mapDay&&daysOf(t).includes(state.ui.mapDay)?state.ui.mapDay:'all',st=stopsOf(t).filter(s=>day==='all'||s.date===day);
@@ -210,7 +264,7 @@ function viewMap(t){
   return `<div class="row between" style="margin-bottom:12px"><h1>Map</h1><div class="row" role="group" aria-label="Day"><button class="chip" data-act="map-day" data-d="all" aria-pressed="${day==='all'}">All days</button>${daysOf(t).map((d,i)=>`<button class="chip" data-act="map-day" data-d="${d}" aria-pressed="${day===d}">Day ${i+1}</button>`).join('')}<button class="btn sm teal" data-act="edit-place">Add place</button></div></div>
   ${picking?`<div class="notice" style="margin-bottom:10px">Tap the map where <b>${esc(placeById(picking)?.name)}</b> is. <button class="btn sm" data-act="cancel-pin">Cancel</button></div>`:''}
   <div class="grid2"><div class="map-wrap"><div id="map"></div><span class="map-status" id="map-status">Loading street map…</span></div>
-  <div style="display:grid;gap:10px">${places.map((p,i)=>`<div class="place${p.id===sel?' sel':''}" data-act="map-select" data-id="${esc(p.id)}"><span class="n${hasPin(p)?'':' link'}">${hasPin(p)?i+1:'?'}</span><div><b>${esc(p.name)}</b>
+  <div style="display:grid;gap:10px">${offlineMapsHtml(t)}${places.map((p,i)=>`<div class="place${p.id===sel?' sel':''}" data-act="map-select" data-id="${esc(p.id)}"><span class="n${hasPin(p)?'':' link'}">${hasPin(p)?i+1:'?'}</span><div><b>${esc(p.name)}</b>
    <div class="small muted">${hasPin(p)?esc(p.coordinateStatus||'Pinned'):'No pin yet'} · ${st.filter(s=>s.placeId===p.id).length} stop(s)</div>${p.notes?`<div class="small" style="margin-top:3px">${esc(p.notes)}</div>`:''}
    <div class="row" style="margin-top:8px"><a class="btn sm" href="${esc(navUrl(null,p))}" target="_blank" rel="noopener">Google Maps</a>${hasPin(p)?`<a class="btn sm" href="${esc(wazeUrl(p))}" target="_blank" rel="noopener">Waze</a>`:''}<button class="btn sm" data-act="pin-place" data-id="${esc(p.id)}">${hasPin(p)?'Move pin':'Set pin on map'}</button><button class="btn sm" data-act="edit-place" data-id="${esc(p.id)}">Edit</button></div></div></div>`).join('')||'<div class="empty">No places on this day yet. Add a place to a stop to see it here.</div>'}</div></div>`;
 }
@@ -221,9 +275,14 @@ function mountMap(t){
   const ids=[...new Set(st.map(s=>s.placeId).filter(Boolean))],places=ids.map(placeById).filter(Boolean);
   const map=L.map(el,{zoomControl:true,attributionControl:true});
   const tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}).addTo(map);
-  let loaded=0;tiles.on('tileload',()=>{loaded++;status.textContent='Street map · OpenStreetMap'});tiles.on('load',()=>{if(!loaded)status.textContent='Street map unavailable offline. Pins and routes still show.'});
-  setTimeout(()=>{if(!loaded&&status.isConnected)status.textContent='Street map unavailable offline. Pins and routes still show.'},10000);
-  const pts=[];
+  let loaded=0,fallback=null,disposed=false;
+  const useOffline=async()=>{if(fallback||disposed)return;fallback='loading';const b=state.ui.tripBounds;const layer=b&&await atlasLayer(L,b);if(disposed)return;
+    if(layer){fallback=layer;layer.addTo(map);layer.eachLayer(l=>l.bringToBack?.());status.textContent='Offline road map · © OpenStreetMap contributors';}else{fallback=null;status.textContent='No signal. Pins and routes still show; save offline maps while online for roads.'}};
+  tiles.on('tileload',()=>{loaded++;if(!fallback)status.textContent='Street map · OpenStreetMap'});tiles.on('load',()=>{if(!loaded)useOffline()});tiles.on('tileerror',()=>{if(!loaded)setTimeout(()=>{if(!loaded)useOffline()},2500)});
+  setTimeout(()=>{if(!loaded&&status.isConnected)useOffline()},8000);
+  if(navigator.onLine===false)useOffline();
+  const pts=[],all=ids.map(placeById).filter(hasPin);
+  state.ui.tripBounds=all.length?{minLat:Math.min(...all.map(p=>p.lat)),maxLat:Math.max(...all.map(p=>p.lat)),minLng:Math.min(...all.map(p=>p.lng)),maxLng:Math.max(...all.map(p=>p.lng))}:null;
   daysOf(t).forEach((d,i)=>{if(day!=='all'&&d!==day)return;const seq=stopsOf(t).filter(s=>s.date===d).map(s=>placeById(s.placeId)).filter(hasPin).filter((p,j,a)=>!j||a[j-1].id!==p.id);
     if(seq.length>1)L.polyline(seq.map(p=>[p.lat,p.lng]),{color:DAY_COLORS[i%7],weight:4,opacity:.9}).addTo(map)});
   places.forEach((p,i)=>{if(!hasPin(p))return;pts.push([p.lat,p.lng]);
@@ -235,7 +294,7 @@ function mountMap(t){
   map.on('click',e=>{const id=state.ui.pinFor;if(!id)return;const p=placeById(id);state.ui.pinFor=null;keepUi();
     commit(()=>put('place',normalizePlace({...p,lat:+e.latlng.lat.toFixed(6),lng:+e.latlng.lng.toFixed(6),coordinateStatus:'Pinned in TravelIt'})),'Pin saved')});
   const ro=new ResizeObserver(()=>map.invalidateSize({pan:false}));ro.observe(el);
-  mapDispose=()=>{ro.disconnect();map.remove()};
+  mapDispose=()=>{disposed=true;ro.disconnect();map.remove()};
 }
 
 /* ---------- Bookings ---------- */
@@ -430,7 +489,7 @@ async function importWorkbook(file){
     for(const s of r.stops)await put('stop',s);
     for(const p of r.packing)await put('packing',p);
     for(const e of r.expenses)await put('expense',e);
-    await load();location.hash=link(r.trip,'plan');render();toast(`Imported ${c.stops} stops`);
+    await load();location.hash=link(r.trip,'plan');render();notifyHost('travelit-workspace-change');toast(`Imported ${c.stops} stops`);
   }catch(e){await load().catch(()=>{});render();toast(e.message||'This workbook could not be imported.',true)}
 }
 
@@ -446,6 +505,9 @@ document.addEventListener('click',async e=>{
   else if(a==='import-xlsx'){const i=$('#pick-xlsx');i.value='';i.onchange=()=>i.files[0]&&importWorkbook(i.files[0]);i.click()}
   else if(a==='offline'){el.disabled=true;el.textContent='Saving…';
     try{const r=await prepareOfflineShell({scope:new URL('./',location.href).href});toast(r.ready?'TravelIt will open without signal on this device. Open the Map once online to keep its street map.':r.reason,!r.ready)}catch(err){toast(err.message,true)}finally{el.disabled=false;el.textContent='Save for offline'}}
+  else if(a==='save-trip-maps'){el.disabled=true;try{await saveTripMaps(t,el)}finally{if(el.isConnected){el.disabled=false;el.textContent='Save offline maps for this trip'}}}
+  else if(a==='remove-atlas'){const m=state.atlases.find(x=>x.id===id);if(!m||!confirm(`Remove the offline map “${m.name}” from this device?`))return;
+    const {mapRevision}=await getWorkspaceMetadata(state.db);await commit(()=>deleteAtlasRegion(state.db,m,{expectedMapRevision:mapRevision}),'Offline map removed')}
   else if(a==='new-stop')stopEditor(t,null,{day:el.dataset.day});
   else if(a==='edit-stop')stopEditor(t,of('stop').find(s=>s.id===id));
   else if(a==='toggle-done'){const s=of('stop').find(x=>x.id===id);commit(()=>saveStop(t,{...s,done:!s.done}),s.done?'Marked not done':'Marked done')}
@@ -474,6 +536,7 @@ document.addEventListener('click',async e=>{
       openSheet({title:'Attach to '+dayName(d),body:attachmentsHtml(docs),footer:'<span class="grow"></span><button class="btn teal" value="save">Done</button>',onAction:async(act,b)=>{await attachmentAction(act,b,docs,()=>{$('#att-list').outerHTML=new DOMParser().parseFromString(attachmentsHtml(docs),'text/html').querySelector('#att-list').outerHTML;hydrateThumbs(sheetForm)})},onSubmit:save});}
   }
 });
+$('#sync').addEventListener('click',e=>toast(e.currentTarget.title||'Sync status',e.currentTarget.dataset.state==='warn'));
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.what[data-act]')){e.preventDefault();e.target.click()}});
 document.addEventListener('change',e=>{
   const el=e.target,t=route().trip;if(!t||el.closest('#sheet'))return;
@@ -483,7 +546,7 @@ document.addEventListener('change',e=>{
 document.addEventListener('input',e=>{
   const el=e.target;if(el.dataset.act!=='journal-text')return;const t=route().trip,d=el.dataset.day;
   clearTimeout(journalTimer);journalTimer=setTimeout(async()=>{const fresh=tripById(t.id),j=[...(fresh.journal||[])],entry=j.find(x=>x.date===d)||{date:d};
-    try{await saveTrip(fresh,{journal:[...j.filter(x=>x.date!==d),{...entry,text:el.value}]});await load();toast('Journal saved')}catch(err){toast(err.message,true)}},900);
+    try{await saveTrip(fresh,{journal:[...j.filter(x=>x.date!==d),{...entry,text:el.value}]});await load();notifyHost('travelit-workspace-change');toast('Journal saved')}catch(err){toast(err.message,true)}},900);
 });
 document.addEventListener('submit',e=>{
   const f=e.target;if(f.closest('#sheet'))return;e.preventDefault();const t=route().trip,fd=Object.fromEntries(new FormData(f));
@@ -497,6 +560,37 @@ const net=()=>{$('#net').hidden=navigator.onLine!==false};addEventListener('onli
 // Another TravelIt tab (classic view) may have changed the same records.
 document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&!sheet.open){await load();render()}});
 
+async function captureWorkspace({opening=false}={}){
+  if(!state.db)throw Error('TravelIt is still opening.');
+  if(sheet.open&&!opening)throw Error('Save or close the current TravelIt edit first.');
+  const {epoch,revision}=await getWorkspaceMetadata(state.db),{records}=await allData(state.db);
+  const snapshot=await createBackup({records,outbox:[]},'2000-01-01T00:00:00.000Z');
+  return {title:'TravelIt workspace',identity:epoch||'travelit-initial',token:{epoch,revision},payload:JSON.stringify(snapshot),empty:records.length===0};
+}
+async function allMaps(){return [...await listMapPacks(state.db),...await listAtlasRegions(state.db)]}
+window.keepItAppFiles=Object.freeze({
+  capture:captureWorkspace,
+  syncStatus(message){const el=$('#sync');if(!el)return;el.textContent=/saved in keepit|up to date|verified/i.test(message)?'Synced':/waiting|pending|saving/i.test(message)?'Sync pending':/opened|updated/i.test(message)?'Updated':'Sync';el.title=message;el.hidden=false;
+    el.dataset.state=/synced|saved in keepit|up to date|verified/i.test(message)?'ok':/reconnect|review|trash|another|different/i.test(message)?'warn':'wait'},
+  async open(payload,expected){
+    const current=await captureWorkspace({opening:true});
+    if(!expected||current.token.epoch!==expected.epoch||current.token.revision!==expected.revision)throw Error('The local TravelIt workspace changed. Review it before switching files.');
+    if(sheet.open)sheet.close();
+    await restore(state.db,JSON.parse(payload),{expectedWorkspaceRevision:expected.revision});await load();render();toast('Trips updated from KeepIt');
+    return captureWorkspace();
+  },
+  async listMaps(){return (await allMaps()).map(({id,name})=>({id,name}))},
+  async captureMap(id){const map=(await allMaps()).find(m=>m.id===id);if(!map)throw Error('The map was removed from this device.');
+    if(!map.regionAtlas)return JSON.stringify({schema:'travelit-map-file-v1',pack:await portableMapExport(map)});
+    const atlas=await inspectInstalledAtlas(map,d=>getAtlasTiles(state.db,map.id,d),{exportPayload:true});
+    return JSON.stringify({schema:'travelit-map-file-v1',atlas:atlas.payload})},
+  async installMap(payload){const content=JSON.parse(payload);if(content.schema!=='travelit-map-file-v1')throw Error('Invalid TravelIt offline map.');
+    const maps=await allMaps(),{mapRevision}=await getWorkspaceMetadata(state.db),prepared=content.atlas&&await prepareRegionAtlas(content.atlas),pack=prepared?.manifest||await portableMapImport(content.pack);
+    if(maps.some(m=>m.contentSha256===pack.contentSha256))return;
+    if(prepared)await putAtlasRegion(state.db,pack,prepared.tiles,{expectedMapRevision:mapRevision,rejectExisting:true});
+    else{pack.id=crypto.randomUUID();pack.importedAt=new Date().toISOString();await putMapPack(state.db,pack,{expectedMapRevision:mapRevision,rejectExisting:true})}
+    await load();render()}
+});
 // KeepIt's notes bar asks TravelIt for its records through these hooks, as with the classic view.
 let markReady;const storageReady=new Promise(ok=>markReady=ok);
 window.travelItOwnedHooks=ownedTravelItHooks({ready:storageReady,getDB:()=>state.db,refresh:async()=>{await load();render()}});

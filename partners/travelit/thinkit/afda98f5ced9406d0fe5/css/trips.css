@@ -22,6 +22,7 @@ button{cursor:pointer}:focus-visible{outline:3px solid var(--coral);outline-offs
 .top{background:var(--teal);color:var(--teal-ink)}
 .top .wrap{display:flex;align-items:center;gap:12px;min-height:56px;padding-top:env(safe-area-inset-top)}
 .brand{font-weight:700;font-size:20px;text-decoration:none}.crumb{opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sync{cursor:pointer;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:700;background:#ffffff22}.sync[data-state=ok]{background:#2f7a55}.sync[data-state=warn]{background:var(--coral)}
 .net{background:var(--coral);color:#fff;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:700}
 .tabs{position:sticky;top:0;z-index:500;background:var(--teal);box-shadow:0 1px 0 #0003}
 .tabs .wrap{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-bottom:8px}

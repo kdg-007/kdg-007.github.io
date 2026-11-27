@@ -107,3 +107,10 @@ After the earlier comments are addressed, add editable handwriting and drawings 
 - Offline: "Save for offline" adds the new page and its modules to the app cache; thumbnails are cached on the device.
 - Test: `partners/connected/travelit-trips.browser.mjs` (synthetic workbook `tests/fixtures-sample-trip.xlsx`).
 - Open: trip records are still stored per device (no OneDrive sync between iPad and iPhone); street tiles need a connection.
+
+## 2026-11-27 · TravelIt trips sync between devices and offline trip maps (KI-026)
+
+- The trips workspace joins KeepIt's app-file sync (KeepIt / TravelIt, versioned, same file format as the classic screens). Each edit signals KeepIt to save straight away, an empty device opens the saved trips by itself, and newer versions from another device load on focus or every 15 s. A Sync badge shows the state (tap it for details).
+- Map tab: "Save offline maps for this trip" groups the trip's pinned places into areas of up to a 5 km radius, downloads road and street-name data for each (OpenStreetMap via Overpass, ODbL attribution), stores it on the device and backs it up to KeepIt. When street tiles cannot load, the saved roads draw under the pins.
+- Test: `partners/connected/travelit-trips-sync.browser.mjs` (two synthetic devices, synthetic OneDrive and exporter).
+- Open: offline maps saved on one device are installed on another from KeepIt's TravelIt files panel or downloaded again there; route roads between distant areas are not covered.

@@ -34,7 +34,7 @@ export function mountAppRepository({getLibrary}){
  const saveBinding=value=>bindings.save(value);
  const scopeKey=`${settingsKey}:scope`;
  const appFrame=()=>{
-  const accepted=new Set([FRAMES[app],...(app==='thinkit'?['/thinkit/36f8901ec722db162bcf/index.html']:[])]);
+  const accepted=new Set([FRAMES[app],...(app==='thinkit'?['/thinkit/36f8901ec722db162bcf/index.html']:[]),...(app==='travelit'?['/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html']:[])]);
   const frame=[...document.querySelectorAll('iframe')].find(node=>accepted.has(new URL(node.src,location.href).pathname));
   try{if(frame?.contentWindow.location.origin===location.origin&&accepted.has(frame.contentWindow.location.pathname))return frame;}catch{}
   return null;
