@@ -12,7 +12,7 @@ const isVisible = item => item && !item.trashedAt && isItemId(item.id) &&
   !(item.source === CALENDAR_SOURCE &&
     item.tags?.includes(CALENDAR_TAG));
 
-export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritableLibrary=null, getTarget, openItem, isNote, downloadFile,prepareOffline=async()=>{}}) {
+export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritableLibrary=null, getTarget, openItem, isNote, downloadFile,prepareOffline=async()=>{},newSketch=null}) {
   if (!Object.hasOwn(apps,app)) throw Error('Unsupported KeepIt link consumer.');
   const target = apps[app];
   function install() {
@@ -55,6 +55,20 @@ export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritab
         canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close?.();
         return new Promise(done => canvas.toBlob(done, 'image/jpeg', 0.78));
+      },
+      /** Opens KeepIt's sketchbook on a new note; resolves with its link once saved, or null if cancelled. */
+      async sketch({title = ''} = {}) {
+        if (typeof newSketch !== 'function') throw Error('Update KeepIt to sketch from ' + target.name + '.');
+        const {scope, assertCurrent} = await connection();
+        const name = String(title || 'Sketch').trim().slice(0, 200) || 'Sketch';
+        const itemId = await newSketch(name);
+        if (!itemId) return null;
+        // Wait for KeepIt to finish saving the note before handing back its link.
+        for (let attempt = 0; attempt < 90; attempt++) {
+          try { const item = await getLibrary().getItem(itemId); assertCurrent(); if (isVisible(item)) return {scope, itemId, kind: 'note', title: String(item.title || name).slice(0, 256)}; } catch {}
+          await new Promise(done => setTimeout(done, 500));
+        }
+        throw Error('The sketch is still saving in KeepIt. Attach it from KeepIt once it appears.');
       },
       /** Saves a new file (such as a trip photo) into the writable KeepIt library and returns its link. */
       async addFile(file, {title = ''} = {}) {

@@ -1,8 +1,8 @@
 import { readCalendarNotes } from "/partners/connected/liveit-calendar-read.mjs?v=recovery-1";
 import { CALENDAR_SOURCE as ft, CALENDAR_TAG as mt, eventRecord as Qe, eventSignature as Fe, eventNoteId as Mt, eventEnvelope as $i, readEventEnvelope as $t } from "/partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1";
-import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=4";
+import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=5";
 import { mountOfflineControls } from "/partners/connected/offline-originals-ui.mjs";
-import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=trips-sync-1";
+import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=trips-sync-2";
 import { a as qt } from "./chunk-W72KRQYW.js";
 import { b as Ri, c as pt } from "./chunk-C6CZGXK7.js";
 import { b as Dt } from "./chunk-I45DYT36.js";
@@ -186,8 +186,17 @@ function Vi({ workspace: e, getLibrary: t, getReadLibrary: readLibrary=t, getTar
       l(w);
     }, s.append(v), v;
   }, g = document.createElement("iframe");
-  g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = (() => { try { if (new URLSearchParams(location.search).get("travelit-view") === "classic") sessionStorage.setItem("travelit-view", "classic"); return sessionStorage.getItem("travelit-view") === "classic"; } catch { return false; } })() ? "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=trip-sync-1" : "/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html?v=trips-2", g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
-  mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: readLibrary, getWritableLibrary: t, getTarget: i, openItem: openTravelDocument, isNote: ue, downloadFile: at,prepareOffline:prepareOfflineItem });
+  g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = (() => { try { if (new URLSearchParams(location.search).get("travelit-view") === "classic") sessionStorage.setItem("travelit-view", "classic"); return sessionStorage.getItem("travelit-view") === "classic"; } catch { return false; } })() ? "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=trip-sync-1" : "/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html?v=trips-3", g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
+  mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: readLibrary, getWritableLibrary: t, newSketch: async (title) => {
+    const ui = await ce(), itemId = crypto.randomUUID();
+    await ui.newNote({ itemId, title });
+    await ui.editor.draw();
+    const page = document.querySelector('dialog[aria-label="Note drawing"][open]');
+    if (!page) return null;
+    return new Promise((done) => page.addEventListener("close", () => {
+      if (page.returnValue === "inserted" && ui.mode === "edit") { ui.saveButton?.click(); done(itemId); } else done(null);
+    }, { once: true }));
+  }, getTarget: i, openItem: openTravelDocument, isNote: ue, downloadFile: at,prepareOffline:prepareOfflineItem });
   let h = null, b = null, y = false, I = () => {
     let c = g.contentWindow?.travelItOwnedHooks;
     if (!c) throw Error("TravelIt is still opening.");

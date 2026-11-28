@@ -71,13 +71,9 @@ try{
   assert.equal(await phone.frame.locator('.money').innerText(),'1/3');
   await phone.frame.locator('label',{hasText:'Swimwear'}).click();await phone.frame.locator('.money',{hasText:'2/3'}).waitFor();
   await phone.frame.locator('#sync[data-state=ok]').waitFor({timeout:60000});
-  // The saved offline map is available to install on the second device.
-  await phone.page.locator('#connected-apps-toggle').click();await phone.page.getByRole('button',{name:'TravelIt files',exact:true}).click();
-  const files=phone.page.getByRole('dialog',{name:'TravelIt files in KeepIt'});
-  await files.getByRole('button',{name:/^Install Lake weekend/}).click();
-  await files.getByRole('status').filter({hasText:/Installed “Lake weekend/}).waitFor({timeout:30000});
-  await files.getByRole('button',{name:'Close',exact:true}).click();
-  assert.equal((await phone.frame.locator('body').evaluate(()=>window.keepItAppFiles.listMaps())).length,1);
+  // The offline map saved on the iPad installs on the second device by itself.
+  await phone.page.waitForFunction(async()=>(await document.querySelector('iframe[title="TravelIt trip planning workspace"]').contentWindow.keepItAppFiles.listMaps()).length===1,null,{timeout:60000,polling:1000});
+  await tab(phone.frame,'Map');await phone.frame.getByText('1/1 areas saved').waitFor({timeout:15000});
 
   // Back on the iPad the edit from the phone arrives.
   await ipad.page.evaluate(()=>window.dispatchEvent(new Event('focus')));

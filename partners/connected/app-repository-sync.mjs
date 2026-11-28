@@ -307,10 +307,27 @@ export function mountAppRepository({getLibrary}){
    }
    const result=await cloud.repo.save({key,parent,title:map.name,payload,kind:'map'});
    if(result.conflict)throw Error('The saved map changed. Review its versions in TravelIt files.');
-   await remember(cloud.scope,result.envelope);
+   await remember(cloud.scope,result.envelope);markMapSeen(cloud.scope,key+'@'+result.envelope.revision);
   }
   mapsPending=false;localStorage.removeItem('keepit-map-backup-pending');
   if(maps.length)status.textContent='Offline maps saved and verified in KeepIt / TravelIt.';
+ }
+ // Offline maps backed up from another device install here by themselves, once per saved version.
+ const seenMapsKey=scope=>'keepit-maps-installed:'+scope;
+ const seenMaps=scope=>{try{return new Set(JSON.parse(localStorage.getItem(seenMapsKey(scope))||'[]'))}catch{return new Set()}};
+ function markMapSeen(scope,id){const seen=seenMaps(scope);seen.add(id);try{localStorage.setItem(seenMapsKey(scope),JSON.stringify([...seen].slice(-500)))}catch{}}
+ let lastMapRestore=0;
+ async function restoreMaps(){
+  const client=adapter();if(!client?.installMap)return;
+  const cloud=await connected(),seen=seenMaps(cloud.scope),files=(await cloud.repo.list()).filter(file=>file.kind==='map'&&!file.trashed&&file.revision);
+  let installed=0;
+  for(const file of files){
+   const id=file.key+'@'+file.revision;if(seen.has(id))continue;
+   const heads=await cloud.repo.heads(file.key);if(heads.length!==1)continue;
+   const version=await cloud.repo.open(file.key,heads[0].id);if(version.kind!=='map'||!cloud.isCurrent())continue;
+   await client.installMap(version.payload);markMapSeen(cloud.scope,id);installed++;
+  }
+  if(installed)status.textContent=`Installed ${installed} offline map${installed===1?'':'s'} saved from another device.`;
  }
  if(app==='travelit')document.addEventListener('travelit-maps-change',()=>{mapsPending=true;localStorage.setItem('keepit-map-backup-pending','true');const work=()=>run(backupMaps);if(task)void task.then(work);else void work();});
  action('Device copies',()=>run(()=>browseDeviceCopies()));
@@ -331,7 +348,8 @@ export function mountAppRepository({getLibrary}){
   if(document.hidden)return;
   if(!navigator.onLine){adapter()?.syncStatus?.('Saved on this device · Waiting for a connection to sync.');return;}
   if(syncTravelCalendar)void syncTravelCalendar(force);
-  if(getLibrary()?.isCloud){const pending=run(()=>sync({quiet:true}),{quiet:true,retry:true});if(mapsPending)void pending.then(()=>run(backupMaps,{quiet:true}));}
+  if(getLibrary()?.isCloud){const pending=run(()=>sync({quiet:true}),{quiet:true,retry:true});if(mapsPending)void pending.then(()=>run(backupMaps,{quiet:true}));
+   if(app==='travelit'&&(force||Date.now()-lastMapRestore>300000)){lastMapRestore=Date.now();void pending.then(()=>run(restoreMaps,{quiet:true}));}}
   else {
    const phase=window.keepItConnectionState?.phase;
    const next={connecting:'Connecting to KeepIt…',connected:'Opening your KeepIt library…',waiting:'Waiting for OneDrive. Sync will retry.',signin:'Reconnect KeepIt to resume sync.','choose-folder':'Choose your KeepIt folder to sync.',error:'Reconnect KeepIt to resume sync.'}[phase]||'Connect KeepIt to sync across devices.';

@@ -78,6 +78,8 @@ main{padding:20px 0 80px}
 .tl-block{position:absolute;top:6px;bottom:6px;border-radius:9px;padding:6px 7px;color:#fff;overflow:hidden;display:flex;flex-direction:column;gap:2px;text-align:left;border:0;font-size:13px;line-height:1.2;box-shadow:inset 0 0 0 1px #0002}
 .tl-block b{font-size:13.5px}.tl-block .t{opacity:.9;font-size:12px}.tl-block img{width:100%;height:46px;object-fit:cover;border-radius:6px;margin-top:auto;background:#fff3}
 .tl-block.done{opacity:.55}
+.tl-block{touch-action:none;cursor:grab}.tl-block.dragging{z-index:5;opacity:.9;box-shadow:0 8px 22px #0006;cursor:grabbing}
+.tl-grip{position:absolute;top:8px;bottom:8px;right:3px;width:5px;border-radius:3px;background:#ffffff80;cursor:ew-resize}
 .tl-now{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--coral);z-index:1}
 /* Today */
 .now-card{background:var(--teal);color:var(--teal-ink);border-radius:22px;padding:clamp(18px,3vw,28px);display:grid;gap:12px}
