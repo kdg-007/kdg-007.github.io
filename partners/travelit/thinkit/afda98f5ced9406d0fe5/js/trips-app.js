@@ -8,6 +8,8 @@ import {portableMapExport,portableMapImport} from './offline-map-pack.js';
 import {prepareRegionAtlas} from './region-atlas.js';
 import {inspectInstalledAtlas} from './atlas-pack-tools.js';
 import {downloadRoadRegion} from './road-region-download.js';
+import {tripRoadBounds,downloadMainRoads,downloadRoadBox,viewPieces} from './trip-route-roads.js';
+import {exportTripWorkbook,itineraryHtml} from './trip-workbook-export.js';
 import {normalizeTrip,normalizeStop,normalizePlace,normalizePacking,tripDateAt,validCoords,uid} from './domain.js';
 import {normalizeExpense,EXPENSE_CATEGORIES} from './trip-costs.js';
 import {readTripWorkbook} from './trip-workbook-import.js';
@@ -77,21 +79,38 @@ const thumbUrls=new Map();
 async function thumbGet(id){const db=await thumbDb;if(!db)return undefined;return new Promise(ok=>{const q=db.transaction('thumbs').objectStore('thumbs').get(id);q.onsuccess=()=>ok(q.result);q.onerror=()=>ok(undefined)})}
 async function thumbPut(id,v){const db=await thumbDb;if(!db)return;try{db.transaction('thumbs','readwrite').objectStore('thumbs').put(v,id)}catch{}}
 /** Object URL for an attached image, from this device's cache first, then KeepIt. */
-async function thumbUrl(ref){
-  if(thumbUrls.has(ref.itemId))return thumbUrls.get(ref.itemId);
-  let v=await thumbGet(ref.itemId);
-  if(v===undefined&&bridge()?.thumbnail&&ref.kind!=='note'){
-    try{const got=await bridge().thumbnail(ref);
+async function thumbUrl(ref,size=320){
+  const key=size>320?`${ref.itemId}@${size}`:ref.itemId;
+  if(thumbUrls.has(key))return thumbUrls.get(key);
+  let v=await thumbGet(key);
+  if(v===undefined&&bridge()?.thumbnail){
+    try{const got=await bridge().thumbnail(ref,size);
       // KeepIt's Blob belongs to the host page; copy it into this page before storing or showing it.
       v=got&&typeof got.arrayBuffer==='function'?new Blob([await got.arrayBuffer()],{type:got.type||'image/jpeg'}):'none'}catch{v=undefined}
-    if(v!==undefined)await thumbPut(ref.itemId,v)}
-  const url=v&&typeof v.arrayBuffer==='function'?URL.createObjectURL(v):null;thumbUrls.set(ref.itemId,url);return url;
+    if(v!==undefined)await thumbPut(key,v)}
+  const url=v&&typeof v.arrayBuffer==='function'?URL.createObjectURL(v):null;thumbUrls.set(key,url);return url;
 }
 function hydrateThumbs(root=document){
   for(const el of root.querySelectorAll('[data-thumb]:not([data-done])')){el.dataset.done='1';const ref=JSON.parse(el.dataset.thumb);
-    thumbUrl(ref).then(url=>{if(!url)return;if(el.tagName==='IMG'){el.src=url;el.hidden=false}else{const img=document.createElement('img');img.className=el.className;img.alt=ref.title;img.src=url;el.replaceWith(img)}})}
+    thumbUrl(ref,Number(el.dataset.size)||320).then(url=>{if(!url){el.closest('.cover')?.classList.add('no-image');return}if(el.tagName==='IMG'){el.src=url;el.hidden=false}else{const img=document.createElement('img');img.className=el.className;img.alt=ref.title;img.src=url;el.replaceWith(img)}})}
+  hydrateNotes(root);
+  for(const el of root.querySelectorAll('.story-input'))if(el.value){el.style.height='auto';el.style.height=el.scrollHeight+'px'}
 }
-const thumbHtml=(ref,cls='thumb')=>`<span class="${cls}" data-thumb="${esc(JSON.stringify(ref))}" title="${esc(ref.title)}">${ref.kind==='note'?'Note':esc(ref.title.split('.').pop().slice(0,5))}</span>`;
+/** Story text of a linked KeepIt note: device cache first, refreshed from KeepIt when online. */
+const noteCache=new Map();
+async function noteBlocks(ref){
+  const key='note:'+ref.itemId;let cached=noteCache.get(key)??await thumbGet(key);
+  if(bridge()?.readNote&&navigator.onLine!==false&&!noteCache.has(key)){
+    try{const n=await bridge().readNote(ref);cached={blocks:n.blocks,title:n.title};await thumbPut(key,cached)}catch{}}
+  noteCache.set(key,cached||null);return cached||null;
+}
+function hydrateNotes(root=document){
+  for(const el of root.querySelectorAll('[data-note]:not([data-done])')){el.dataset.done='1';const ref=JSON.parse(el.dataset.note);
+    noteBlocks(ref).then(n=>{if(!n?.blocks?.length){el.innerHTML='<p class="muted">Open the note in KeepIt to write the story.</p>';return}
+      let list=false;el.innerHTML=n.blocks.map(b=>{const open=b.type==='item'&&!list?'<ul>':'',close=b.type!=='item'&&list?'</ul>':'';list=b.type==='item';
+        return close+open+(b.type==='heading'?`<h3>${esc(b.text)}</h3>`:b.type==='item'?`<li>${esc(b.text)}</li>`:`<p>${esc(b.text).replace(/\n/g,'<br>')}</p>`)}).join('')+(list?'</ul>':'')})}
+}
+const thumbHtml=(ref,cls='thumb')=>`<span class="${cls}" data-thumb="${esc(JSON.stringify(ref))}" title="${esc(ref.title)}">${ref.kind==='note'?(/sketch/i.test(ref.title)?'Sketch':'Note'):esc(ref.title.split('.').pop().slice(0,5))}</span>`;
 async function openRef(ref){if(!bridge())return toast('Open TravelIt from KeepIt to open linked items.',true);try{await bridge().open(ref)}catch(e){toast(e.message,true)}}
 
 /* ---------- Routing ---------- */
@@ -100,12 +119,13 @@ const link=(t,tab)=>`#trip/${encodeURIComponent(t.id)}/${tab}`;
 let mapDispose=null;
 function render(){
   if(mapDispose){mapDispose();mapDispose=null}
+  if(route().tab!=='map'&&state.ui.mapFull){state.ui.mapFull=false;document.body.classList.remove('map-open')}
   const r=route();const view=$('#view'),tabs=$('#tabs');
   if(!r.trip){tabs.hidden=true;$('#crumb').textContent='';view.innerHTML=viewTrips();hydrateThumbs();return}
   tabs.hidden=false;$('#crumb').textContent='· '+r.trip.title;
   tabs.firstElementChild.innerHTML=`<a href="#trips" class="all-trips">‹ All trips</a>`+TABS.map(([id,l])=>`<a href="${link(r.trip,id)}" ${id===r.tab?'aria-current="page"':''}>${l}</a>`).join('')+`<a href="#" data-act="edit-trip" style="margin-left:auto">Trip details</a>`;
   view.innerHTML=({today:viewToday,plan:viewPlan,map:viewMap,bookings:viewBookings,packing:viewPacking,budget:viewBudget,journal:viewJournal})[r.tab](r.trip);
-  if(r.tab==='map')mountMap(r.trip);
+  if(r.tab==='map'){mountMap(r.trip);document.body.classList.toggle('map-open',!!state.ui.mapFull)}
   hydrateThumbs();
 }
 
@@ -187,7 +207,31 @@ function viewToday(t){
    <label class="field">On<select name="group">${groups.map(g=>`<option>${esc(g)}</option>`).join('')}</select></label>
    <label class="field" style="flex:1">Note<input name="note" placeholder="e.g. halo-halo, parking"></label><button class="btn teal">Add spend</button></form>
    <form class="row" data-form="journal-line" data-day="${day}" style="margin-top:12px;align-items:flex-end"><label class="field" style="flex:1">Journal · ${dayName(day)}<input name="line" placeholder="What happened?"></label><button class="btn">Add</button><button type="button" class="btn" data-act="journal-photo" data-day="${day}">Add photo</button></form></section>`;
-  return `${sim}${hero}${before}${quick}<div class="section-head"><h2>Day ${dayIdx} · ${list.length} stops</h2><button class="btn sm" data-act="new-stop" data-day="${day}">Add stop</button></div><ul class="stops">${list.map(s=>stopRow(t,s,{now:s===cur})).join('')||'<li class="stop"><span></span><span class="muted">No stops on this day.</span></li>'}</ul>`;
+  const late=mode==='during'&&(cur||next)?lateHtml(t,day,(cur||next).id):'';
+  return `${sim}${hero}${late}${before}${quick}<div class="section-head"><h2>Day ${dayIdx} · ${list.length} stops</h2><button class="btn sm" data-act="new-stop" data-day="${day}">Add stop</button></div><ul class="stops">${list.map(s=>stopRow(t,s,{now:s===cur})).join('')||'<li class="stop"><span></span><span class="muted">No stops on this day.</span></li>'}</ul>`;
+}
+
+/* ---------- Running late: shift the rest of a day ---------- */
+function lateHtml(t,day,fromId,plan=false){
+  const undo=state.ui.lastShift?.trip===t.id&&state.ui.lastShift.day===day;
+  return `<section class="card late" style="margin-top:14px"><div class="row between"><b>${plan?'Shift this day from the first stop not done':'Running late?'}</b>${undo?`<button class="btn sm" data-act="late-undo">Undo shift</button>`:''}</div>
+  <div class="row" style="margin-top:8px"><span class="small muted">Move the rest of the day</span>${[15,30,60].map(m=>`<button class="btn sm teal" data-act="late" data-day="${day}" data-from="${esc(fromId)}" data-min="${m}">+${m} min</button>`).join('')}<button class="btn sm" data-act="late" data-day="${day}" data-from="${esc(fromId)}" data-min="-15">−15 min</button></div></section>`;
+}
+/** Moves every not-done stop of the day, from the given stop onward, by the given minutes. */
+async function shiftDay(t,day,fromId,delta){
+  const list=stopsOf(t).filter(s=>s.date===day&&s.time),start=list.findIndex(s=>s.id===fromId);
+  const moving=list.slice(Math.max(0,start)).filter(s=>!s.done);
+  if(!moving.length)return toast('Nothing left to move today.');
+  const late=moving.find(s=>mins(s.time)+delta>23*60+55||mins(s.time)+delta<0);
+  if(late)return toast(`“${late.title}” would move past midnight. Shift by less, or move it to another day.`,true);
+  const before=moving.map(s=>({id:s.id,time:s.time}));
+  const ok=await commit(async()=>{for(const s of moving)await saveStop(t,{...s,time:hhmm(mins(s.time)+delta)})},`${moving.length} stop${moving.length===1?'':'s'} moved ${delta>0?'later':'earlier'} by ${Math.abs(delta)} min`);
+  if(ok){state.ui.lastShift={trip:t.id,day,before};keepUi();render()}
+}
+async function undoShift(t){
+  const last=state.ui.lastShift;if(!last||last.trip!==t.id)return;
+  await commit(async()=>{for(const b of last.before){const s=of('stop').find(x=>x.id===b.id);if(s)await saveStop(t,{...s,time:b.time})}},'Times restored');
+  state.ui.lastShift=null;keepUi();render();
 }
 
 /* ---------- Plan: list and timeline ---------- */
@@ -197,7 +241,8 @@ function viewPlan(t){
   <div class="row small muted">${TYPES.filter(x=>st.some(s=>typeOf(s)===x)).map(x=>`<span class="row" style="gap:5px"><span class="dot" style="background:${TYPE_COLOR[x]}"></span>${TYPE_LABEL[x]}</span>`).join('')}</div>`;
   if(tl)return head+timelineHtml(t);
   return head+days.map((d,i)=>{const l=st.filter(s=>s.date===d);
-    return `<div class="section-head"><h2>Day ${i+1} · ${longDay(d)}</h2><span class="muted small nowrap">${l.length?`${l[0].time||''}–${l.at(-1).time?hhmm(mins(l.at(-1).time)+(l.at(-1).durationMinutes||0)):''}`:''}</span></div>
+    const first=l.find(s=>!s.done&&s.time);
+    return `<div class="section-head"><h2>Day ${i+1} · ${longDay(d)}</h2><span class="row"><span class="muted small nowrap">${l.length?`${l[0].time||''}–${l.at(-1).time?hhmm(mins(l.at(-1).time)+(l.at(-1).durationMinutes||0)):''}`:''}</span>${first?`<button class="btn sm" data-act="late-open" data-day="${d}" data-from="${esc(first.id)}">Shift times</button>`:''}</span></div>${state.ui.lateOpen===d?lateHtml(t,d,first?.id,true):''}
     <ul class="stops">${l.map(s=>stopRow(t,s)).join('')}<li class="add-row"><button class="btn sm" data-act="new-stop" data-day="${d}">Add stop to day ${i+1}</button></li></ul>`}).join('');
 }
 function timelineHtml(t){
@@ -205,13 +250,13 @@ function timelineHtml(t){
   const t0=Math.floor(Math.min(...st.map(s=>mins(s.time)),8*60)/60)*60,t1=Math.ceil(Math.max(...st.map(s=>mins(s.time)+(s.durationMinutes||30)),18*60)/60)*60;
   const pph=state.ui.zoom||150,W=(t1-t0)/60*pph,mo=moment(t);
   const hours=[];for(let m=t0;m<=t1;m+=60)hours.push(m);
-  return `<div class="row small muted" style="margin:10px 0">Tap a block to edit. Scroll sideways for the whole day.<span class="grow"></span><button class="chip" data-act="zoom" data-z="-1" aria-label="Narrower">−</button><button class="chip" data-act="zoom" data-z="1" aria-label="Wider">+</button></div>
-  <div class="tl"><div class="tl-inner"><div class="tl-scale" style="width:${W}px">${hours.map(m=>`<span style="left:${(m-t0)/60*pph}px">${hhmm(m)}</span>`).join('')}</div>
-  ${days.map((d,i)=>`<div class="tl-row"><div class="tl-day">Day ${i+1}<br><span class="small muted">${dayName(d).split(',')[0]}</span></div><div class="tl-track" style="width:${W}px">${hours.map(m=>`<i class="tl-hour" style="left:${(m-t0)/60*pph}px"></i>`).join('')}
+  return `<div class="row small muted" style="margin:10px 0">Tap a block to edit · drag it to move · drag its right edge to change length.<span class="grow"></span><button class="chip" data-act="zoom" data-z="-1" aria-label="Narrower">−</button><button class="chip" data-act="zoom" data-z="1" aria-label="Wider">+</button></div>
+  <div class="tl"><div class="tl-inner" data-t0="${t0}" data-pph="${pph}"><div class="tl-scale" style="width:${W}px">${hours.map(m=>`<span style="left:${(m-t0)/60*pph}px">${hhmm(m)}</span>`).join('')}</div>
+  ${days.map((d,i)=>`<div class="tl-row" data-day="${d}"><div class="tl-day">Day ${i+1}<br><span class="small muted">${dayName(d).split(',')[0]}</span></div><div class="tl-track" style="width:${W}px">${hours.map(m=>`<i class="tl-hour" style="left:${(m-t0)/60*pph}px"></i>`).join('')}
    ${mo.date===d?`<i class="tl-now" style="left:${(mo.m-t0)/60*pph}px" title="Now"></i>`:''}
    ${st.filter(s=>s.date===d).map(s=>{const p=placeById(s.placeId),w=Math.max(28,(s.durationMinutes||30)/60*pph-3),img=(s.keepItDocuments||[]).find(x=>x.kind!=='note');
-    return `<button class="tl-block${s.done?' done':''}" data-act="edit-stop" data-id="${esc(s.id)}" style="left:${(mins(s.time)-t0)/60*pph+1}px;width:${w}px;background:${TYPE_COLOR[typeOf(s)]}" title="${esc(`${s.time} ${s.title}${p?' · '+p.name:''}`)}">
-    <span class="t">${esc(s.time)}${w>90&&s.durationMinutes?' · '+fmtDur(s.durationMinutes):''}</span><b>${esc(s.title)}</b>${w>70&&p?`<span class="t">${esc(p.name)}</span>`:''}${img&&w>60?`<img data-thumb="${esc(JSON.stringify(img))}" alt="" hidden>`:''}</button>`}).join('')}</div></div>`).join('')}</div></div>`;
+    return `<button class="tl-block${s.done?' done':''}" data-act="edit-stop" data-drag="${esc(s.id)}" data-id="${esc(s.id)}" style="left:${(mins(s.time)-t0)/60*pph+1}px;width:${w}px;background:${TYPE_COLOR[typeOf(s)]}" title="${esc(`${s.time} ${s.title}${p?' · '+p.name:''}`)}">
+    <span class="t">${esc(s.time)}${w>90&&s.durationMinutes?' · '+fmtDur(s.durationMinutes):''}</span><b>${esc(s.title)}</b>${w>70&&p?`<span class="t">${esc(p.name)}</span>`:''}${img&&w>60?`<img data-thumb="${esc(JSON.stringify(img))}" alt="" hidden>`:''}<i class="tl-grip" aria-hidden="true"></i></button>`}).join('')}</div></div>`).join('')}</div></div>`;
 }
 
 /* ---------- Offline road maps for a trip ---------- */
@@ -225,26 +270,30 @@ function tripAreas(t){
     areas.push({center:c,radiusKm:Math.min(5,Math.max(2,Math.ceil((Math.max(...group.map(p=>km(c,p)))+1.5)*2)/2)),places:group});}
   return areas.map(a=>({...a,covered:(state.atlases||[]).some(m=>a.places.every(p=>inBounds(p,m.bounds)))}));
 }
+const mainRoadsName=t=>`${t.title} · main roads`;
+function tripPins(t){return [...new Map(stopsOf(t).map(s=>placeById(s.placeId)).filter(hasPin).map(p=>[p.id,p])).values()]}
+const needsMainRoads=t=>tripAreas(t).length>1;
+const hasMainRoads=t=>(state.atlases||[]).some(m=>m.name===mainRoadsName(t));
 function offlineMapsHtml(t){
-  const areas=tripAreas(t),done=areas.filter(a=>a.covered).length,mine=(state.atlases||[]).filter(m=>areas.some(a=>a.places.some(p=>inBounds(p,m.bounds,0))));
+  const areas=[...tripAreas(t),...(needsMainRoads(t)?[{covered:hasMainRoads(t)}]:[])],done=areas.filter(a=>a.covered).length,mine=(state.atlases||[]).filter(m=>m.name===mainRoadsName(t)||tripAreas(t).some(a=>a.places.some(p=>inBounds(p,m.bounds,0))));
   if(!areas.length)return '';
   return `<section class="card" style="display:grid;gap:8px"><div class="row between"><h3>Offline road maps</h3><span class="tag ${done===areas.length?'':'warn'}">${done}/${areas.length} areas saved</span></div>
-  <p class="small muted" style="margin:0">Roads and street names around your stops, kept on this device for when there is no signal. They also back up to KeepIt.</p>
+  <p class="small muted" style="margin:0">Streets around your stops and the main roads between them, kept on this device for when there is no signal. They back up to KeepIt and install on your other devices.</p>
   ${done<areas.length?`<button class="btn teal" data-act="save-trip-maps" ${navigator.onLine===false?'disabled':''}>Save offline maps for this trip</button>`:''}
   ${mine.length?`<ul class="check">${mine.map(m=>`<li><span style="flex:1">${esc(m.name)}<span class="small muted"> · ${m.featureCount.toLocaleString()} road pieces</span></span><button class="btn sm danger" data-act="remove-atlas" data-id="${esc(m.id)}">Remove</button></li>`).join('')}</ul>`:''}</section>`;
 }
 async function saveTripMaps(t,button){
-  const todo=tripAreas(t).filter(a=>!a.covered);let saved=0;
+  const todo=[...tripAreas(t).filter(a=>!a.covered),...(needsMainRoads(t)&&!hasMainRoads(t)?[{mainRoads:true}]:[])];let saved=0;
   for(const [i,a] of todo.entries()){
-    button.textContent=`Downloading area ${i+1} of ${todo.length}…`;
-    const name=`${t.title} · ${a.places[0].name.split(' — ')[0]}${a.places.length>1?` +${a.places.length-1}`:''}`;
+    button.textContent=a.mainRoads?'Downloading main roads between areas…':`Downloading area ${i+1} of ${todo.length}…`;
+    const name=a.mainRoads?mainRoadsName(t):`${t.title} · ${a.places[0].name.split(' — ')[0]}${a.places.length>1?` +${a.places.length-1}`:''}`;
     let controller,timer;
     try{
       // The public exporter is often briefly busy (HTTP 429/502/504): retry with growing pauses.
       let atlas;
       for(let attempt=1;;attempt++){
         controller=new AbortController();timer=setTimeout(()=>controller.abort(),45000);
-        try{atlas=await downloadRoadRegion({latitude:a.center.lat,longitude:a.center.lng,radiusKm:a.radiusKm,name,signal:controller.signal});clearTimeout(timer);break}
+        try{atlas=a.mainRoads?await downloadMainRoads({bounds:tripRoadBounds(tripPins(t)),name,signal:controller.signal}):await downloadRoadRegion({latitude:a.center.lat,longitude:a.center.lng,radiusKm:a.radiusKm,name,signal:controller.signal});clearTimeout(timer);break}
         catch(e){clearTimeout(timer);const busy=controller.signal.aborted||/HTTP (429|5\d\d)|busy|incomplete|fetch|network|load failed/i.test(e.message||'');
           if(!busy||attempt>=4)throw e;
           button.textContent=`Map service busy · retrying area ${i+1} of ${todo.length}…`;await new Promise(ok=>setTimeout(ok,attempt*4000))}
@@ -269,6 +318,69 @@ async function atlasLayer(L,bounds){
   group.attribution=regions[0].attribution;return group;
 }
 
+/* ---------- Timeline drag: move in time or between days, resize from the right edge ---------- */
+let dragState=null,dragJustEnded=0;
+document.addEventListener('pointerdown',e=>{
+  const block=e.target.closest('.tl-block[data-drag]');if(!block||e.button>0)return;
+  const inner=block.closest('.tl-inner'),t=route().trip,s=of('stop').find(x=>x.id===block.dataset.drag);if(!inner||!t||!s)return;
+  const r=block.getBoundingClientRect(),resize=e.clientX>r.right-16;
+  dragState={block,s,t,resize,x:e.clientX,y:e.clientY,moved:false,pph:Number(inner.dataset.pph),left:block.offsetLeft,width:block.offsetWidth,id:e.pointerId};
+  try{block.setPointerCapture(e.pointerId)}catch{}
+});
+document.addEventListener('pointermove',e=>{
+  const d=dragState;if(!d||e.pointerId!==d.id)return;
+  const dx=e.clientX-d.x,dy=e.clientY-d.y;if(!d.moved&&Math.hypot(dx,dy)<6)return;
+  d.moved=true;e.preventDefault();d.block.classList.add('dragging');
+  if(d.resize){d.block.style.width=Math.max(20,d.width+dx)+'px'}else{d.block.style.transform=`translate(${dx}px,${dy}px)`}
+},{passive:false});
+document.addEventListener('pointerup',async e=>{
+  const d=dragState;if(!d||e.pointerId!==d.id)return;dragState=null;
+  if(!d.moved)return;dragJustEnded=Date.now();
+  const dx=e.clientX-d.x,snap=m=>Math.round(m/5)*5,{s,t}=d;
+  if(d.resize){const dur=Math.max(5,snap((s.durationMinutes||30)+dx/d.pph*60));
+    return commit(()=>saveStop(t,{...s,durationMinutes:dur}),`${s.title} · ${fmtDur(dur)}`)}
+  d.block.style.visibility='hidden';const row=document.elementFromPoint(e.clientX,e.clientY)?.closest('.tl-row');d.block.style.visibility='';
+  const day=row?.dataset.day||s.date,start=Math.max(0,Math.min(23*60+55,snap(mins(s.time)+dx/d.pph*60)));
+  commit(()=>saveStop(t,{...s,date:day,time:hhmm(start)}),`${s.title} → ${day!==s.date?dayName(day)+' ':''}${hhmm(start)}`);
+});
+document.addEventListener('pointercancel',()=>{if(dragState){dragState.block.style.transform='';dragState.block.style.width='';dragState=null}});
+// A drag must not also open the editor.
+document.addEventListener('click',e=>{if(Date.now()-dragJustEnded<400&&e.target.closest('.tl-block')){e.stopImmediatePropagation();e.preventDefault()}},true);
+
+/* ---------- Map tools: full screen, save the visible area offline ---------- */
+function toggleMapFull(force){
+  state.ui.mapFull=force??!state.ui.mapFull;keepUi();
+  const wrap=$('.map-wrap'),btn=$('[data-act=map-full]');if(!wrap)return;
+  wrap.classList.toggle('full',state.ui.mapFull);document.body.classList.toggle('map-open',state.ui.mapFull);
+  if(btn){btn.textContent=state.ui.mapFull?'Exit full screen':'Full screen';btn.setAttribute('aria-pressed',String(state.ui.mapFull))}
+  setTimeout(()=>state.leaflet?.invalidateSize({pan:false}),50);
+}
+async function saveViewOffline(t,button){
+  const map=state.leaflet;if(!map)return;
+  const b=map.getBounds(),bounds={minLat:b.getSouth(),maxLat:b.getNorth(),minLng:b.getWest(),maxLng:b.getEast()};
+  let pieces;try{pieces=viewPieces(bounds)}catch(e){return toast(e.message,true)}
+  const covered=p=>(state.atlases||[]).some(m=>m.bounds.minLat<=p.minLat+0.002&&m.bounds.maxLat>=p.maxLat-0.002&&m.bounds.minLng<=p.minLng+0.002&&m.bounds.maxLng>=p.maxLng-0.002);
+  const todo=pieces.filter(p=>!covered(p));if(!todo.length)return toast('This view is already saved for offline use.');
+  const c=map.getCenter(),near=[...of('place')].filter(hasPin).sort((a,b)=>km(a,{lat:c.lat,lng:c.lng})-km(b,{lat:c.lat,lng:c.lng}))[0];
+  const label=near&&km(near,{lat:c.lat,lng:c.lng})<8?near.name.split(' — ')[0]:`${c.lat.toFixed(3)}, ${c.lng.toFixed(3)}`;
+  let saved=0;
+  for(const [i,piece] of todo.entries()){
+    button.textContent=`Saving piece ${i+1} of ${todo.length}…`;
+    let atlas;
+    for(let attempt=1;;attempt++){
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
+      try{atlas=await downloadRoadBox({bounds:piece,name:`${t.title} · near ${label}${todo.length>1?` (${i+1}/${todo.length})`:''}`,signal:controller.signal});clearTimeout(timer);break}
+      catch(e){clearTimeout(timer);const busy=controller.signal.aborted||/HTTP (429|5\d\d)|busy|incomplete|fetch|network|load failed/i.test(e.message||'');
+        if(!busy||attempt>=4){await load();render();notifyHost('travelit-maps-change');return toast(`${saved?`Saved ${saved} of ${todo.length} pieces. `:''}${e.message}`,true)}
+        button.textContent=`Map service busy · retrying piece ${i+1}…`;await new Promise(ok=>setTimeout(ok,attempt*4000))}
+    }
+    try{const {manifest,tiles}=await prepareRegionAtlas(atlas),{mapRevision}=await getWorkspaceMetadata(state.db);await putAtlasRegion(state.db,manifest,tiles,{expectedMapRevision:mapRevision,rejectExisting:true});saved++}
+    catch(e){await load();render();return toast(e.message,true)}
+    if(i<todo.length-1)await new Promise(ok=>setTimeout(ok,1500));
+  }
+  await load();render();notifyHost('travelit-maps-change');toast(`Saved this view for offline use (${saved} piece${saved===1?'':'s'})`);
+}
+
 /* ---------- Map ---------- */
 /** Places for the chosen day in visiting order; pinned ones numbered 1, 2, 3… with no gaps. */
 function mapPlaces(t,day){
@@ -281,7 +393,8 @@ function viewMap(t){
   const list=mapPlaces(t,day),sel=state.ui.mapSel,picking=state.ui.pinFor;
   return `<div class="row between" style="margin-bottom:12px"><h1>Map</h1><div class="row" role="group" aria-label="Day"><button class="chip" data-act="map-day" data-d="all" aria-pressed="${day==='all'}">All days</button>${daysOf(t).map((d,i)=>`<button class="chip" data-act="map-day" data-d="${d}" aria-pressed="${day===d}">Day ${i+1}</button>`).join('')}<button class="btn sm teal" data-act="edit-place">Add place</button></div></div>
   ${picking?`<div class="notice" style="margin-bottom:10px">Tap the map where <b>${esc(placeById(picking)?.name)}</b> is. <button class="btn sm" data-act="cancel-pin">Cancel</button></div>`:''}
-  <div class="grid2"><div class="map-wrap"><div id="map"></div><span class="map-status" id="map-status">Loading street map…</span></div>
+  <div class="grid2"><div class="map-wrap${state.ui.mapFull?' full':''}"><div id="map"></div><span class="map-status" id="map-status">Loading street map…</span>
+   <div class="map-tools"><button class="map-tool" data-act="map-full" aria-pressed="${!!state.ui.mapFull}">${state.ui.mapFull?'Exit full screen':'Full screen'}</button><button class="map-tool" data-act="map-save-view" ${navigator.onLine===false?'disabled':''}>Save this view offline</button></div></div>
   <div style="display:grid;gap:10px">${offlineMapsHtml(t)}${list.map(({p,n,stops})=>`<div class="place${p.id===sel?' sel':''}" data-act="map-select" data-id="${esc(p.id)}"><span class="n${n?'':' link'}">${n||'–'}</span><div><b>${esc(p.name)}</b>
    <div class="small muted">${n?esc(p.coordinateStatus||'Pinned'):'Not on the map yet'} · ${stops} stop${stops===1?'':'s'}</div>${p.notes?`<div class="small" style="margin-top:3px">${esc(p.notes)}</div>`:''}
    <div class="row" style="margin-top:8px"><a class="btn sm" href="${esc(navUrl(null,p))}" target="_blank" rel="noopener">Google Maps</a>${hasPin(p)?`<a class="btn sm" href="${esc(wazeUrl(p))}" target="_blank" rel="noopener">Waze</a>`:''}<button class="btn sm" data-act="pin-place" data-id="${esc(p.id)}">${hasPin(p)?'Move pin':'Set pin on map'}</button><button class="btn sm" data-act="edit-place" data-id="${esc(p.id)}">Edit</button></div></div></div>`).join('')||'<div class="empty">No places on this day yet. Add a place to a stop to see it here.</div>'}</div></div>`;
@@ -291,7 +404,7 @@ function mountMap(t){
   if(!L){status.textContent='Street map could not start. Reload online.';return}
   const day=state.ui.mapDay&&daysOf(t).includes(state.ui.mapDay)?state.ui.mapDay:'all',st=stopsOf(t).filter(s=>day==='all'||s.date===day);
   const list=mapPlaces(t,day),ids=list.map(x=>x.p.id);
-  const map=L.map(el,{zoomControl:true,attributionControl:true});
+  const map=L.map(el,{zoomControl:true,attributionControl:true});state.leaflet=map;
   const tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}).addTo(map);
   let loaded=0,fallback=null,disposed=false;
   const useOffline=async()=>{if(fallback||disposed)return;fallback='loading';const b=state.ui.tripBounds;const layer=b&&await atlasLayer(L,b);if(disposed)return;
@@ -310,7 +423,7 @@ function mountMap(t){
   map.on('click',e=>{const id=state.ui.pinFor;if(!id)return;const p=placeById(id);state.ui.pinFor=null;keepUi();
     commit(()=>put('place',normalizePlace({...p,lat:+e.latlng.lat.toFixed(6),lng:+e.latlng.lng.toFixed(6),coordinateStatus:'Pinned in TravelIt'})),'Pin saved')});
   const ro=new ResizeObserver(()=>map.invalidateSize({pan:false}));ro.observe(el);
-  mapDispose=()=>{disposed=true;ro.disconnect();map.remove()};
+  mapDispose=()=>{disposed=true;ro.disconnect();map.remove();state.leaflet=null};
 }
 
 /* ---------- Bookings ---------- */
@@ -360,15 +473,42 @@ function viewBudget(t){
   <button class="btn sm" style="margin-top:10px" data-act="shop-all">${state.ui.shopAll?'Show only my list':`Show all ${shop.length} items`}</button></div>`:''}`;
 }
 
-/* ---------- Journal ---------- */
+/* ---------- Journal: a blog of the trip, one post per day ---------- */
+const isPhoto=d=>d.kind!=='note';
+function dayMedia(t,d){
+  const entry=(t.journal||[]).find(x=>x.date===d)||{},docs=[...(entry.keepItDocuments||[])];
+  for(const s of stopsOf(t).filter(s=>s.date===d))for(const x of s.keepItDocuments||[])if(!docs.some(y=>y.itemId===x.itemId))docs.push(x);
+  return docs;
+}
 function viewJournal(t){
-  const j=new Map((t.journal||[]).map(d=>[d.date,d]));
-  return `<h1>Journal</h1><p class="muted" style="margin-top:6px">One page per day. Photos and drawings are saved in KeepIt and linked here.</p>
-  ${daysOf(t).map((d,i)=>{const e=j.get(d)||{},docs=e.keepItDocuments||[],done=stopsOf(t).filter(s=>s.date===d&&s.done).length;
-   return `<section class="card" style="margin-top:14px"><div class="row between"><h2>Day ${i+1} · ${longDay(d)}</h2><span class="small muted">${done} stops done</span></div>
-   <label class="field" style="margin-top:10px"><span class="small muted">Notes</span><textarea data-act="journal-text" data-day="${d}" placeholder="Highlights, what the family loved, what to skip next time">${esc(e.text||'')}</textarea></label>
-   <div class="thumbs" style="margin-top:8px">${docs.map(x=>`<button class="btn sm" style="padding:0;border:0" data-act="open-ref" data-ref="${esc(JSON.stringify(x))}">${thumbHtml(x,'thumb lg')}</button>`).join('')}</div>
-   <div class="row" style="margin-top:10px"><button class="btn sm" data-act="journal-photo" data-day="${d}">Add photo</button><button class="btn sm" data-act="journal-attach" data-day="${d}">Attach from KeepIt</button></div></section>`}).join('')}`;
+  const days=daysOf(t),today=moment(t).date,started=today>=t.startDate,order=started?[...days].reverse():days;
+  const all=days.flatMap(d=>dayMedia(t,d)),cover=all.find(isPhoto)||all[0],done=stopsOf(t).filter(s=>s.done).length,spent=spentOf(t);
+  const hero=`<section class="blog-hero${cover?'':' no-image'}">${cover?`<div class="cover">${thumbHtml(cover,'cover-img')}</div>`.replace('data-thumb=','data-size="640" data-thumb='):''}
+   <div class="blog-hero-text"><h1><span class="kicker">Journal</span>${esc(t.title)}</h1><p>${esc(t.subtitle||'')}${t.subtitle?' · ':''}${dayName(t.startDate)} – ${dayName(t.endDate)}</p>
+   <div class="row chips"><span>${days.length} days</span><span>${done} stops done</span><span>${((n)=>n+(n===1?' photo':' photos'))(all.filter(isPhoto).length)}</span><span>${peso(spent)} spent</span></div></div></section>`;
+  return hero+order.map(d=>{const i=days.indexOf(d),entry=(t.journal||[]).find(x=>x.date===d)||{},media=dayMedia(t,d),list=stopsOf(t).filter(s=>s.date===d),hi=list.filter(s=>s.done),
+    names=[...new Set(list.map(s=>placeById(s.placeId)?.name.split(' — ')[0]).filter(Boolean))],daySpent=expensesOf(t).filter(e=>e.date===d).reduce((n,e)=>n+(actualOf(t,e)||0),0),
+    photo=media.find(isPhoto),rest=media.filter(x=>x!==photo);
+    return `<article class="post" id="day-${d}"><header><span class="kicker">Day ${i+1}${d===today?' · Today':''}</span><h2>${longDay(d)}</h2>${names.length?`<p class="muted">${esc(names[0])}${names.length>1?' → '+esc(names.at(-1)):''}</p>`:''}</header>
+    ${photo?`<figure class="cover"><button class="cover-btn" data-act="open-ref" data-ref="${esc(JSON.stringify(photo))}" aria-label="Open ${esc(photo.title)}">${thumbHtml(photo,'cover-img').replace('data-thumb=','data-size="640" data-thumb=')}</button></figure>`:''}
+    <div class="story">${entry.note?`<div class="note-text" data-note="${esc(JSON.stringify(entry.note))}"><p class="muted">Loading the story from KeepIt…</p></div>`
+      :`<textarea class="story-input" data-act="journal-text" data-day="${d}" aria-label="Story for day ${i+1}" placeholder="Write about the day: highlights, what the family loved, what to skip next time">${esc(entry.text||'')}</textarea>`}</div>
+    ${rest.length?`<div class="gallery">${rest.map(x=>`<button class="tile" data-act="open-ref" data-ref="${esc(JSON.stringify(x))}" aria-label="Open ${esc(x.title)}">${thumbHtml(x,'tile-img')}<span>${esc(x.title)}</span></button>`).join('')}</div>`:''}
+    ${hi.length?`<div class="highlights"><b>Highlights</b><ul>${hi.map(s=>`<li><span class="nowrap">${esc(s.time||'')}</span> ${esc(s.title)}</li>`).join('')}</ul></div>`:list.length?`<p class="small muted">${list.length} stops planned · tick them done on Today to collect highlights here.</p>`:''}
+    <footer class="row"><span class="small muted">${daySpent?peso(daySpent)+' spent':''}</span><span class="grow"></span>
+     ${entry.note?`<button class="btn sm teal" data-act="open-ref" data-ref="${esc(JSON.stringify(entry.note))}">Open in KeepIt</button>`:`<button class="btn sm teal" data-act="journal-note" data-day="${d}">Write in KeepIt</button>`}
+     <button class="btn sm" data-act="journal-photo" data-day="${d}">Add photo</button><button class="btn sm" data-act="journal-sketch" data-day="${d}">Sketch</button><button class="btn sm" data-act="journal-attach" data-day="${d}">Attach</button></footer></article>`}).join('');
+}
+async function journalToNote(t,d){
+  if(!bridge()?.createNote)return toast('Open TravelIt from KeepIt to write in KeepIt.',true);
+  const fresh=tripById(t.id),j=[...(fresh.journal||[])],entry=j.find(x=>x.date===d)||{date:d,text:''},i=daysOf(fresh).indexOf(d)+1;
+  const done=stopsOf(fresh).filter(s=>s.date===d&&s.done),blocks=[...String(entry.text||'').split(/\n{2,}|\n/).map(x=>x.trim()).filter(Boolean).map(text=>({type:'paragraph',text}))];
+  if(!blocks.length)blocks.push({type:'paragraph',text:''});
+  if(done.length)blocks.push({type:'heading',text:'Highlights'},{type:'list',items:done.map(s=>`${s.time||''} ${s.title}`.trim())});
+  try{toast('Creating the KeepIt note…');
+    const note=refOf(await bridge().createNote({title:`${fresh.title} · Day ${i} · ${dayName(d)}`,blocks}));
+    await commit(()=>saveTrip(tripById(t.id),{journal:[...j.filter(x=>x.date!==d),{...entry,note}]}),'Journal is now a KeepIt note. Write it in KeepIt; the story shows here.');
+  }catch(e){toast(e.message,true)}
 }
 
 /* ---------- Editor sheet ---------- */
@@ -390,7 +530,7 @@ const num=v=>v===''||v===undefined||v===null?null:Number(v);
 
 /* Attachments area shared by stop, booking and journal editors. */
 function attachmentsHtml(docs){
-  return `<div><div class="row between"><b>KeepIt items</b><span class="row"><button class="btn sm" data-sact="att-photo">Add photo</button><button class="btn sm" data-sact="att-pick">Attach from KeepIt</button></span></div>
+  return `<div><div class="row between"><b>KeepIt items</b><span class="row"><button class="btn sm" data-sact="att-sketch">Sketch</button><button class="btn sm" data-sact="att-photo">Add photo</button><button class="btn sm" data-sact="att-pick">Attach from KeepIt</button></span></div>
   <div id="att-list" style="margin-top:6px">${docs.map((d,i)=>`<div class="att">${thumbHtml(d)}<span>${esc(d.title)}<span class="small muted"> · ${d.kind==='note'?'note':'file'}</span></span><span class="row"><button class="btn sm" data-sact="att-open" data-i="${i}">Open</button><button class="btn sm danger" data-sact="att-remove" data-i="${i}">Remove</button></span></div>`).join('')||'<p class="small muted" style="margin:6px 0 0">No photos, notes or drawings linked yet.</p>'}</div>
   <div id="att-picker"></div>${bridge()?'':'<p class="notice" style="margin:8px 0 0">Open TravelIt from your KeepIt app to attach or add items.</p>'}</div>`;
 }
@@ -401,6 +541,10 @@ async function attachmentAction(act,b,docs,rerender){
   if(act==='att-photo'){const file=await pickPhoto();if(!file)return true;
     try{if(!bridge().addFile)throw Error('Update KeepIt to add photos from TravelIt.');b.disabled=true;b.textContent='Saving to KeepIt…';
       const ref=refOf(await bridge().addFile(file,{title:file.name}));docs.push(ref);rerender();toast('Photo saved in KeepIt and linked')}catch(e){toast(e.message,true);rerender()}return true}
+  if(act==='att-sketch'){
+    try{if(!bridge().sketch)throw Error('Update KeepIt to sketch from TravelIt.');const title=sheetForm.querySelector('[name=title],[name=name]')?.value||'TravelIt sketch';
+      sheet.close();toast('Draw in KeepIt’s sketchbook, then tap Done.');const ref=await bridge().sketch({title:title+' · sketch'});
+      if(ref){docs.push(refOf(ref));toast('Sketch saved in KeepIt and linked')}rerender()}catch(e){toast(e.message,true);rerender()}return true}
   if(act==='att-pick'){const box=$('#att-picker');box.innerHTML='<p class="small muted">Loading your KeepIt library…</p>';
     try{const items=await bridge().list(),have=new Set(docs.map(d=>d.itemId));
       box.innerHTML=`<label class="field" style="margin-top:8px">Search<input id="att-q" placeholder="Name of photo, note or PDF"></label><div class="picker" id="att-items" style="margin-top:6px">${items.map(x=>`<label data-q="${esc((x.title+' '+(x.filename||'')).toLowerCase())}"><input type="checkbox" value="${esc(JSON.stringify(refOf(x)))}" ${have.has(x.itemId)?'checked disabled':''}><span>${esc(x.title)}<span class="small muted"> · ${x.kind}</span></span></label>`).join('')}</div><button class="btn sm teal" style="margin-top:8px" data-sact="att-add">Attach selected</button>`;
@@ -483,13 +627,30 @@ function tripEditor(t){
   const isNew=!t;t=t||{title:'',startDate:tripDateAt(new Date(),'Asia/Manila'),endDate:tripDateAt(new Date(),'Asia/Manila'),subtitle:'',departFrom:''};
   openSheet({title:isNew?'New trip':'Trip details',
     body:`<label class="field">Trip name<input name="title" required value="${esc(t.title)}"></label><label class="field">Who and what<input name="subtitle" value="${esc(t.subtitle||'')}" placeholder="Family of three; beach and seafood"></label>
-    <div class="three"><label class="field">Start<input name="startDate" type="date" required value="${esc(t.startDate)}"></label><label class="field">End<input name="endDate" type="date" required value="${esc(t.endDate)}"></label><label class="field">Leaving from<input name="departFrom" value="${esc(t.departFrom||'')}"></label></div>`,
+    <div class="three"><label class="field">Start<input name="startDate" type="date" required value="${esc(t.startDate)}"></label><label class="field">End<input name="endDate" type="date" required value="${esc(t.endDate)}"></label><label class="field">Leaving from<input name="departFrom" value="${esc(t.departFrom||'')}"></label></div>
+    ${isNew?'':`<div><b>Share and export</b><p class="small muted" style="margin:4px 0 8px">The Excel file uses the same layout as the import, so it can be edited and imported again.</p>
+    <div class="row"><button class="btn sm" data-sact="share-itinerary">Share itinerary</button><button class="btn sm" data-sact="export-xlsx">Excel file</button><button class="btn sm" data-sact="export-keepit">Save Excel to KeepIt</button></div></div>`}`,
+    onAction:async(act,b)=>shareOrExport(t,act,b),
     footer:`${isNew?'':'<button class="btn danger" value="delete" formnovalidate>Delete trip</button>'}<span class="grow"></span><button class="btn teal" value="save">Save</button>`,
     onSubmit:async(fd,v)=>{
       if(v==='delete'){if(!confirm(`Delete “${t.title}” with all its stops, packing and costs? This cannot be undone.`))return false;
         const row=rowOf('trip',t.id);const ok=await commit(()=>guardedDeleteTrip(state.db,t.id,{expectedEpoch:state.meta.epoch,expectedWorkspaceRevision:state.meta.revision,expectedTripRevision:revisionFor(row)}),'Trip deleted');if(ok)location.hash='#trips';return ok}
       let saved;const ok=await commit(async()=>{saved=normalizeTrip({...t,...fd});await put('trip',saved)},isNew?'Trip created':'Trip saved');
       if(ok&&isNew)location.hash=link(saved,'plan');return ok}});
+}
+
+/* ---------- Share and export ---------- */
+function tripBundle(t){return {trip:t,stops:stopsOf(t),places:of('place'),packing:packingOf(t),expenses:expensesOf(t)}}
+function saveBlob(blob,filename){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000)}
+async function shareOrExport(t,act,button){
+  try{
+    if(act==='export-xlsx'){const {blob,filename}=exportTripWorkbook(tripBundle(t));saveBlob(blob,filename);toast('Excel file ready')}
+    if(act==='export-keepit'){if(!bridge()?.addFile)throw Error('Open TravelIt from KeepIt to save files there.');button.disabled=true;
+      const {blob,filename}=exportTripWorkbook(tripBundle(t));await bridge().addFile(new File([blob],filename,{type:blob.type}),{title:filename});toast('Excel file saved in KeepIt')}
+    if(act==='share-itinerary'){const b=tripBundle(t),file=new File([itineraryHtml(b)],`${t.title.replace(/[^\w\- ]+/g,'').trim()||'Trip'} itinerary.html`,{type:'text/html'});
+      if(navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:t.title,text:`${t.title} · itinerary`}).catch(e=>{if(e.name!=='AbortError')throw e});
+      else{saveBlob(file,file.name);toast('Itinerary saved. Send the file to family; it opens in any browser.')}}
+  }catch(e){toast(e.message,true)}finally{if(button)button.disabled=false}
 }
 
 /* ---------- Import ---------- */
@@ -524,6 +685,11 @@ document.addEventListener('click',async e=>{
   else if(a==='save-trip-maps'){el.disabled=true;try{await saveTripMaps(t,el)}finally{if(el.isConnected){el.disabled=false;el.textContent='Save offline maps for this trip'}}}
   else if(a==='remove-atlas'){const m=state.atlases.find(x=>x.id===id);if(!m||!confirm(`Remove the offline map “${m.name}” from this device?`))return;
     const {mapRevision}=await getWorkspaceMetadata(state.db);await commit(()=>deleteAtlasRegion(state.db,m,{expectedMapRevision:mapRevision}),'Offline map removed')}
+  else if(a==='late')shiftDay(t,el.dataset.day,el.dataset.from,Number(el.dataset.min));
+  else if(a==='late-undo')undoShift(t);
+  else if(a==='late-open'){state.ui.lateOpen=state.ui.lateOpen===el.dataset.day?null:el.dataset.day;keepUi();render()}
+  else if(a==='map-full')toggleMapFull();
+  else if(a==='map-save-view'){el.disabled=true;try{await saveViewOffline(t,el)}finally{if(el.isConnected){el.disabled=false;el.textContent='Save this view offline'}}}
   else if(a==='new-stop')stopEditor(t,null,{day:el.dataset.day});
   else if(a==='edit-stop')stopEditor(t,of('stop').find(s=>s.id===id));
   else if(a==='toggle-done'){const s=of('stop').find(x=>x.id===id);commit(()=>saveStop(t,{...s,done:!s.done}),s.done?'Marked not done':'Marked done')}
@@ -543,6 +709,12 @@ document.addEventListener('click',async e=>{
   else if(a==='open-ref')openRef(JSON.parse(el.dataset.ref));
   else if(a==='sim'){state.ui.sim={trip:t.id,date:$('#sim-day').value,time:$('#sim-time').value||'10:00'};keepUi();render()}
   else if(a==='sim-live'){state.ui.sim=null;keepUi();render()}
+  else if(a==='journal-note')journalToNote(t,el.dataset.day);
+  else if(a==='journal-sketch'){
+    const d=el.dataset.day;if(!bridge()?.sketch)return toast('Open TravelIt from KeepIt to sketch.',true);
+    try{toast('Draw in KeepIt’s sketchbook, then tap Done.');const ref=await bridge().sketch({title:`${t.title} · ${dayName(d)} sketch`});if(!ref)return;
+      const fresh=tripById(t.id),j=[...(fresh.journal||[])],entry=j.find(x=>x.date===d)||{date:d,text:''};
+      commit(()=>saveTrip(fresh,{journal:[...j.filter(x=>x.date!==d),{...entry,keepItDocuments:[...(entry.keepItDocuments||[]),refOf(ref)]}]}),'Sketch added to the journal')}catch(err){toast(err.message,true)}}
   else if(a==='journal-photo'||a==='journal-attach'){
     const d=el.dataset.day,j=[...(t.journal||[])],entry=j.find(x=>x.date===d)||{date:d,text:''},docs=[...(entry.keepItDocuments||[])];
     if(!bridge())return toast('Open TravelIt from KeepIt to add photos.',true);
@@ -553,14 +725,14 @@ document.addEventListener('click',async e=>{
   }
 });
 $('#sync').addEventListener('click',e=>toast(e.currentTarget.title||'Sync status',e.currentTarget.dataset.state==='warn'));
-document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.what[data-act]')){e.preventDefault();e.target.click()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.ui.mapFull&&!sheet.open){toggleMapFull(false);return}if((e.key==='Enter'||e.key===' ')&&e.target.matches('.what[data-act]')){e.preventDefault();e.target.click()}});
 document.addEventListener('change',e=>{
   const el=e.target,t=route().trip;if(!t||el.closest('#sheet'))return;
   if(el.dataset.act==='actual'){const x=expensesOf(t).find(v=>v.id===el.dataset.id);commit(()=>put('expense',normalizeExpense({...x,actualPhp:num(el.value),amountPending:x.plannedPhp===null&&num(el.value)===null},t)),'Actual saved')}
   if(el.dataset.act==='shop'){const list=(t.shopping||[]).map(x=>x.id===el.dataset.id?{...x,[el.dataset.f]:num(el.value)}:x);commit(()=>saveTrip(t,{shopping:list}))}
 });
 document.addEventListener('input',e=>{
-  const el=e.target;if(el.dataset.act!=='journal-text')return;const t=route().trip,d=el.dataset.day;
+  const el=e.target;if(el.dataset.act!=='journal-text')return;el.style.height='auto';el.style.height=el.scrollHeight+'px';const t=route().trip,d=el.dataset.day;
   clearTimeout(journalTimer);journalTimer=setTimeout(async()=>{const fresh=tripById(t.id),j=[...(fresh.journal||[])],entry=j.find(x=>x.date===d)||{date:d};
     try{await saveTrip(fresh,{journal:[...j.filter(x=>x.date!==d),{...entry,text:el.value}]});await load();notifyHost('travelit-workspace-change');toast('Journal saved')}catch(err){toast(err.message,true)}},900);
 });

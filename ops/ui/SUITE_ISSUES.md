@@ -114,3 +114,18 @@ After the earlier comments are addressed, add editable handwriting and drawings 
 - Map tab: "Save offline maps for this trip" groups the trip's pinned places into areas of up to a 5 km radius, downloads road and street-name data for each (OpenStreetMap via Overpass, ODbL attribution), stores it on the device and backs it up to KeepIt. When street tiles cannot load, the saved roads draw under the pins.
 - Test: `partners/connected/travelit-trips-sync.browser.mjs` (two synthetic devices, synthetic OneDrive and exporter).
 - Open: offline maps saved on one device are installed on another from KeepIt's TravelIt files panel or downloaded again there; route roads between distant areas are not covered.
+
+## 2026-11-28 · TravelIt on-trip refinements
+
+- Running late: on Today (during the trip) and per Plan day, shift every not-done stop from the current one by +15/+30/+60/−15 minutes, refused past midnight, with Undo.
+- Sketch: stops, bookings and journal days open KeepIt's sketchbook on a new note (bridge `sketch()` / host `newSketch`); the saved note is linked back.
+- Timeline: drag a block to move it in time or to another day; drag its right edge to change its length; 5-minute snapping; a drag never opens the editor.
+- Offline maps: KeepIt installs map files backed up from another device by itself (after sync, at most every 5 minutes, once per saved version). A "main roads" map (motorway to tertiary) covers the whole trip area between stop areas (`js/trip-route-roads.js`).
+- Export: Trip details → Excel file / Save Excel to KeepIt (same layout as the import; round trip verified) and Share itinerary (read-only HTML page via the Share sheet or download) — `js/trip-workbook-export.js`.
+- Tests: `partners/connected/travelit-trips.browser.mjs` (drag, resize, sketch, running late, export, share), `partners/connected/travelit-trips-sync.browser.mjs` (automatic map install), `tests/trip-tools.test.mjs`.
+
+## TravelIt quality of life (Nov 2026)
+- Map: Full screen button (Escape or Exit full screen leaves it) and "Save this view offline", which saves every street in the visible area (up to about 20 × 20 km, in 10 km pieces) as an offline road map that syncs to the owner's other devices. Street picture tiles still need a connection (OpenStreetMap tile policy forbids bulk download), so offline maps are drawn roads.
+- Journal is a blog: a cover from the trip's photos, one post per day with a cover photo, story, gallery, highlights from stops marked done, and spending. New days open in trip order before the trip and newest first once it starts.
+- "Write in KeepIt" turns a day into a real KeepIt note (title "Trip · Day n · date", the story text and highlights) and opens it in KeepIt's full editor; the post then shows the note's text, cached on the device for offline reading. KeepIt's NoteUI.newNote accepts a starting document; the TravelIt bridge gains createNote and readNote, and thumbnail() now also previews a note's first drawing or photo.
+- The floating keyboard on iPad is an iPadOS setting (pinch it out, or drag it to the bottom edge); writing in KeepIt's full editor avoids the small story box.

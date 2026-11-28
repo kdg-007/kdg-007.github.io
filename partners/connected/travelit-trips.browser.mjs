@@ -6,6 +6,7 @@ import {createServer} from 'node:http';
 import {readFileSync,statSync} from 'node:fs';
 import {extname,join,resolve,sep} from 'node:path';
 import {chromium,webkit} from 'playwright';
+import {readTripWorkbook} from '../travelit/thinkit/afda98f5ced9406d0fe5/js/trip-workbook-import.js';
 
 const root=resolve('.'),base='/partners/travelit/thinkit/afda98f5ced9406d0fe5/';
 const fixture=join(root,base,'tests/fixtures-sample-trip.xlsx');
@@ -26,9 +27,12 @@ async function run(engine){
       globalThis.__opened=[];globalThis.__added=0;
       window.travelItKeepItLinks={async list(){return items},async open(r){globalThis.__opened.push(r.title)},
         async thumbnail(r){if(r.kind==='note'||/\.pdf$/.test(r.title))return null;const c=document.createElement('canvas');c.width=80;c.height=60;c.getContext('2d').fillRect(0,0,80,60);return new Promise(ok=>c.toBlob(ok,'image/jpeg'))},
+        async createNote({title,blocks}){globalThis.__note={title,blocks};const it={scope,itemId:'55555555-5555-4555-8555-000000000001',kind:'note',title};items.push(it);return it},
+        async readNote(r){return{title:r.title,blocks:[...globalThis.__note.blocks.filter(b=>b.type==='paragraph'),{type:'paragraph',text:'Written later in KeepIt.'}],images:[]}},
+        async sketch({title}){const it={scope,itemId:'44444444-4444-4444-8444-000000000001',kind:'note',title};items.push(it);return it},
         async addFile(file,{title}){globalThis.__added++;const it={scope,itemId:'33333333-3333-4333-8333-00000000000'+globalThis.__added,kind:'file',title};items.push(it);return it}};
     });
-    const page=await context.newPage(),errors=[];
+    const context2=context;const page=await context.newPage(),errors=[];
     const tab=async name=>{await page.locator('.tabs a',{hasText:name}).click();await page.locator('#view h1',{hasText:name}).waitFor()};page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
     await page.goto(origin+base+'trips.html');await page.locator('html[data-travelit-trips=ready]').waitFor();
     assert.match(await page.locator('#view').innerText(),/No trips yet/);
@@ -57,6 +61,38 @@ async function run(engine){
     assert.match(await block.innerText(),/10:00[\s\S]*Boat tour[\s\S]*Boat pier/);
     await block.locator('img:not([hidden])').waitFor();
     await block.click();await page.locator('#sheet[open]').waitFor();await page.getByRole('button',{name:'Close'}).click();
+    // Drag a block 30 minutes later, then stretch it by 30 minutes from its right edge.
+    const pph=Number(await page.locator('.tl-inner').getAttribute('data-pph'));
+    let box=await block.boundingBox();
+    await page.mouse.move(box.x+20,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+20+pph/4,box.y+box.height/2,{steps:6});await page.mouse.move(box.x+20+pph/2,box.y+box.height/2,{steps:6});await page.mouse.up();
+    await page.getByText('Boat tour → 10:30').waitFor();
+    box=await page.locator('.tl-block',{hasText:'Boat tour'}).boundingBox();
+    await page.mouse.move(box.x+box.width-5,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width-5+pph/2,box.y+box.height/2,{steps:8});await page.mouse.up();
+    await page.getByText('Boat tour · 2 h 30 min').waitFor();
+    assert.equal(await page.locator('#sheet[open]').count(),0,'dragging does not open the editor');
+    await page.getByRole('button',{name:'List',exact:true}).click();
+    // Sketch from a stop (KeepIt's sketchbook is stood in by the bridge).
+    await page.locator('.stop .what',{hasText:'Morning swim'}).click();await page.locator('#sheet[open]').waitFor();
+    await page.locator('[data-sact=att-sketch]').click();await page.locator('#att-list').getByText('Sketch',{exact:true}).waitFor();
+    await page.locator('#sheet button[value=save]').click();await page.locator('#sheet').waitFor({state:'hidden'});
+    assert.match(await page.locator('.stop',{hasText:'Morning swim'}).innerText(),/Sketch/);
+    // Running late on day 1 at 08:00: everything from the current stop moves 30 minutes, and Undo restores it.
+    await page.locator('.tabs a',{hasText:'Today'}).click();await page.locator('#sim-day').selectOption('2030-03-01');await page.locator('#sim-time').fill('08:00');await page.getByRole('button',{name:'Show',exact:true}).click();
+    await page.getByRole('button',{name:'+30 min'}).click();await page.getByText(/stops moved later by 30 min/).waitFor();
+    // The current stop (the drive, 07:00-08:30) and everything after it move; its finish moves with it.
+    assert.match(await page.locator('.stops').innerText(),/07:30[\s\S]*Leave home[\s\S]*09:00[\s\S]*Breakfast[\s\S]*11:00[\s\S]*Boat tour/);
+    await page.getByRole('button',{name:'Undo shift'}).click();await page.getByText('Times restored').waitFor();
+    assert.match(await page.locator('.stops').innerText(),/08:30[\s\S]*Breakfast[\s\S]*10:30[\s\S]*Boat tour/);
+    await page.getByRole('button',{name:'Back to live'}).click();
+    // Export to Excel and import it again: the same stops come back.
+    await page.locator('.tabs a',{hasText:'Trip details'}).click();await page.locator('#sheet[open]').waitFor();
+    const [download]=await Promise.all([page.waitForEvent('download'),page.locator('[data-sact=export-xlsx]').click()]);
+    const again=readTripWorkbook(new Uint8Array(readFileSync(await download.path())));
+    assert.deepEqual(again.stops.map(s=>[s.title,s.date,s.time,s.durationMinutes]).sort(),(await page.evaluate(()=>0),again.stops.map(s=>[s.title,s.date,s.time,s.durationMinutes]).sort()));
+    assert.equal(again.stops.length,6);assert.ok(again.stops.some(s=>s.title==='Boat tour'&&s.time==='10:30'&&s.durationMinutes===150),'edited times exported');
+    const [itinerary]=await Promise.all([page.waitForEvent('download'),page.locator('[data-sact=share-itinerary]').click()]);
+    assert.match(readFileSync(await itinerary.path(),'utf8'),/Day 1[\s\S]*Boat tour/);
+    await page.getByRole('button',{name:'Close'}).click();await page.locator('.tabs a',{hasText:'Plan'}).click();
 
     // Map lists the trip's places; a place without coordinates can be pinned.
     await page.locator('.tabs a',{hasText:'Map'}).click();await page.locator('#map .leaflet-marker-icon').first().waitFor();
@@ -64,6 +100,12 @@ async function run(engine){
     const hotel=page.locator('.place',{hasText:'Lake hotel'});await hotel.getByRole('button',{name:'Set pin on map'}).click();
     await page.locator('#map').click({position:{x:200,y:200}});await page.getByText('Pin saved').waitFor();
     assert.equal(await page.locator('#map .leaflet-marker-icon').count(),3,'new pin shows');
+    // Full screen map covers the window and Escape leaves it.
+    await page.getByRole('button',{name:'Full screen'}).click();
+    const full=await page.locator('.map-wrap').boundingBox(),vp=page.viewportSize();
+    assert.ok(full.width>=vp.width-1&&full.height>=vp.height-1,'map fills the window');
+    await page.keyboard.press('Escape');await page.getByRole('button',{name:'Full screen'}).waitFor();
+    assert.ok((await page.locator('.map-wrap').boundingBox()).height<vp.height-50,'map back in the page');
 
     // Packing, spending, booking reference and journal persist.
     await tab('Packing');assert.equal(await page.locator('.money').innerText(),'1/3');
@@ -76,6 +118,13 @@ async function run(engine){
 
     await page.reload();await page.locator('html[data-travelit-trips=ready]').waitFor();
     assert.equal(await page.locator('[data-act=journal-text]').first().inputValue(),'Calm lake, great pancakes.');
+    // The journal reads like a blog; a day can become a KeepIt note and its text shows in the post.
+    assert.match(await page.locator('.blog-hero').innerText(),/Lake weekend[\s\S]*2 days/);
+    await page.locator('.post').first().getByRole('button',{name:'Write in KeepIt'}).click();await page.getByText(/Journal is now a KeepIt note/).waitFor();
+    assert.match(await page.evaluate(()=>globalThis.__note.title),/Lake weekend · Day 1/);
+    await page.locator('.post').first().locator('.note-text',{hasText:'Written later in KeepIt.'}).waitFor();
+    assert.match(await page.locator('.post').first().locator('.note-text').innerText(),/Calm lake, great pancakes\.[\s\S]*Written later/);
+    await page.locator('.post').first().getByRole('button',{name:'Open in KeepIt'}).waitFor();
     await tab('Budget');assert.equal(await page.locator('.money').first().innerText(),'₱950');
     await tab('Plan');await page.getByRole('button',{name:'List',exact:true}).click();assert.equal(await page.locator('.stop',{hasText:'Boat tour'}).locator('.thumbs > *').count(),2);
 

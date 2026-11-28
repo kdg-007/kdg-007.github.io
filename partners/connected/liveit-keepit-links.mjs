@@ -12,7 +12,34 @@ const isVisible = item => item && !item.trashedAt && isItemId(item.id) &&
   !(item.source === CALENDAR_SOURCE &&
     item.tags?.includes(CALENDAR_TAG));
 
-export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritableLibrary=null, getTarget, openItem, isNote, downloadFile,prepareOffline=async()=>{}}) {
+const NOTE_MAGIC = new TextEncoder().encode('KEEPIT-NOTE-1\n');
+/** Reads a KeepIt note file: its text blocks and its embedded images (drawings and photos). */
+async function readNoteFile(blob, {maxImages = 6} = {}) {
+  const head = new Uint8Array(await blob.slice(0, NOTE_MAGIC.length + 4).arrayBuffer());
+  if (!NOTE_MAGIC.every((byte, i) => head[i] === byte)) throw Error('This KeepIt note could not be read.');
+  const size = new DataView(head.buffer).getUint32(NOTE_MAGIC.length);
+  if (!size || size > 32 * 1024 ** 2) throw Error('This KeepIt note could not be read.');
+  const header = JSON.parse(await blob.slice(NOTE_MAGIC.length + 4, NOTE_MAGIC.length + 4 + size).text());
+  const blocks = [], walk = (node, out) => { if (node.type === 'text') out.push(node.text || ''); else if (node.type === 'hardBreak') out.push('\n'); for (const child of node.content || []) walk(child, out); return out; };
+  for (const node of header.document?.content || []) {
+    if (node.type === 'bulletList' || node.type === 'orderedList') { for (const item of node.content || []) { const text = walk(item, []).join('').trim(); if (text) blocks.push({type: 'item', text}); } continue; }
+    const text = walk(node, []).join('').trim();
+    if (text) blocks.push({type: node.type === 'heading' ? 'heading' : 'paragraph', text: text.slice(0, 20000)});
+  }
+  let offset = NOTE_MAGIC.length + 4 + size; const images = [];
+  for (const asset of header.assets || []) {
+    if (/^image\//.test(asset.mime) && images.length < maxImages && asset.bytes <= 12 * 1024 ** 2) images.push(blob.slice(offset, offset + asset.bytes, asset.mime));
+    offset += asset.bytes;
+  }
+  return {blocks: blocks.slice(0, 400), images};
+}
+const noteDocument = (blocks = []) => ({type: 'doc', content: blocks.slice(0, 400).map(block => {
+  const text = String(block.text || '').slice(0, 20000), inline = text ? [{type: 'text', text}] : undefined;
+  if (block.type === 'heading') return {type: 'heading', attrs: {level: 2}, content: inline};
+  if (block.type === 'list') return {type: 'bulletList', content: (block.items || []).slice(0, 200).map(item => ({type: 'listItem', content: [{type: 'paragraph', content: [{type: 'text', text: String(item).slice(0, 2000)}]}]}))};
+  return {type: 'paragraph', content: inline};
+}).filter(node => node.type !== 'bulletList' || node.content.length)});
+export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritableLibrary=null, getTarget, openItem, isNote, downloadFile,prepareOffline=async()=>{},newSketch=null,newNote=null}) {
   if (!Object.hasOwn(apps,app)) throw Error('Unsupported KeepIt link consumer.');
   const target = apps[app];
   function install() {
@@ -45,9 +72,11 @@ export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritab
       /** Small JPEG preview of an image item, or null for notes and other files. */
       async thumbnail(reference, size = 320) {
         const {item, library, assertCurrent} = await resolve(reference);
-        if (!isImage(item)) return null;
-        const original = await library.original(item.id);
+        if (!isImage(item) && !isNote(item)) return null;
+        let original = await library.original(item.id);
         assertCurrent();
+        // A note's preview is its first drawing or photo.
+        if (isNote(item)) { original = (await readNoteFile(original, {maxImages: 1}).catch(() => ({images: []}))).images[0]; if (!original) return null; }
         const bitmap = await createImageBitmap(original).catch(() => null);
         if (!bitmap) return null;
         const scale = Math.min(1, Math.max(64, Math.min(640, Number(size) || 320)) / Math.max(bitmap.width, bitmap.height));
@@ -55,6 +84,41 @@ export function mountKeepItItemLinks({app='liveit', frame, getLibrary, getWritab
         canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close?.();
         return new Promise(done => canvas.toBlob(done, 'image/jpeg', 0.78));
+      },
+      /** Opens KeepIt's sketchbook on a new note; resolves with its link once saved, or null if cancelled. */
+      async sketch({title = ''} = {}) {
+        if (typeof newSketch !== 'function') throw Error('Update KeepIt to sketch from ' + target.name + '.');
+        const {scope, assertCurrent} = await connection();
+        const name = String(title || 'Sketch').trim().slice(0, 200) || 'Sketch';
+        const itemId = await newSketch(name);
+        if (!itemId) return null;
+        // Wait for KeepIt to finish saving the note before handing back its link.
+        for (let attempt = 0; attempt < 90; attempt++) {
+          try { const item = await getLibrary().getItem(itemId); assertCurrent(); if (isVisible(item)) return {scope, itemId, kind: 'note', title: String(item.title || name).slice(0, 256)}; } catch {}
+          await new Promise(done => setTimeout(done, 500));
+        }
+        throw Error('The sketch is still saving in KeepIt. Attach it from KeepIt once it appears.');
+      },
+      /** Creates a KeepIt note from text blocks, saves it, and returns its link. */
+      async createNote({title = '', blocks = []} = {}) {
+        if (typeof newNote !== 'function') throw Error('Update KeepIt to create notes from ' + target.name + '.');
+        const {scope, assertCurrent} = await connection();
+        const name = String(title || 'Note').trim().slice(0, 200) || 'Note';
+        const itemId = await newNote({title: name, document: noteDocument(Array.isArray(blocks) ? blocks : [])});
+        for (let attempt = 0; attempt < 90; attempt++) {
+          try { const item = await getLibrary().getItem(itemId); assertCurrent(); if (isVisible(item)) return {scope, itemId, kind: 'note', title: String(item.title || name).slice(0, 256)}; } catch {}
+          await new Promise(done => setTimeout(done, 500));
+        }
+        throw Error('The note is still saving in KeepIt. Open KeepIt to finish it.');
+      },
+      /** Text blocks and images of a linked KeepIt note, for showing it inside the app. */
+      async readNote(reference) {
+        const {item, library, assertCurrent} = await resolve(reference);
+        if (!isNote(item)) throw Error('This KeepIt item is not a note.');
+        const original = await library.original(item.id);
+        assertCurrent();
+        const {blocks, images} = await readNoteFile(original);
+        return {title: String(item.title || '').slice(0, 256), modified: item.modified || item.updatedAt || '', blocks, images: await Promise.all(images.map(async image => ({type: image.type, bytes: await image.arrayBuffer()})))};
       },
       /** Saves a new file (such as a trip photo) into the writable KeepIt library and returns its link. */
       async addFile(file, {title = ''} = {}) {

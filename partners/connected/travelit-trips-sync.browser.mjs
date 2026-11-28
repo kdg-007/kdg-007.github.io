@@ -53,6 +53,14 @@ try{
   await ipad.frame.locator('#att-list img.thumb').waitFor({timeout:30000});
   await ipad.frame.locator('#sheet button[value=save]').click();await ipad.frame.locator('#sheet').waitFor({state:'hidden'});
   await ipad.frame.locator('.stop',{hasText:'Boat tour'}).locator('img.thumb').waitFor({timeout:30000});
+  // The journal shows the stop photo as a blog post cover, and a day turns into a real KeepIt note whose text shows in the post.
+  await tab(ipad.frame,'Journal');await ipad.frame.locator('.post img.cover-img').first().waitFor({timeout:30000});
+  await ipad.frame.locator('[data-act=journal-text]').first().fill('Calm lake, great pancakes.');await ipad.frame.getByText('Journal saved').waitFor();
+  await ipad.frame.locator('.post').first().getByRole('button',{name:'Write in KeepIt'}).click();
+  await ipad.frame.getByText(/Journal is now a KeepIt note/).waitFor({timeout:60000});
+  // KeepIt opens the saved note for writing; closing it returns to the trip.
+  await ipad.page.getByText('Lake weekend · Day 1 · Fri, Mar 1').first().waitFor();await ipad.page.getByRole('button',{name:'Close',exact:true}).click();
+  await ipad.frame.locator('.post').first().locator('.note-text',{hasText:'Calm lake, great pancakes.'}).waitFor({timeout:30000});
   // Offline road maps for the trip's pinned places, then backed up to KeepIt.
   await tab(ipad.frame,'Map');await ipad.frame.getByText('0/1 areas saved').waitFor();
   await ipad.frame.getByRole('button',{name:'Save offline maps for this trip'}).click();
@@ -71,13 +79,9 @@ try{
   assert.equal(await phone.frame.locator('.money').innerText(),'1/3');
   await phone.frame.locator('label',{hasText:'Swimwear'}).click();await phone.frame.locator('.money',{hasText:'2/3'}).waitFor();
   await phone.frame.locator('#sync[data-state=ok]').waitFor({timeout:60000});
-  // The saved offline map is available to install on the second device.
-  await phone.page.locator('#connected-apps-toggle').click();await phone.page.getByRole('button',{name:'TravelIt files',exact:true}).click();
-  const files=phone.page.getByRole('dialog',{name:'TravelIt files in KeepIt'});
-  await files.getByRole('button',{name:/^Install Lake weekend/}).click();
-  await files.getByRole('status').filter({hasText:/Installed “Lake weekend/}).waitFor({timeout:30000});
-  await files.getByRole('button',{name:'Close',exact:true}).click();
-  assert.equal((await phone.frame.locator('body').evaluate(()=>window.keepItAppFiles.listMaps())).length,1);
+  // The offline map saved on the iPad installs on the second device by itself.
+  await phone.page.waitForFunction(async()=>(await document.querySelector('iframe[title="TravelIt trip planning workspace"]').contentWindow.keepItAppFiles.listMaps()).length===1,null,{timeout:60000,polling:1000});
+  await tab(phone.frame,'Map');await phone.frame.getByText('1/1 areas saved').waitFor({timeout:15000});
 
   // Back on the iPad the edit from the phone arrives.
   await ipad.page.evaluate(()=>window.dispatchEvent(new Event('focus')));
