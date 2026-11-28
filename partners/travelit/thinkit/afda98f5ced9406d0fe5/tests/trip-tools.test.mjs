@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {readTripWorkbook} from '../js/trip-workbook-import.js';
 import {exportTripWorkbook,itineraryHtml} from '../js/trip-workbook-export.js';
 import {tripRoadBounds,downloadMainRoads} from '../js/trip-route-roads.js';
+import {downloadRoadBox,viewPieces} from '../js/trip-route-roads.js';
 import {prepareRegionAtlas} from '../js/region-atlas.js';
 
 const sample=new Uint8Array(readFileSync(new URL('./fixtures-sample-trip.xlsx',import.meta.url)));
@@ -41,4 +42,17 @@ test('main roads across the trip area become an offline atlas',async()=>{
   const {manifest,tiles}=await prepareRegionAtlas(atlas);
   assert.equal(manifest.name,'Trip · main roads');assert.ok(tiles.length>=3,'the roads cross several map cells');
   await assert.rejects(downloadMainRoads({bounds,name:'x',fetcher:async()=>new Response('',{status:502})}),/HTTP 502/);
+});
+
+test('a saved view is split into pieces of at most 10 km and larger views are refused',()=>{
+  const b={minLat:14.50,maxLat:14.67,minLng:121.00,maxLng:121.18};// about 19 × 19 km
+  const pieces=viewPieces(b);assert.equal(pieces.length,4);
+  assert.throws(()=>viewPieces({minLat:14,maxLat:14.5,minLng:121,maxLng:121.5}),/Zoom in/);
+});
+test('a view piece downloads every street in its box',async()=>{
+  let query='';
+  const fetcher=async(url,{body})=>{query=body.get('data');return new Response(JSON.stringify({elements:[{type:'way',tags:{highway:'residential',name:'Mabini St'},geometry:[{lat:14.55,lon:121.05},{lat:14.551,lon:121.052}]}]}))};
+  const atlas=await downloadRoadBox({bounds:{minLat:14.54,maxLat:14.56,minLng:121.04,maxLng:121.06},name:'Test',fetcher});
+  assert.match(query,/way\["highway"\]\(14\.540000,121\.040000,14\.560000,121\.060000\)/);
+  assert.ok(JSON.stringify(atlas).includes('Mabini St'));
 });

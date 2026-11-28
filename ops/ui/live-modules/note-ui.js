@@ -298,14 +298,16 @@ var r = (u, t, i) => {
       }
     }
   }
-  async newNote({ itemId: t = crypto.randomUUID(), title: i = "", expectedTarget: e, draftId: s = crypto.randomUUID() } = {}) {
+  async newNote({ itemId: t = crypto.randomUUID(), title: i = "", expectedTarget: e, draftId: s = crypto.randomUUID(), document: startDocument = null } = {}) {
+    // Another app (TravelIt) may start the note with text; only a plain document object is accepted.
+    if (startDocument !== null && (typeof startDocument !== "object" || startDocument.type !== "doc" || !Array.isArray(startDocument.content) || JSON.stringify(startDocument).length > 2e6)) throw new Error("Invalid starting note content.");
     if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(t) || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(s) || typeof i != "string" || i.length > 1e3) throw new Error("Invalid ThinkIt note identity or title.");
     let a = this.getLibrary();
     if (!a) throw new Error("Choose a library first.");
     let d = await this.getTarget();
     if (this.getLibrary() !== a || e !== void 0 && d !== e) throw new Error("The selected library changed before creating the note.");
     this.library = a, this.target = d;
-    let n = { id: s, target: d, itemId: t, noteId: t, document: Q(), assets: [], values: { title: i, domain: "", recordType: j(this.getSchema()).find((c) => c.toLowerCase() === "notes"), customFields: [], tags: [], notes: "", source: "", favorite: false }, baseItem: null, revision: 0, rootHandle: a.isFolder && !a.isCloud ? a.root : null };
+    let n = { id: s, target: d, itemId: t, noteId: t, document: startDocument ? structuredClone(startDocument) : Q(), assets: [], values: { title: i, domain: "", recordType: j(this.getSchema()).find((c) => c.toLowerCase() === "notes"), customFields: [], tags: [], notes: "", source: "", favorite: false }, baseItem: null, revision: 0, rootHandle: a.isFolder && !a.isCloud ? a.root : null };
     if (await this.editDraft(n, { showDetails: true }), this.session?.error || !this.session || this.session.revision < 1) throw this.session?.error || new Error("The new note draft was not verified on this device.");
     return { itemId: t, target: d, state: "draft-saved-locally", repositoryVersion: 0 };
   }

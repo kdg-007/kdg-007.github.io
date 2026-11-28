@@ -8,7 +8,7 @@ import {portableMapExport,portableMapImport} from './offline-map-pack.js';
 import {prepareRegionAtlas} from './region-atlas.js';
 import {inspectInstalledAtlas} from './atlas-pack-tools.js';
 import {downloadRoadRegion} from './road-region-download.js';
-import {tripRoadBounds,downloadMainRoads} from './trip-route-roads.js';
+import {tripRoadBounds,downloadMainRoads,downloadRoadBox,viewPieces} from './trip-route-roads.js';
 import {exportTripWorkbook,itineraryHtml} from './trip-workbook-export.js';
 import {normalizeTrip,normalizeStop,normalizePlace,normalizePacking,tripDateAt,validCoords,uid} from './domain.js';
 import {normalizeExpense,EXPENSE_CATEGORIES} from './trip-costs.js';
@@ -79,19 +79,36 @@ const thumbUrls=new Map();
 async function thumbGet(id){const db=await thumbDb;if(!db)return undefined;return new Promise(ok=>{const q=db.transaction('thumbs').objectStore('thumbs').get(id);q.onsuccess=()=>ok(q.result);q.onerror=()=>ok(undefined)})}
 async function thumbPut(id,v){const db=await thumbDb;if(!db)return;try{db.transaction('thumbs','readwrite').objectStore('thumbs').put(v,id)}catch{}}
 /** Object URL for an attached image, from this device's cache first, then KeepIt. */
-async function thumbUrl(ref){
-  if(thumbUrls.has(ref.itemId))return thumbUrls.get(ref.itemId);
-  let v=await thumbGet(ref.itemId);
-  if(v===undefined&&bridge()?.thumbnail&&ref.kind!=='note'){
-    try{const got=await bridge().thumbnail(ref);
+async function thumbUrl(ref,size=320){
+  const key=size>320?`${ref.itemId}@${size}`:ref.itemId;
+  if(thumbUrls.has(key))return thumbUrls.get(key);
+  let v=await thumbGet(key);
+  if(v===undefined&&bridge()?.thumbnail){
+    try{const got=await bridge().thumbnail(ref,size);
       // KeepIt's Blob belongs to the host page; copy it into this page before storing or showing it.
       v=got&&typeof got.arrayBuffer==='function'?new Blob([await got.arrayBuffer()],{type:got.type||'image/jpeg'}):'none'}catch{v=undefined}
-    if(v!==undefined)await thumbPut(ref.itemId,v)}
-  const url=v&&typeof v.arrayBuffer==='function'?URL.createObjectURL(v):null;thumbUrls.set(ref.itemId,url);return url;
+    if(v!==undefined)await thumbPut(key,v)}
+  const url=v&&typeof v.arrayBuffer==='function'?URL.createObjectURL(v):null;thumbUrls.set(key,url);return url;
 }
 function hydrateThumbs(root=document){
   for(const el of root.querySelectorAll('[data-thumb]:not([data-done])')){el.dataset.done='1';const ref=JSON.parse(el.dataset.thumb);
-    thumbUrl(ref).then(url=>{if(!url)return;if(el.tagName==='IMG'){el.src=url;el.hidden=false}else{const img=document.createElement('img');img.className=el.className;img.alt=ref.title;img.src=url;el.replaceWith(img)}})}
+    thumbUrl(ref,Number(el.dataset.size)||320).then(url=>{if(!url){el.closest('.cover')?.classList.add('no-image');return}if(el.tagName==='IMG'){el.src=url;el.hidden=false}else{const img=document.createElement('img');img.className=el.className;img.alt=ref.title;img.src=url;el.replaceWith(img)}})}
+  hydrateNotes(root);
+  for(const el of root.querySelectorAll('.story-input'))if(el.value){el.style.height='auto';el.style.height=el.scrollHeight+'px'}
+}
+/** Story text of a linked KeepIt note: device cache first, refreshed from KeepIt when online. */
+const noteCache=new Map();
+async function noteBlocks(ref){
+  const key='note:'+ref.itemId;let cached=noteCache.get(key)??await thumbGet(key);
+  if(bridge()?.readNote&&navigator.onLine!==false&&!noteCache.has(key)){
+    try{const n=await bridge().readNote(ref);cached={blocks:n.blocks,title:n.title};await thumbPut(key,cached)}catch{}}
+  noteCache.set(key,cached||null);return cached||null;
+}
+function hydrateNotes(root=document){
+  for(const el of root.querySelectorAll('[data-note]:not([data-done])')){el.dataset.done='1';const ref=JSON.parse(el.dataset.note);
+    noteBlocks(ref).then(n=>{if(!n?.blocks?.length){el.innerHTML='<p class="muted">Open the note in KeepIt to write the story.</p>';return}
+      let list=false;el.innerHTML=n.blocks.map(b=>{const open=b.type==='item'&&!list?'<ul>':'',close=b.type!=='item'&&list?'</ul>':'';list=b.type==='item';
+        return close+open+(b.type==='heading'?`<h3>${esc(b.text)}</h3>`:b.type==='item'?`<li>${esc(b.text)}</li>`:`<p>${esc(b.text).replace(/\n/g,'<br>')}</p>`)}).join('')+(list?'</ul>':'')})}
 }
 const thumbHtml=(ref,cls='thumb')=>`<span class="${cls}" data-thumb="${esc(JSON.stringify(ref))}" title="${esc(ref.title)}">${ref.kind==='note'?(/sketch/i.test(ref.title)?'Sketch':'Note'):esc(ref.title.split('.').pop().slice(0,5))}</span>`;
 async function openRef(ref){if(!bridge())return toast('Open TravelIt from KeepIt to open linked items.',true);try{await bridge().open(ref)}catch(e){toast(e.message,true)}}
@@ -102,12 +119,13 @@ const link=(t,tab)=>`#trip/${encodeURIComponent(t.id)}/${tab}`;
 let mapDispose=null;
 function render(){
   if(mapDispose){mapDispose();mapDispose=null}
+  if(route().tab!=='map'&&state.ui.mapFull){state.ui.mapFull=false;document.body.classList.remove('map-open')}
   const r=route();const view=$('#view'),tabs=$('#tabs');
   if(!r.trip){tabs.hidden=true;$('#crumb').textContent='';view.innerHTML=viewTrips();hydrateThumbs();return}
   tabs.hidden=false;$('#crumb').textContent='· '+r.trip.title;
   tabs.firstElementChild.innerHTML=`<a href="#trips" class="all-trips">‹ All trips</a>`+TABS.map(([id,l])=>`<a href="${link(r.trip,id)}" ${id===r.tab?'aria-current="page"':''}>${l}</a>`).join('')+`<a href="#" data-act="edit-trip" style="margin-left:auto">Trip details</a>`;
   view.innerHTML=({today:viewToday,plan:viewPlan,map:viewMap,bookings:viewBookings,packing:viewPacking,budget:viewBudget,journal:viewJournal})[r.tab](r.trip);
-  if(r.tab==='map')mountMap(r.trip);
+  if(r.tab==='map'){mountMap(r.trip);document.body.classList.toggle('map-open',!!state.ui.mapFull)}
   hydrateThumbs();
 }
 
@@ -329,6 +347,40 @@ document.addEventListener('pointercancel',()=>{if(dragState){dragState.block.sty
 // A drag must not also open the editor.
 document.addEventListener('click',e=>{if(Date.now()-dragJustEnded<400&&e.target.closest('.tl-block')){e.stopImmediatePropagation();e.preventDefault()}},true);
 
+/* ---------- Map tools: full screen, save the visible area offline ---------- */
+function toggleMapFull(force){
+  state.ui.mapFull=force??!state.ui.mapFull;keepUi();
+  const wrap=$('.map-wrap'),btn=$('[data-act=map-full]');if(!wrap)return;
+  wrap.classList.toggle('full',state.ui.mapFull);document.body.classList.toggle('map-open',state.ui.mapFull);
+  if(btn){btn.textContent=state.ui.mapFull?'Exit full screen':'Full screen';btn.setAttribute('aria-pressed',String(state.ui.mapFull))}
+  setTimeout(()=>state.leaflet?.invalidateSize({pan:false}),50);
+}
+async function saveViewOffline(t,button){
+  const map=state.leaflet;if(!map)return;
+  const b=map.getBounds(),bounds={minLat:b.getSouth(),maxLat:b.getNorth(),minLng:b.getWest(),maxLng:b.getEast()};
+  let pieces;try{pieces=viewPieces(bounds)}catch(e){return toast(e.message,true)}
+  const covered=p=>(state.atlases||[]).some(m=>m.bounds.minLat<=p.minLat+0.002&&m.bounds.maxLat>=p.maxLat-0.002&&m.bounds.minLng<=p.minLng+0.002&&m.bounds.maxLng>=p.maxLng-0.002);
+  const todo=pieces.filter(p=>!covered(p));if(!todo.length)return toast('This view is already saved for offline use.');
+  const c=map.getCenter(),near=[...of('place')].filter(hasPin).sort((a,b)=>km(a,{lat:c.lat,lng:c.lng})-km(b,{lat:c.lat,lng:c.lng}))[0];
+  const label=near&&km(near,{lat:c.lat,lng:c.lng})<8?near.name.split(' — ')[0]:`${c.lat.toFixed(3)}, ${c.lng.toFixed(3)}`;
+  let saved=0;
+  for(const [i,piece] of todo.entries()){
+    button.textContent=`Saving piece ${i+1} of ${todo.length}…`;
+    let atlas;
+    for(let attempt=1;;attempt++){
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
+      try{atlas=await downloadRoadBox({bounds:piece,name:`${t.title} · near ${label}${todo.length>1?` (${i+1}/${todo.length})`:''}`,signal:controller.signal});clearTimeout(timer);break}
+      catch(e){clearTimeout(timer);const busy=controller.signal.aborted||/HTTP (429|5\d\d)|busy|incomplete|fetch|network|load failed/i.test(e.message||'');
+        if(!busy||attempt>=4){await load();render();notifyHost('travelit-maps-change');return toast(`${saved?`Saved ${saved} of ${todo.length} pieces. `:''}${e.message}`,true)}
+        button.textContent=`Map service busy · retrying piece ${i+1}…`;await new Promise(ok=>setTimeout(ok,attempt*4000))}
+    }
+    try{const {manifest,tiles}=await prepareRegionAtlas(atlas),{mapRevision}=await getWorkspaceMetadata(state.db);await putAtlasRegion(state.db,manifest,tiles,{expectedMapRevision:mapRevision,rejectExisting:true});saved++}
+    catch(e){await load();render();return toast(e.message,true)}
+    if(i<todo.length-1)await new Promise(ok=>setTimeout(ok,1500));
+  }
+  await load();render();notifyHost('travelit-maps-change');toast(`Saved this view for offline use (${saved} piece${saved===1?'':'s'})`);
+}
+
 /* ---------- Map ---------- */
 /** Places for the chosen day in visiting order; pinned ones numbered 1, 2, 3… with no gaps. */
 function mapPlaces(t,day){
@@ -341,7 +393,8 @@ function viewMap(t){
   const list=mapPlaces(t,day),sel=state.ui.mapSel,picking=state.ui.pinFor;
   return `<div class="row between" style="margin-bottom:12px"><h1>Map</h1><div class="row" role="group" aria-label="Day"><button class="chip" data-act="map-day" data-d="all" aria-pressed="${day==='all'}">All days</button>${daysOf(t).map((d,i)=>`<button class="chip" data-act="map-day" data-d="${d}" aria-pressed="${day===d}">Day ${i+1}</button>`).join('')}<button class="btn sm teal" data-act="edit-place">Add place</button></div></div>
   ${picking?`<div class="notice" style="margin-bottom:10px">Tap the map where <b>${esc(placeById(picking)?.name)}</b> is. <button class="btn sm" data-act="cancel-pin">Cancel</button></div>`:''}
-  <div class="grid2"><div class="map-wrap"><div id="map"></div><span class="map-status" id="map-status">Loading street map…</span></div>
+  <div class="grid2"><div class="map-wrap${state.ui.mapFull?' full':''}"><div id="map"></div><span class="map-status" id="map-status">Loading street map…</span>
+   <div class="map-tools"><button class="map-tool" data-act="map-full" aria-pressed="${!!state.ui.mapFull}">${state.ui.mapFull?'Exit full screen':'Full screen'}</button><button class="map-tool" data-act="map-save-view" ${navigator.onLine===false?'disabled':''}>Save this view offline</button></div></div>
   <div style="display:grid;gap:10px">${offlineMapsHtml(t)}${list.map(({p,n,stops})=>`<div class="place${p.id===sel?' sel':''}" data-act="map-select" data-id="${esc(p.id)}"><span class="n${n?'':' link'}">${n||'–'}</span><div><b>${esc(p.name)}</b>
    <div class="small muted">${n?esc(p.coordinateStatus||'Pinned'):'Not on the map yet'} · ${stops} stop${stops===1?'':'s'}</div>${p.notes?`<div class="small" style="margin-top:3px">${esc(p.notes)}</div>`:''}
    <div class="row" style="margin-top:8px"><a class="btn sm" href="${esc(navUrl(null,p))}" target="_blank" rel="noopener">Google Maps</a>${hasPin(p)?`<a class="btn sm" href="${esc(wazeUrl(p))}" target="_blank" rel="noopener">Waze</a>`:''}<button class="btn sm" data-act="pin-place" data-id="${esc(p.id)}">${hasPin(p)?'Move pin':'Set pin on map'}</button><button class="btn sm" data-act="edit-place" data-id="${esc(p.id)}">Edit</button></div></div></div>`).join('')||'<div class="empty">No places on this day yet. Add a place to a stop to see it here.</div>'}</div></div>`;
@@ -351,7 +404,7 @@ function mountMap(t){
   if(!L){status.textContent='Street map could not start. Reload online.';return}
   const day=state.ui.mapDay&&daysOf(t).includes(state.ui.mapDay)?state.ui.mapDay:'all',st=stopsOf(t).filter(s=>day==='all'||s.date===day);
   const list=mapPlaces(t,day),ids=list.map(x=>x.p.id);
-  const map=L.map(el,{zoomControl:true,attributionControl:true});
+  const map=L.map(el,{zoomControl:true,attributionControl:true});state.leaflet=map;
   const tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}).addTo(map);
   let loaded=0,fallback=null,disposed=false;
   const useOffline=async()=>{if(fallback||disposed)return;fallback='loading';const b=state.ui.tripBounds;const layer=b&&await atlasLayer(L,b);if(disposed)return;
@@ -370,7 +423,7 @@ function mountMap(t){
   map.on('click',e=>{const id=state.ui.pinFor;if(!id)return;const p=placeById(id);state.ui.pinFor=null;keepUi();
     commit(()=>put('place',normalizePlace({...p,lat:+e.latlng.lat.toFixed(6),lng:+e.latlng.lng.toFixed(6),coordinateStatus:'Pinned in TravelIt'})),'Pin saved')});
   const ro=new ResizeObserver(()=>map.invalidateSize({pan:false}));ro.observe(el);
-  mapDispose=()=>{disposed=true;ro.disconnect();map.remove()};
+  mapDispose=()=>{disposed=true;ro.disconnect();map.remove();state.leaflet=null};
 }
 
 /* ---------- Bookings ---------- */
@@ -420,15 +473,42 @@ function viewBudget(t){
   <button class="btn sm" style="margin-top:10px" data-act="shop-all">${state.ui.shopAll?'Show only my list':`Show all ${shop.length} items`}</button></div>`:''}`;
 }
 
-/* ---------- Journal ---------- */
+/* ---------- Journal: a blog of the trip, one post per day ---------- */
+const isPhoto=d=>d.kind!=='note';
+function dayMedia(t,d){
+  const entry=(t.journal||[]).find(x=>x.date===d)||{},docs=[...(entry.keepItDocuments||[])];
+  for(const s of stopsOf(t).filter(s=>s.date===d))for(const x of s.keepItDocuments||[])if(!docs.some(y=>y.itemId===x.itemId))docs.push(x);
+  return docs;
+}
 function viewJournal(t){
-  const j=new Map((t.journal||[]).map(d=>[d.date,d]));
-  return `<h1>Journal</h1><p class="muted" style="margin-top:6px">One page per day. Photos and drawings are saved in KeepIt and linked here.</p>
-  ${daysOf(t).map((d,i)=>{const e=j.get(d)||{},docs=e.keepItDocuments||[],done=stopsOf(t).filter(s=>s.date===d&&s.done).length;
-   return `<section class="card" style="margin-top:14px"><div class="row between"><h2>Day ${i+1} · ${longDay(d)}</h2><span class="small muted">${done} stops done</span></div>
-   <label class="field" style="margin-top:10px"><span class="small muted">Notes</span><textarea data-act="journal-text" data-day="${d}" placeholder="Highlights, what the family loved, what to skip next time">${esc(e.text||'')}</textarea></label>
-   <div class="thumbs" style="margin-top:8px">${docs.map(x=>`<button class="btn sm" style="padding:0;border:0" data-act="open-ref" data-ref="${esc(JSON.stringify(x))}">${thumbHtml(x,'thumb lg')}</button>`).join('')}</div>
-   <div class="row" style="margin-top:10px"><button class="btn sm" data-act="journal-sketch" data-day="${d}">Sketch</button><button class="btn sm" data-act="journal-photo" data-day="${d}">Add photo</button><button class="btn sm" data-act="journal-attach" data-day="${d}">Attach from KeepIt</button></div></section>`}).join('')}`;
+  const days=daysOf(t),today=moment(t).date,started=today>=t.startDate,order=started?[...days].reverse():days;
+  const all=days.flatMap(d=>dayMedia(t,d)),cover=all.find(isPhoto)||all[0],done=stopsOf(t).filter(s=>s.done).length,spent=spentOf(t);
+  const hero=`<section class="blog-hero${cover?'':' no-image'}">${cover?`<div class="cover">${thumbHtml(cover,'cover-img')}</div>`.replace('data-thumb=','data-size="640" data-thumb='):''}
+   <div class="blog-hero-text"><h1><span class="kicker">Journal</span>${esc(t.title)}</h1><p>${esc(t.subtitle||'')}${t.subtitle?' · ':''}${dayName(t.startDate)} – ${dayName(t.endDate)}</p>
+   <div class="row chips"><span>${days.length} days</span><span>${done} stops done</span><span>${((n)=>n+(n===1?' photo':' photos'))(all.filter(isPhoto).length)}</span><span>${peso(spent)} spent</span></div></div></section>`;
+  return hero+order.map(d=>{const i=days.indexOf(d),entry=(t.journal||[]).find(x=>x.date===d)||{},media=dayMedia(t,d),list=stopsOf(t).filter(s=>s.date===d),hi=list.filter(s=>s.done),
+    names=[...new Set(list.map(s=>placeById(s.placeId)?.name.split(' — ')[0]).filter(Boolean))],daySpent=expensesOf(t).filter(e=>e.date===d).reduce((n,e)=>n+(actualOf(t,e)||0),0),
+    photo=media.find(isPhoto),rest=media.filter(x=>x!==photo);
+    return `<article class="post" id="day-${d}"><header><span class="kicker">Day ${i+1}${d===today?' · Today':''}</span><h2>${longDay(d)}</h2>${names.length?`<p class="muted">${esc(names[0])}${names.length>1?' → '+esc(names.at(-1)):''}</p>`:''}</header>
+    ${photo?`<figure class="cover"><button class="cover-btn" data-act="open-ref" data-ref="${esc(JSON.stringify(photo))}" aria-label="Open ${esc(photo.title)}">${thumbHtml(photo,'cover-img').replace('data-thumb=','data-size="640" data-thumb=')}</button></figure>`:''}
+    <div class="story">${entry.note?`<div class="note-text" data-note="${esc(JSON.stringify(entry.note))}"><p class="muted">Loading the story from KeepIt…</p></div>`
+      :`<textarea class="story-input" data-act="journal-text" data-day="${d}" aria-label="Story for day ${i+1}" placeholder="Write about the day: highlights, what the family loved, what to skip next time">${esc(entry.text||'')}</textarea>`}</div>
+    ${rest.length?`<div class="gallery">${rest.map(x=>`<button class="tile" data-act="open-ref" data-ref="${esc(JSON.stringify(x))}" aria-label="Open ${esc(x.title)}">${thumbHtml(x,'tile-img')}<span>${esc(x.title)}</span></button>`).join('')}</div>`:''}
+    ${hi.length?`<div class="highlights"><b>Highlights</b><ul>${hi.map(s=>`<li><span class="nowrap">${esc(s.time||'')}</span> ${esc(s.title)}</li>`).join('')}</ul></div>`:list.length?`<p class="small muted">${list.length} stops planned · tick them done on Today to collect highlights here.</p>`:''}
+    <footer class="row"><span class="small muted">${daySpent?peso(daySpent)+' spent':''}</span><span class="grow"></span>
+     ${entry.note?`<button class="btn sm teal" data-act="open-ref" data-ref="${esc(JSON.stringify(entry.note))}">Open in KeepIt</button>`:`<button class="btn sm teal" data-act="journal-note" data-day="${d}">Write in KeepIt</button>`}
+     <button class="btn sm" data-act="journal-photo" data-day="${d}">Add photo</button><button class="btn sm" data-act="journal-sketch" data-day="${d}">Sketch</button><button class="btn sm" data-act="journal-attach" data-day="${d}">Attach</button></footer></article>`}).join('');
+}
+async function journalToNote(t,d){
+  if(!bridge()?.createNote)return toast('Open TravelIt from KeepIt to write in KeepIt.',true);
+  const fresh=tripById(t.id),j=[...(fresh.journal||[])],entry=j.find(x=>x.date===d)||{date:d,text:''},i=daysOf(fresh).indexOf(d)+1;
+  const done=stopsOf(fresh).filter(s=>s.date===d&&s.done),blocks=[...String(entry.text||'').split(/\n{2,}|\n/).map(x=>x.trim()).filter(Boolean).map(text=>({type:'paragraph',text}))];
+  if(!blocks.length)blocks.push({type:'paragraph',text:''});
+  if(done.length)blocks.push({type:'heading',text:'Highlights'},{type:'list',items:done.map(s=>`${s.time||''} ${s.title}`.trim())});
+  try{toast('Creating the KeepIt note…');
+    const note=refOf(await bridge().createNote({title:`${fresh.title} · Day ${i} · ${dayName(d)}`,blocks}));
+    await commit(()=>saveTrip(tripById(t.id),{journal:[...j.filter(x=>x.date!==d),{...entry,note}]}),'Journal is now a KeepIt note. Write it in KeepIt; the story shows here.');
+  }catch(e){toast(e.message,true)}
 }
 
 /* ---------- Editor sheet ---------- */
@@ -608,6 +688,8 @@ document.addEventListener('click',async e=>{
   else if(a==='late')shiftDay(t,el.dataset.day,el.dataset.from,Number(el.dataset.min));
   else if(a==='late-undo')undoShift(t);
   else if(a==='late-open'){state.ui.lateOpen=state.ui.lateOpen===el.dataset.day?null:el.dataset.day;keepUi();render()}
+  else if(a==='map-full')toggleMapFull();
+  else if(a==='map-save-view'){el.disabled=true;try{await saveViewOffline(t,el)}finally{if(el.isConnected){el.disabled=false;el.textContent='Save this view offline'}}}
   else if(a==='new-stop')stopEditor(t,null,{day:el.dataset.day});
   else if(a==='edit-stop')stopEditor(t,of('stop').find(s=>s.id===id));
   else if(a==='toggle-done'){const s=of('stop').find(x=>x.id===id);commit(()=>saveStop(t,{...s,done:!s.done}),s.done?'Marked not done':'Marked done')}
@@ -627,6 +709,7 @@ document.addEventListener('click',async e=>{
   else if(a==='open-ref')openRef(JSON.parse(el.dataset.ref));
   else if(a==='sim'){state.ui.sim={trip:t.id,date:$('#sim-day').value,time:$('#sim-time').value||'10:00'};keepUi();render()}
   else if(a==='sim-live'){state.ui.sim=null;keepUi();render()}
+  else if(a==='journal-note')journalToNote(t,el.dataset.day);
   else if(a==='journal-sketch'){
     const d=el.dataset.day;if(!bridge()?.sketch)return toast('Open TravelIt from KeepIt to sketch.',true);
     try{toast('Draw in KeepIt’s sketchbook, then tap Done.');const ref=await bridge().sketch({title:`${t.title} · ${dayName(d)} sketch`});if(!ref)return;
@@ -642,14 +725,14 @@ document.addEventListener('click',async e=>{
   }
 });
 $('#sync').addEventListener('click',e=>toast(e.currentTarget.title||'Sync status',e.currentTarget.dataset.state==='warn'));
-document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.what[data-act]')){e.preventDefault();e.target.click()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.ui.mapFull&&!sheet.open){toggleMapFull(false);return}if((e.key==='Enter'||e.key===' ')&&e.target.matches('.what[data-act]')){e.preventDefault();e.target.click()}});
 document.addEventListener('change',e=>{
   const el=e.target,t=route().trip;if(!t||el.closest('#sheet'))return;
   if(el.dataset.act==='actual'){const x=expensesOf(t).find(v=>v.id===el.dataset.id);commit(()=>put('expense',normalizeExpense({...x,actualPhp:num(el.value),amountPending:x.plannedPhp===null&&num(el.value)===null},t)),'Actual saved')}
   if(el.dataset.act==='shop'){const list=(t.shopping||[]).map(x=>x.id===el.dataset.id?{...x,[el.dataset.f]:num(el.value)}:x);commit(()=>saveTrip(t,{shopping:list}))}
 });
 document.addEventListener('input',e=>{
-  const el=e.target;if(el.dataset.act!=='journal-text')return;const t=route().trip,d=el.dataset.day;
+  const el=e.target;if(el.dataset.act!=='journal-text')return;el.style.height='auto';el.style.height=el.scrollHeight+'px';const t=route().trip,d=el.dataset.day;
   clearTimeout(journalTimer);journalTimer=setTimeout(async()=>{const fresh=tripById(t.id),j=[...(fresh.journal||[])],entry=j.find(x=>x.date===d)||{date:d};
     try{await saveTrip(fresh,{journal:[...j.filter(x=>x.date!==d),{...entry,text:el.value}]});await load();notifyHost('travelit-workspace-change');toast('Journal saved')}catch(err){toast(err.message,true)}},900);
 });

@@ -39,7 +39,7 @@ function normalizeShopping(list){if(list===undefined)return undefined;if(!Array.
  return list.map(x=>{const name=cleanText(x.name,120);if(!name)throw Error('Shopping item name is required.');
   return {id:cleanText(x.id,80)||uid(),name,group:cleanText(x.group,80),unit:cleanText(x.unit,20)||'kg',lowPhp:money(x.lowPhp),highPhp:money(x.highPhp),pricePhp:money(x.pricePhp),plannedQty:money(x.plannedQty),boughtQty:money(x.boughtQty),paidPhp:money(x.paidPhp),notes:cleanText(x.notes,500)};});}
 function normalizeJournal(list){if(list===undefined)return undefined;if(!Array.isArray(list)||list.length>400)throw Error('Journal must be a list of days.');
- return list.filter(d=>validDate(d?.date)).map(d=>({date:d.date,text:cleanText(d.text,20000),...(d.keepItDocuments?.length?{keepItDocuments:normalizeTripDocuments(d.keepItDocuments)}:{})}));}
+ return list.filter(d=>validDate(d?.date)).map(d=>({date:d.date,text:cleanText(d.text,20000),...(d.keepItDocuments?.length?{keepItDocuments:normalizeTripDocuments(d.keepItDocuments)}:{}),...(d.note?{note:normalizeTripDocuments([d.note])[0]}:{})}));}
 function tripExtras(input){const out={};
  const b=normalizeBookings(input.bookings);if(b?.length)out.bookings=b;
  const s=normalizeShopping(input.shopping);if(s?.length)out.shopping=s;

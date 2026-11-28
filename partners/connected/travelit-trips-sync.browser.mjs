@@ -53,6 +53,14 @@ try{
   await ipad.frame.locator('#att-list img.thumb').waitFor({timeout:30000});
   await ipad.frame.locator('#sheet button[value=save]').click();await ipad.frame.locator('#sheet').waitFor({state:'hidden'});
   await ipad.frame.locator('.stop',{hasText:'Boat tour'}).locator('img.thumb').waitFor({timeout:30000});
+  // The journal shows the stop photo as a blog post cover, and a day turns into a real KeepIt note whose text shows in the post.
+  await tab(ipad.frame,'Journal');await ipad.frame.locator('.post img.cover-img').first().waitFor({timeout:30000});
+  await ipad.frame.locator('[data-act=journal-text]').first().fill('Calm lake, great pancakes.');await ipad.frame.getByText('Journal saved').waitFor();
+  await ipad.frame.locator('.post').first().getByRole('button',{name:'Write in KeepIt'}).click();
+  await ipad.frame.getByText(/Journal is now a KeepIt note/).waitFor({timeout:60000});
+  // KeepIt opens the saved note for writing; closing it returns to the trip.
+  await ipad.page.getByText('Lake weekend · Day 1 · Fri, Mar 1').first().waitFor();await ipad.page.getByRole('button',{name:'Close',exact:true}).click();
+  await ipad.frame.locator('.post').first().locator('.note-text',{hasText:'Calm lake, great pancakes.'}).waitFor({timeout:30000});
   // Offline road maps for the trip's pinned places, then backed up to KeepIt.
   await tab(ipad.frame,'Map');await ipad.frame.getByText('0/1 areas saved').waitFor();
   await ipad.frame.getByRole('button',{name:'Save offline maps for this trip'}).click();

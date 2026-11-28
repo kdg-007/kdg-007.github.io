@@ -27,6 +27,8 @@ async function run(engine){
       globalThis.__opened=[];globalThis.__added=0;
       window.travelItKeepItLinks={async list(){return items},async open(r){globalThis.__opened.push(r.title)},
         async thumbnail(r){if(r.kind==='note'||/\.pdf$/.test(r.title))return null;const c=document.createElement('canvas');c.width=80;c.height=60;c.getContext('2d').fillRect(0,0,80,60);return new Promise(ok=>c.toBlob(ok,'image/jpeg'))},
+        async createNote({title,blocks}){globalThis.__note={title,blocks};const it={scope,itemId:'55555555-5555-4555-8555-000000000001',kind:'note',title};items.push(it);return it},
+        async readNote(r){return{title:r.title,blocks:[...globalThis.__note.blocks.filter(b=>b.type==='paragraph'),{type:'paragraph',text:'Written later in KeepIt.'}],images:[]}},
         async sketch({title}){const it={scope,itemId:'44444444-4444-4444-8444-000000000001',kind:'note',title};items.push(it);return it},
         async addFile(file,{title}){globalThis.__added++;const it={scope,itemId:'33333333-3333-4333-8333-00000000000'+globalThis.__added,kind:'file',title};items.push(it);return it}};
     });
@@ -98,6 +100,12 @@ async function run(engine){
     const hotel=page.locator('.place',{hasText:'Lake hotel'});await hotel.getByRole('button',{name:'Set pin on map'}).click();
     await page.locator('#map').click({position:{x:200,y:200}});await page.getByText('Pin saved').waitFor();
     assert.equal(await page.locator('#map .leaflet-marker-icon').count(),3,'new pin shows');
+    // Full screen map covers the window and Escape leaves it.
+    await page.getByRole('button',{name:'Full screen'}).click();
+    const full=await page.locator('.map-wrap').boundingBox(),vp=page.viewportSize();
+    assert.ok(full.width>=vp.width-1&&full.height>=vp.height-1,'map fills the window');
+    await page.keyboard.press('Escape');await page.getByRole('button',{name:'Full screen'}).waitFor();
+    assert.ok((await page.locator('.map-wrap').boundingBox()).height<vp.height-50,'map back in the page');
 
     // Packing, spending, booking reference and journal persist.
     await tab('Packing');assert.equal(await page.locator('.money').innerText(),'1/3');
@@ -110,6 +118,13 @@ async function run(engine){
 
     await page.reload();await page.locator('html[data-travelit-trips=ready]').waitFor();
     assert.equal(await page.locator('[data-act=journal-text]').first().inputValue(),'Calm lake, great pancakes.');
+    // The journal reads like a blog; a day can become a KeepIt note and its text shows in the post.
+    assert.match(await page.locator('.blog-hero').innerText(),/Lake weekend[\s\S]*2 days/);
+    await page.locator('.post').first().getByRole('button',{name:'Write in KeepIt'}).click();await page.getByText(/Journal is now a KeepIt note/).waitFor();
+    assert.match(await page.evaluate(()=>globalThis.__note.title),/Lake weekend · Day 1/);
+    await page.locator('.post').first().locator('.note-text',{hasText:'Written later in KeepIt.'}).waitFor();
+    assert.match(await page.locator('.post').first().locator('.note-text').innerText(),/Calm lake, great pancakes\.[\s\S]*Written later/);
+    await page.locator('.post').first().getByRole('button',{name:'Open in KeepIt'}).waitFor();
     await tab('Budget');assert.equal(await page.locator('.money').first().innerText(),'₱950');
     await tab('Plan');await page.getByRole('button',{name:'List',exact:true}).click();assert.equal(await page.locator('.stop',{hasText:'Boat tour'}).locator('.thumbs > *').count(),2);
 

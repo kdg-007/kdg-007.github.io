@@ -1,6 +1,6 @@
 import { readCalendarNotes } from "/partners/connected/liveit-calendar-read.mjs?v=recovery-1";
 import { CALENDAR_SOURCE as ft, CALENDAR_TAG as mt, eventRecord as Qe, eventSignature as Fe, eventNoteId as Mt, eventEnvelope as $i, readEventEnvelope as $t } from "/partners/liveit/thinkit/connected-w18e-c15396/calendar-contract.mjs?v=keepit-links-1";
-import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=5";
+import { mountKeepItItemLinks as mountLiveItKeepItLinks } from "/partners/connected/liveit-keepit-links.mjs?v=6";
 import { mountOfflineControls } from "/partners/connected/offline-originals-ui.mjs";
 import { mountAppRepository as mountKeepItAppFiles } from "/partners/connected/app-repository-sync.mjs?v=trips-sync-2";
 import { a as qt } from "./chunk-W72KRQYW.js";
@@ -186,8 +186,14 @@ function Vi({ workspace: e, getLibrary: t, getReadLibrary: readLibrary=t, getTar
       l(w);
     }, s.append(v), v;
   }, g = document.createElement("iframe");
-  g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = (() => { try { if (new URLSearchParams(location.search).get("travelit-view") === "classic") sessionStorage.setItem("travelit-view", "classic"); return sessionStorage.getItem("travelit-view") === "classic"; } catch { return false; } })() ? "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=trip-sync-1" : "/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html?v=trips-3", g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
-  mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: readLibrary, getWritableLibrary: t, newSketch: async (title) => {
+  g.title = "TravelIt trip planning workspace", g.allowFullscreen = true, g.src = (() => { try { if (new URLSearchParams(location.search).get("travelit-view") === "classic") sessionStorage.setItem("travelit-view", "classic"); return sessionStorage.getItem("travelit-view") === "classic"; } catch { return false; } })() ? "/partners/travelit/thinkit/afda98f5ced9406d0fe5/index.html?v=trip-sync-1" : "/partners/travelit/thinkit/afda98f5ced9406d0fe5/trips.html?v=trips-4", g.style.cssText = "border:0;flex:1;width:100%;min-height:0", s.append(p, d, m), r.append(s, g), document.body.append(r);
+  mountLiveItKeepItLinks({ app: "travelit", frame: g, getLibrary: readLibrary, getWritableLibrary: t, newNote: async ({ title, document: startDocument }) => {
+    const ui = await ce(), itemId = crypto.randomUUID();
+    await ui.newNote({ itemId, title, document: startDocument });
+    // Save right away so TravelIt can link it; the note stays open in KeepIt for writing.
+    ui.saveButton?.click();
+    return itemId;
+  }, newSketch: async (title) => {
     const ui = await ce(), itemId = crypto.randomUUID();
     await ui.newNote({ itemId, title });
     await ui.editor.draw();
